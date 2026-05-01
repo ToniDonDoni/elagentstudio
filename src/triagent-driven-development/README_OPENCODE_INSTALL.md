@@ -22,15 +22,11 @@ This bundle contains:
 - `trdd-reviewer.md`
 - `SKILL.md`
 
-## Install and verify
+## Install
 
+from repo root
 ```bash
-mkdir -p ~/.config/opencode/agents
-mkdir -p ~/.config/opencode/skills/triagent-driven-development
-cp source/triagent-driven-development/trdd-*.md ~/.config/opencode/agents/
-cp source/triagent-driven-development/SKILL.md ~/.config/opencode/skills/triagent-driven-development/
-ls ~/.config/opencode/agents/trdd-*.md
-ls ~/.config/opencode/skills/triagent-driven-development/SKILL.md
+src/triagent-driven-development/opencode_install.sh
 ```
 
 ## How to use

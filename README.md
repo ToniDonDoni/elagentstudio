@@ -8,7 +8,7 @@ Reusable agent skills, workflows, and installation bundles for Codex, OpenCode, 
 
 A planner → builder → reviewer triagent workflow for structured implementation, bounded review loops, and task orchestration.
 
-- Path: `source/triagent-driven-development/`
+- Path: `src/triagent-driven-development/`
 - Platforms: Codex, OpenCode
 
 ## Install
@@ -17,12 +17,13 @@ From the repository root, choose your tool and read its install guide:
 
 ### OpenCode
 
+
 ```bash
-cat source/triagent-driven-development/README_OPENCODE_INSTALL.md
+cat src/triagent-driven-development/README_OPENCODE_INSTALL.md
 ```
 
 ### Codex
 
 ```bash
-cat source/triagent-driven-development/README_CODEX_INSTALL.md
+cat src/triagent-driven-development/README_CODEX_INSTALL.md
 ```
