@@ -24,24 +24,11 @@ This bundle contains:
 
 ## Install and verify
 
-Global install:
+Install:
 
+from repo root
 ```bash
-mkdir -p ~/.codex/agents
-mkdir -p ~/.codex/skills/triagent-driven-development
-cp source/triagent-driven-development/trdd-*.md ~/.codex/agents/
-cp source/triagent-driven-development/SKILL.md ~/.codex/skills/triagent-driven-development/
-ls ~/.codex/agents/trdd-*.md
-ls ~/.codex/skills/triagent-driven-development/SKILL.md
-```
-
-Project-local install:
-
-```bash
-mkdir -p ./.codex/agents
-mkdir -p ./.codex/skills/triagent-driven-development
-cp source/triagent-driven-development/trdd-*.md ./.codex/agents/
-cp source/triagent-driven-development/SKILL.md ./.codex/skills/triagent-driven-development/
+src/triagent-driven-development/codex_install.sh
 ```
 
 ## How to use
