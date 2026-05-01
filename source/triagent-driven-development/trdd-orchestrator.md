@@ -37,4 +37,3 @@ Your job is to finish the task by coordinating triagents, not by editing code yo
   - review cycles per task
   - verification that ran
   - remaining risks
-
