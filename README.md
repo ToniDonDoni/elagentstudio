@@ -9,14 +9,16 @@ Reusable workflow bundles for the TriAgent-Driven Development skill.
 
 ## Install
 
-From the repository root:
+From the repository root, choose your tool and read its install guide:
 
 ### OpenCode
 
 ```bash
-source/triagent-driven-development/README_OPENCODE_INSTALL.md
+cat source/triagent-driven-development/README_OPENCODE_INSTALL.md
+```
 
 ### Codex
 
 ```bash
-source/triagent-driven-development/README_CODEX_INSTALL.md
+cat source/triagent-driven-development/README_CODEX_INSTALL.md
+```
