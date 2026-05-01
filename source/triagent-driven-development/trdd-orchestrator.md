@@ -24,8 +24,9 @@ Your job is to finish the task by coordinating triagents, not by editing code yo
 3. Use `trdd-builder` for all code changes.
 4. After every build pass, use `trdd-reviewer`.
 5. If review returns `VERDICT: REQUEST_CHANGES`, send the findings back to the builder and re-review.
-6. Limit each task to 3 review cycles, then escalate.
-7. Keep a concise todo list in the parent session.
+6. Do not perform your own manual patch verification when `trdd-reviewer` is in the loop; only route builder/reviewer work and run verification commands.
+7. Limit each task to 3 review cycles, then escalate.
+8. Keep a concise todo list in the parent session.
 
 ## Output discipline
 
