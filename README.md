@@ -1,11 +1,15 @@
-# TriAgent-Driven Development Bundles
+# ElAgentStudio
 
-Reusable workflow bundles for the TriAgent-Driven Development skill.
+Reusable agent skills, workflows, and installation bundles for Codex, OpenCode, and related platforms.
 
-## Layout
+## Available Skills
 
-- `source/triagent-driven-development/`
-  Shared workflow, agents, and installation guides for Codex and OpenCode.
+### TriAgent-Driven Development (trdd)
+
+A planner → builder → reviewer triagent workflow for structured implementation, bounded review loops, and task orchestration.
+
+- Path: `source/triagent-driven-development/`
+- Platforms: Codex, OpenCode
 
 ## Install
 
