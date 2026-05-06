@@ -29,6 +29,11 @@ from repo root
 src/triagent-driven-development/opencode_install.sh
 ```
 
+Force reinstall over existing files:
+```bash
+src/triagent-driven-development/opencode_install.sh --override
+```
+
 ## How to use
 
 1. Run OpenCode.
