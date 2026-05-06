@@ -31,6 +31,11 @@ from repo root
 src/triagent-driven-development/codex_install.sh
 ```
 
+Force reinstall over existing files:
+```bash
+src/triagent-driven-development/codex_install.sh --override
+```
+
 ## How to use
 
 1. Launch Codex in the workspace where you want to work.
