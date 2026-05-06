@@ -2,22 +2,19 @@
 
 This bundle installs a TriAgent-Driven Development workflow for Codex.
 
-It adds a primary orchestrator plus three triagents:
+It adds a primary orchestrator plus two triagents:
 - `trdd-orchestrator` — routes work through the workflow
-- `trdd-planner` — breaks work into concrete tasks
 - `trdd-builder` — implements a task
 - `trdd-reviewer` — reviews the result and returns approval or change requests
 
 Workflow summary:
-- orchestrator receives the task
-- planner decomposes it when needed
-- builder implements one task at a time
-- reviewer checks the result
-- if reviewer requests changes, the work goes through a bounded rework loop
+- orchestrator takes the task
+- builder does the work
+- reviewer approves it or requests changes
+- if reviewer requests changes, the loop repeats
 
 This bundle contains:
 - `trdd-orchestrator.md`
-- `trdd-planner.md`
 - `trdd-builder.md`
 - `trdd-reviewer.md`
 - `SKILL.md`

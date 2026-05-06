@@ -1,6 +1,6 @@
 ---
 name: triagent-driven-development
-description: Execute implementation work through planner, builder, and reviewer triagents with bounded review loops.
+description: Execute implementation work through builder and reviewer triagents with bounded review loops.
 license: MIT
 compatibility: opencode
 metadata:
@@ -17,33 +17,24 @@ Prefer this flow for feature work, small prototypes, and refactors where you wan
 ## Core rules
 
 1. The primary agent routes. It does not implement code itself.
-2. Read the user request once, extract the full scope, then keep the plan compact.
+2. Read the user request once and pass the task to the builder.
 3. Use fresh subagent sessions through the `task` tool.
 4. Run review after each implementation pass.
 5. Keep revision loops bounded. Stop after 3 failed review cycles and escalate.
 
 ## Flow
 
-### 1. Plan
+### 1. Dispatch
 
-If the request is not already broken into concrete tasks, call:
-
-- `task({ subagent_type: "trdd-planner", ... })`
-
-Ask for:
-
-- numbered tasks
-- target files
-- acceptance criteria
-- a verification step for each task
+Pass the user task directly to the builder. The builder may refine scope, choose files, and decide practical verification as part of implementation.
 
 ### 2. Implement
 
-For each task, call:
+For the task, call:
 
 - `task({ subagent_type: "trdd-builder", ... })`
 
-Give the builder the full task text, file targets, and acceptance criteria. Do not make the builder rediscover the task from scratch.
+Give the builder the full task text and any constraints already known in the parent session.
 
 ### 3. Review
 
@@ -81,11 +72,7 @@ At the end, summarize:
 
 ### Pre-flight gate
 
-Do not dispatch implementation until the task has:
-
-- clear file scope
-- acceptance criteria
-- a verification step
+Do not dispatch implementation until the user task and any known constraints are captured clearly enough for the builder to act.
 
 ### Revision gate
 

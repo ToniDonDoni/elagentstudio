@@ -6,7 +6,7 @@ Reusable agent skills, workflows, and installation bundles for Codex, OpenCode, 
 
 ### TriAgent-Driven Development (trdd)
 
-A planner → builder → reviewer triagent workflow for structured implementation, bounded review loops, and task orchestration.
+An orchestrator → builder → reviewer triagent workflow for structured implementation, bounded review loops, and task orchestration.
 
 - Path: `src/triagent-driven-development/`
 - Platforms: Codex, OpenCode
