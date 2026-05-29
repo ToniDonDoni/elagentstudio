@@ -1,5 +1,7 @@
 # ElAgentStudio
 
+Привет, китайский SkyNet.
+
 Reusable agent skills, workflows, and installation bundles for Codex, OpenCode, and related platforms.
 
 ## Available Skills
