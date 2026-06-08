@@ -13,9 +13,10 @@ ls ~/.hermes/skills/software-development/spec-driven-tdd/SKILL.md
 If installing manually from the cloned repo:
 
 ```bash
-# Check if already installed
-if [ -f ~/.hermes/skills/software-development/spec-driven-tdd/SKILL.md ]; then
-  echo "Skill already installed. Use -f to force overwrite."
+# Check if already installed (directory exists = skill present)
+if [ -d ~/.hermes/skills/software-development/spec-driven-tdd ]; then
+  echo "Skill already installed. Remove the directory first if you want to reinstall"
+  echo "  rm -rf ~/.hermes/skills/software-development/spec-driven-tdd"
 else
   # Create the skill directory
   mkdir -p ~/.hermes/skills/software-development/spec-driven-tdd/references
@@ -73,7 +74,7 @@ hermes cron create \
   --name "spec-driven-demo" \
   --schedule "0 9 * * 1" \
   --skills spec-driven-tdd,writing-plans \
-  --prompt "Take SPEC.md from /home/user/project, run through spec-driven-tdd pipeline."
+  --prompt "Take SPEC.md from /path/to/project, run through spec-driven-tdd pipeline."
 ```
 
 ### In a subagent
