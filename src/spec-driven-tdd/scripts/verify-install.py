@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-verify-install.py — Verify spec-driven-tdd skill install against S-SDT-01.03.
+verify-install.py -- Verify spec-driven-tdd skill install against S-SDT-01.03.
 
 Checks:
   AC1: Installed dir contains exactly the R1 file set (no more, no less)
@@ -37,7 +37,7 @@ def _r(name, ok, detail=""):
     label = "  ✓" if ok else "  ✗"
     line = f"{label} {name}"
     if detail:
-        line += f" — {detail}"
+        line += f" -- {detail}"
     list_.append(line)
 
 

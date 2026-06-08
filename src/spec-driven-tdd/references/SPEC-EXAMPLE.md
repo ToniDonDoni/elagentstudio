@@ -22,45 +22,45 @@ No stage moves forward without review evidence and journal evidence.
 Full pipeline:
 
 User Input  
-→ SPEC-DRAFT.md  
-→ commit  
-→ review spec  
-→ JOURNAL.log update  
-→ commit journal  
-→ TASKS.md  
-→ commit  
-→ review tasks  
-→ JOURNAL.log update  
-→ commit journal  
-→ test file  
-→ commit  
-→ review test  
-→ JOURNAL.log update  
-→ commit journal  
-→ RED test run  
-→ JOURNAL.log update  
-→ commit journal  
-→ review RED  
-→ JOURNAL.log update  
-→ commit journal  
-→ implementation code  
-→ commit  
-→ review GREEN  
-→ JOURNAL.log update  
-→ commit journal  
-→ optional refactor  
-→ commit  
-→ review refactor  
-→ JOURNAL.log update  
-→ commit journal  
-→ regression run  
-→ JOURNAL.log update  
-→ commit journal  
-→ DONE
+ ->  SPEC-DRAFT.md  
+ ->  commit  
+ ->  review spec  
+ ->  JOURNAL.log update  
+ ->  commit journal  
+ ->  TASKS.md  
+ ->  commit  
+ ->  review tasks  
+ ->  JOURNAL.log update  
+ ->  commit journal  
+ ->  test file  
+ ->  commit  
+ ->  review test  
+ ->  JOURNAL.log update  
+ ->  commit journal  
+ ->  RED test run  
+ ->  JOURNAL.log update  
+ ->  commit journal  
+ ->  review RED  
+ ->  JOURNAL.log update  
+ ->  commit journal  
+ ->  implementation code  
+ ->  commit  
+ ->  review GREEN  
+ ->  JOURNAL.log update  
+ ->  commit journal  
+ ->  optional refactor  
+ ->  commit  
+ ->  review refactor  
+ ->  JOURNAL.log update  
+ ->  commit journal  
+ ->  regression run  
+ ->  JOURNAL.log update  
+ ->  commit journal  
+ ->  DONE
 
 ## Global Rules
 
-### Rule 1 — Every artifact is committed
+### Rule 1 -- Every artifact is committed
 
 Any created or changed artifact must be committed before it can be reviewed.
 
@@ -76,7 +76,7 @@ Artifacts include:
 - regression evidence
 - retry/fix artifacts
 
-### Rule 2 — Review only committed state
+### Rule 2 -- Review only committed state
 
 Reviewer must review a commit, not a dirty working tree.
 
@@ -88,7 +88,7 @@ Every review request must include:
 - task ID if applicable
 - expected review scope
 
-### Rule 3 — Every review updates the journal
+### Rule 3 -- Every review updates the journal
 
 After every review result, append a record to JOURNAL.log.
 
@@ -99,13 +99,13 @@ Review outcomes:
 - NEEDS_CLARIFICATION
 - CANCELLED
 
-### Rule 4 — Journal updates are committed
+### Rule 4 -- Journal updates are committed
 
 After appending to JOURNAL.log, commit the journal change.
 
 The journal commit becomes part of the audit trail.
 
-### Rule 5 — Every fix is a new commit
+### Rule 5 -- Every fix is a new commit
 
 If review fails, do not amend history unless explicitly allowed.
 
@@ -116,7 +116,7 @@ Default behavior:
 - append review result to journal
 - commit journal update
 
-### Rule 6 — No silent mutation of immutable input
+### Rule 6 -- No silent mutation of immutable input
 
 SPEC-DRAFT.md is immutable after initial commit.
 
@@ -129,25 +129,25 @@ Original input stays preserved.
 Spec ID: S-DEMO-01  
 Title: Counter API  
 Status: Draft  
-Parent: —
+Parent: -- 
 
 Build a simple in-memory counter.
 
 Requirements:
 
-S-DEMO-01.01 — Initial value  
+S-DEMO-01.01 -- Initial value  
 A new counter starts at 0.
 
-S-DEMO-01.02 — Increment  
+S-DEMO-01.02 -- Increment  
 Calling increment() increases the counter value by 1.
 
-S-DEMO-01.03 — Decrement  
+S-DEMO-01.03 -- Decrement  
 Calling decrement() decreases the counter value by 1.
 
-S-DEMO-01.04 — Lower bound  
+S-DEMO-01.04 -- Lower bound  
 The counter must never go below 0.
 
-S-DEMO-01.05 — Read current value  
+S-DEMO-01.05 -- Read current value  
 Calling get_value() returns the current counter value.
 
 ## Expected Files
@@ -167,11 +167,11 @@ Acceptance-oriented tests.
 counter.py  
 Minimal production implementation.
 
-## Stage 0 — User Input
+## Stage 0 -- User Input
 
 User provides the initial feature request:
 
-“Build a simple counter. It starts at zero, can increment and decrement, never goes below zero, and exposes current value.”
+"Build a simple counter. It starts at zero, can increment and decrement, never goes below zero, and exposes current value."
 
 Action:
 
@@ -194,7 +194,7 @@ Review:
 
 No feature review yet. This only records incoming context.
 
-## Stage 1 — Create Immutable Spec Draft
+## Stage 1 -- Create Immutable Spec Draft
 
 Action:
 
@@ -251,7 +251,7 @@ If review fails:
 - journal FAIL and retry events
 - commit journal
 
-## Stage 2 — Decompose Tasks
+## Stage 2 -- Decompose Tasks
 
 Action:
 
@@ -310,7 +310,7 @@ Commit journal:
 
 journal: record task decomposition review for S-DEMO-01
 
-## Stage 3 — Implement Task T-DEMO-01.04
+## Stage 3 -- Implement Task T-DEMO-01.04
 
 This walkthrough focuses on lower-bound behavior.
 
@@ -320,7 +320,7 @@ T-DEMO-01.04
 Spec: S-DEMO-01.04  
 Acceptance: calling decrement() on a new counter keeps value at 0.
 
-## Stage 3.1 — Select Task
+## Stage 3.1 -- Select Task
 
 Action:
 
@@ -337,7 +337,7 @@ Commit journal:
 
 journal: select lower-bound counter task
 
-## Stage 3.2 — Write Test
+## Stage 3.2 -- Write Test
 
 Action:
 
@@ -388,7 +388,7 @@ If review fails:
 - append FAIL and retry records to journal
 - commit journal after each review/fix
 
-## Stage 3.3 — RED
+## Stage 3.3 -- RED
 
 Action:
 
@@ -457,7 +457,7 @@ If RED review fails:
 - commit journal
 - re-review
 
-## Stage 3.4 — GREEN
+## Stage 3.4 -- GREEN
 
 Action:
 
@@ -526,7 +526,7 @@ If GREEN review fails:
 - commit journal
 - re-review
 
-## Stage 3.5 — Refactor Decision
+## Stage 3.5 -- Refactor Decision
 
 Action:
 
@@ -556,7 +556,7 @@ If refactor is needed:
 - append review result to journal
 - commit journal
 
-## Stage 3.6 — Regression Check
+## Stage 3.6 -- Regression Check
 
 Action:
 
@@ -598,7 +598,7 @@ Commit journal:
 
 journal: record regression review for S-DEMO-01.04
 
-## Stage 3.7 — Mark Task Done
+## Stage 3.7 -- Mark Task Done
 
 Completion criteria for T-DEMO-01.04:
 
@@ -626,7 +626,7 @@ Commit journal:
 
 journal: mark S-DEMO-01.04 complete
 
-## Stage 4 — Continue Remaining Tasks
+## Stage 4 -- Continue Remaining Tasks
 
 Repeat the same pattern for:
 
@@ -667,7 +667,7 @@ Each task follows:
 28. mark task done
 29. commit journal
 
-## Stage 5 — Final Feature Review
+## Stage 5 -- Final Feature Review
 
 Action:
 
@@ -718,7 +718,7 @@ Commit journal:
 
 journal: record final feature review for S-DEMO-01
 
-## Stage 6 — Final Done
+## Stage 6 -- Final Done
 
 Journal update:
 

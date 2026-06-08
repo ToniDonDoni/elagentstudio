@@ -1,4 +1,4 @@
-# Spec-Driven TDD — Hermes Agent Skill
+# Spec-Driven TDD -- Hermes Agent Skill
 
 A spec-driven development pipeline with review at every step and a complete audit trail.
 
@@ -16,7 +16,7 @@ If installing manually from the cloned repo:
 # Create the skill directory
 mkdir -p ~/.hermes/skills/software-development/spec-driven-tdd/references
 
-# Copy only what the skill needs — SKILL.md, README, references
+# Copy only what the skill needs -- SKILL.md, README, references
 # Not the entire repo (no test dirs, specs, journal, etc.)
 cp SKILL.md README.md ~/.hermes/skills/software-development/spec-driven-tdd/
 cp references/* ~/.hermes/skills/software-development/spec-driven-tdd/references/
@@ -38,7 +38,7 @@ The result:
 |------|-------------|
 | `SKILL.md` | Pipeline rules, phases, journaling, integration examples |
 | `README.md` | Installation, file reference, and usage guide |
-| `references/SPEC-EXAMPLE.md` | **Canonical reference artifact** — full Counter API walkthrough from user input to DONE. Required reading before using the pipeline. |
+| `references/SPEC-EXAMPLE.md` | **Canonical reference artifact** -- full Counter API walkthrough from user input to DONE. Required reading before using the pipeline. |
 
 ## Usage
 
