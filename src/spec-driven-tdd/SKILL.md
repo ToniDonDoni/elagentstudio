@@ -1,0 +1,851 @@
+---
+name: spec-driven-tdd
+description: "Spec-driven TDD with review at every step. Spec → REVIEW → tasks → TEST → REVIEW → RED → REVIEW → GREEN → REVIEW → REFACTOR → REVIEW. The test is end-to-end and targets the acceptance criterion from the spec."
+version: 1.0.0
+author: Hermes Agent
+license: MIT
+metadata:
+  hermes:
+    tags: [spec-driven, tdd, specification, testing, quality, workflow, code-review]
+    related_skills: [writing-plans, test-driven-development, requesting-code-review, systematic-debugging, subagent-driven-development]
+---
+
+# Spec-Driven TDD
+
+## Overview
+
+Take a specification (formal or informal) and produce production-ready code through a pipeline with review at every step:
+
+**parse spec → REVIEW SPEC → decompose into tasks → for each task: WRITE TEST → REVIEW TEST → RED → REVIEW RED → GREEN → REVIEW GREEN → REFACTOR? → REVIEW REFACTOR → next task**
+
+Every line of production code passes through:
+1. Spec → reviewed
+2. Task → reviewed
+3. Test (failing, end-to-end, targets the acceptance criterion) → reviewed
+4. RED (test fails) → reviewed
+5. GREEN (minimal impl, test passes) → reviewed
+6. REFACTOR (optional) → reviewed
+
+**Core principle:** Reviewer at every stage. A fresh perspective — every time. No shared memory with the author.
+
+## When to Use
+
+- Building a feature from requirements (ticket, user story, verbal spec)
+- Implementing against a formal spec document (SpecKit, OpenAPI, ADR)
+- Refactoring legacy code with spec coverage (specify behavior → test → refactor → verify)
+- Delegating to subagents: give them spec + TDD instructions for autonomous execution
+
+**Skip for:** throwaway prototypes, single-line changes, or when user explicitly says "no tests needed".
+
+## Relationship to Other Skills
+
+This skill **orchestrates** three existing Hermes skills:
+
+| Skill | Role |
+|-------|------|
+| `writing-plans` | Plan decomposition — break spec into bite-sized tasks |
+| `test-driven-development` | RED-GREEN-REFACTOR cycle per task |
+| `requesting-code-review` | Independent review after each task |
+
+It does NOT replace them. It sequences them into a pipeline.
+
+## Pipeline
+
+**Reviewer at every step.** Every artifact undergoes independent verification before the next stage begins.
+
+```
+SPEC
+  │
+  ├── REVIEW SPEC
+  │     ├── PASS → decompose into tasks
+  │     └── FAIL → write to journal + ask user → re-review
+  │
+  ▼
+TASK N (from spec decomposition)
+  │
+  ├── 1. WRITE TEST (failing, spec-compliant, end-to-end)
+  ├── 2. REVIEW TEST → PASS?
+  │     ├── PASS → proceed
+  │     └── FAIL → fix test → re-review
+  │
+  ├── 3. RED (verify test fails)
+  ├── 4. REVIEW RED → PASS?
+  │     ├── PASS → proceed
+  │     └── FAIL → fix setup → re-review
+  │
+  ├── 5. GREEN (minimal implementation)
+  ├── 6. REVIEW GREEN → PASS?
+  │     ├── PASS → proceed
+  │     └── FAIL → fix code → re-review
+  │
+  ├── 7. REFACTOR NEEDED?
+  │     ├── YES → REFACTOR → REVIEW REFACTOR → PASS?
+  │     │           ├── PASS → next task or done
+  │     │           └── FAIL → re-refactor → re-review
+  │     └── NO → next task or done
+  │
+  └── NEXT TASK or DONE
+
+=== After each review ===
+PASS → next stage
+FAIL → fix → re-review of the same artifact
+```
+
+### Key Principles
+
+1. **Test targets the spec, not the code.** The test is end-to-end (end-to-end for one of the acceptance criteria from the spec). It verifies the SPEC is satisfied, not that function X returns Y. The test reviewer checks: “Does this test prove that the spec is satisfied?”
+
+2. **Reviewer = separate context.** No shared memory with the author. A fresh perspective every iteration.
+
+3. **Every artifact is reviewed before the next one is built on top of it.** Test — before RED. RED — before GREEN. GREEN — before REFACTOR. REFACTOR — before completion.
+
+4. **RED must fail.** If the test passes during RED, you are testing existing behavior. The test must be fixed.
+
+5. **Spec Draft — immutable input.** SPEC-DRAFT.md (or TASK-DRAFT.md) is written once and never edited again. All discussion, clarifications, and reviewer comments go only into JOURNAL.log. If the spec is incomplete — ask the user rather than editing the spec yourself. This preserves traceability: you can always find the original statement and track which decisions led to what.
+
+## Global Rules
+
+### Rule 1 — Commit before review
+
+Every artifact must be committed before it can be reviewed. Reviews always inspect a commit, never a dirty working tree.
+
+Artifacts include:
+- spec files
+- task files
+- test files
+- implementation files
+- generated documentation
+- review notes
+- journal updates
+- regression evidence
+- retry/fix artifacts
+
+### Rule 2 — Review request format
+
+Every review request must include:
+- commit hash
+- artifact path
+- spec ID
+- task ID (if applicable)
+- expected review scope
+
+### Rule 3 — Every review updates the journal
+
+After every review result, append a record to JOURNAL.log.
+
+Review outcomes: PASS, FAIL, NEEDS_CLARIFICATION, CANCELLED.
+
+### Rule 4 — Journal updates are committed
+
+After appending to JOURNAL.log, commit the journal change. The journal commit becomes part of the audit trail.
+
+### Rule 5 — Every fix is a new commit
+
+If review fails, do not amend history. Default behavior:
+- create a fix commit
+- review the new commit
+- append review result to journal
+- commit journal update
+
+### Rule 6 — No silent mutation of immutable input
+
+SPEC-DRAFT.md is immutable after initial commit. If the user clarifies or changes requirements, write it to JOURNAL.log and create a derived spec amendment artifact (SPEC-AMENDMENT-001.md) if needed. Original input stays preserved.
+
+### Rule 7 — SPEC-AMENDMENT mechanism
+
+When spec review fails or the user provides clarification after SPEC-DRAFT.md is committed:
+1. Create SPEC-AMENDMENT-001.md with the amendment details, OR update a non-immutable derived spec artifact (e.g. a child spec or derived document)
+2. Link it to the original spec ID
+3. Commit the amendment
+4. Review the amendment
+5. Journal the result
+
+Amendment format:
+```markdown
+# SPEC-AMENDMENT-001
+**Spec:** S-SDT-01
+**Date:** YYYY-MM-DD
+**Reason:** Clarification / Revision / Rejection
+**Change:** Description of what changed and why
+```
+
+### Rule 8 — Maximum review iterations per artifact
+
+Each artifact has a review counter that resets when moving to the next artifact.
+
+Maximum **21 review attempts** per artifact total (including all PASS, FAIL, NEEDS_CLARIFICATION, and CANCELLED outcomes combined). After the 21st attempt:
+- If the review has not passed — the process escalates to the user
+- The user decides: force-pass (review bypassed, proceeds to next stage), cancel (abort the artifact), revise the spec/amendment, or split/redefine the artifact
+- Escalation is recorded in JOURNAL.log with TYPE=ESCALATION
+- On force-pass: proceed to the next stage as if PASS, but note in DETAIL that review was force-passed
+- On cancel: entry TYPE=CANCELLED, abort this artifact, move to next or stop
+- On revise: entry TYPE=SPEC_REVIEW STATUS=FAIL with detail "escalated for revision"
+- On split: create new artifact, new counter starts at 1
+
+Counter resets when work starts on a new artifact (next spec, next task, next test, etc.). Each artifact starts its own counter at 1.
+
+### Rule 9 — English-only artifacts
+
+All artifacts in the project must be written in English. This includes:
+- spec files (SPEC-DRAFT.md, SPEC-EXAMPLE.md, etc.)
+- task files (TASKS.md)
+- tests and implementation code
+- JOURNAL.log entries
+- SKILL.md, README.md, and any other documentation
+- commit messages
+- review requests and responses
+- inline comments in code
+
+Non-English content is only allowed in:
+- **User input** — recorded as-is in Phase 0 (then translated before committing)
+- **Intentionally bilingual reference documents** — e.g. translation glossaries that map between languages (SPEC-ENGLISH.md-style translation references)
+- **Historical/excluded artifacts** — files explicitly excluded from active development (e.g. SKILL.current.md)
+
+If the user provides a spec or clarification in another language, translate it before committing or record it as a USER_INPUT entry and create an English artifact.
+
+Rationale: traceability, reviewer independence (reviewers may not speak the user's language), and tooling compatibility (grep, linters, CI checks).
+
+## Journaling & Audit Trail
+
+Every transition between stages, review results, and returns for rework is journaled to the `JOURNAL.log` file at the project root.
+
+### JID Format
+
+```
+J-{YYYYMMDD}-{HHMMSS}-{NNN}
+```
+
+Example: `J-20260608-204500-001`. Uniqueness when multiple events happen in the same second is provided by the `{NNN}` counter.
+
+### Record Format (serialized)
+
+```
+=== {JID} ===
+TYPE: {TYPE}
+SPEC: {SPEC}
+STATUS: {STATUS}
+PARENT: {PARENT_JID}
+DEPENDS: {DEPENDS_JID}
+DETAIL: {detail text}
+```
+
+Blank line between entries. Fields are strictly in this order. Empty fields are omitted.
+PARENT and DEPENDS = `—` when there is no value. Entry is created post-factum AFTER completing the step.
+
+### Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| JID | yes | Unique entry ID |
+| TYPE | yes | Stage type (enum) |
+| SPEC | yes | Spec ID |
+| STATUS | yes | PASS, FAIL, NEEDS_CLARIFICATION, COMPLETED, CANCELLED |
+| PARENT | yes | JID of the trigger entry (`—` for the root) |
+| DEPENDS | no | JID of the previous step in the chain |
+| DETAIL | no | Description of what happened |
+
+### TYPE Enum
+
+| TYPE | When created |
+|------|----------------|
+| USER_INPUT | Recording incoming feature request (Phase 0) |
+| PROJECT_INIT | Project creation |
+| SPEC_SPEC | Capture of the initial spec (creation only) |
+| SPEC_REVIEW | Spec review |
+| DECOMPOSE | Decomposition into tasks |
+| TASK_REVIEW | Task decomposition review (Phase 2) |
+| AGENT_DECISION | Agent selects which task to work on next |
+| TEST_WRITE | Writing the test |
+| TEST_REVIEW | Test review |
+| RED | Running the test (failure expected) |
+| RED_REVIEW | RED review |
+| GREEN | Writing the minimal implementation |
+| GREEN_REVIEW | GREEN review |
+| REFACTOR | Refactor |
+| REFACTOR_REVIEW | Refactor review |
+| REGRESSION | Regression verification |
+| REGRESSION_REVIEW | Regression review (Phase 4) |
+| FINAL_REVIEW | Final implementation review (Phase 5) |
+| ESCALATION | User escalation when review limit exceeded (Rule 8) |
+| CODEX_REVIEW | Review by Codex CLI |
+| DONE | Completion |
+
+### Lifecycle Rules
+
+1. **One entry per step** — created after the step is completed.
+2. **STATUS** = outcome: COMPLETED (work), PASS/FAIL/NEEDS_CLARIFICATION (review), CANCELLED (interrupted).
+3. **APPEND only** — entries are only added to the end of the file.
+4. **Chronological** — entry order = event order.
+5. **PARENT** = JID of the step that triggered this one (SPEC_REVIEW → preceding SPEC_SPEC).
+
+### Example
+
+```journal
+=== J-20260608-204500-001 ===
+TYPE: SPEC_SPEC
+SPEC: S-SDT-01
+STATUS: COMPLETED
+PARENT: —
+DEPENDS: —
+DETAIL: Initial spec draft created with 6 subspecs
+
+=== J-20260608-204500-002 ===
+TYPE: SPEC_REVIEW
+SPEC: S-SDT-01
+STATUS: FAIL
+PARENT: J-20260608-204500-001
+DEPENDS: J-20260608-204500-001
+DETAIL: Spec review FAIL — acceptance criteria too vague
+```
+
+### Spec ID Scheme
+
+Spec IDs follow a hierarchical format for parent-child relationships:
+
+```
+S-[A-Z]{2,6}-\d{2}(\.\d{2})*
+```
+
+Examples:
+- `S-SDT-01` — root spec (parent: `—`)
+- `S-SDT-01.01` — child spec (parent: `S-SDT-01`)
+- `S-SDT-01.01.01` — sub-spec (parent: `S-SDT-01.01`)
+
+**Rules:**
+1. Child spec ID = parent spec ID + `.NN`
+2. The spec body must contain a `parent:` field (lowercase)
+3. Find children: `grep "^parent: S-SDT-01" *.md`
+
+### Traceability
+
+| Direction | Mechanism |
+|-------------|----------|
+| Spec → Journal entries | `grep "S-SDT-01.01" JOURNAL.log` |
+| Journal → Spec | SPEC field in the entry → find the spec file by ID |
+| Child → Parent | In the child spec, `parent:` → find the parent spec |
+| Parent → Children | `grep "parent: S-SDT-01" *.md` |
+
+## Phase 0 — User Input Recording
+
+Before any spec work, record the incoming feature request in the journal.
+
+The user provides the initial request (text description, bullet points, user story, or formal spec).
+
+**Action:** Create a journal entry with TYPE=USER_INPUT.
+
+```journal
+TYPE: USER_INPUT
+SPEC: <assigned spec ID>
+STATUS: COMPLETED
+PARENT: —
+DETAIL: Initial feature request received.
+```
+
+**Commit:** `spec-driven-tdd: record initial user input for <spec ID>`
+
+No feature review yet. This only records incoming context.
+
+**→ JOURNAL:** `USER_INPUT`, STATUS=COMPLETED, PARENT=—.
+
+Then commit the journal update.
+
+## Phase 1 — Spec Parsing + Review
+
+Accept spec in any format:
+- Text description ("build a todo list API with CRUD endpoints")
+- Bullet-point requirements
+- Formal spec (SpecKit `.spec.md`, OpenAPI YAML, ADR)
+- User story ("As a user, I want to...")
+
+Extract:
+- **Entities** — what data structures exist
+- **Behaviors** — what operations are permitted
+- **Constraints** — validation rules, edge cases
+- **Acceptance criteria** — how to verify it's done
+
+**→ REVIEW SPEC.** An independent reviewer checks:
+- Are all acceptance criteria unambiguous?
+- Are there any contradictions in the spec?
+- Can a test be written from the spec?
+- Are any edge cases missing?
+
+```python
+delegate_task(
+    goal="Review this specification for completeness and testability.",
+    context="Spec:\n" + spec_text,
+    toolsets=[]
+)
+```
+
+PASS → decompose. FAIL → clarify with the user + record in JOURNAL.log → re-review.
+
+## Phase 2 — Task Decomposition + Review (from the spec)
+
+Use `writing-plans` skill to break spec into tasks. Each task = one acceptance criterion from the spec.
+
+```markdown
+### Task 1: TodoItem model — id, title, completed_at fields
+
+**Spec ref:** §2.1
+**Acceptance:** TodoItem has all 3 fields; id is auto-generated UUID
+```
+
+Tasks build on each other. The first task is the most basic entity, the last one is integration of everything.
+
+**→ REVIEW TASKS.** Independent reviewer checks:
+- Does every task map to exactly one acceptance criterion?
+- Are task IDs linked to spec IDs?
+- Is task order reasonable?
+- Are tasks small enough for TDD?
+- Is traceability preserved?
+
+**→ JOURNAL:** `TASK_REVIEW`, STATUS=PASS or FAIL, PARENT=JID of the DECOMPOSE entry.
+
+PASS → proceed to per-task loop (Phase 3).
+FAIL → fix TASKS.md → re-review → journal → commit journal.
+
+## Phase 3 — Per-Task Loop (review at every step)
+
+For EVERY task from Phase 2:
+
+---
+
+### Step 3.1 — WRITE TEST (failing, end-to-end, based on the spec)
+
+Test targets the acceptance criterion from the spec, not the implementation. It is end-to-end — it checks system behavior, not function internals.
+
+```python
+def test_todo_has_id_title_and_completed_at():
+    """Spec §2.1: TodoItem has id (UUID), title (str), completed_at (None|datetime)."""
+    item = TodoItem(title="Buy milk")
+    assert item.id is not None
+    assert isinstance(item.title, str)
+    assert item.completed_at is None
+```
+
+**The test is not run yet.** It is only written and has not been executed yet.
+
+**→ JOURNAL:** After writing the test — create a `TEST_WRITE` entry, STATUS=COMPLETED, SPEC=current spec ID, PARENT=JID of the decomposition step.
+
+### Step 3.2 — REVIEW TEST
+
+Reviewer checks:
+
+1. **Test targets the spec, not the code** — the test checks the acceptance criterion, not implementation details
+2. **End-to-end approach** — the test checks system behavior as a whole (or at minimum the module's public API), not internal functions
+3. **One test = one acceptance criterion**
+4. **Wording is clear** — from the name and docstring it is clear what is being verified
+
+```python
+delegate_task(
+    goal="""Review this test for spec compliance.
+    Does it correctly and fully test the acceptance criterion from the spec?
+    Is it end-to-end (behavioral, not implementation-coupled)?""",
+    context=f"Spec section:\n{spec_section}\n\nTest:\n{test_code}",
+    toolsets=[]
+)
+```
+
+**PASS** → journal: `TEST_REVIEW`, STATUS=PASS, PARENT=JID of the test entry.
+**FAIL** → fix → re-review. Journal: `TEST_REVIEW`, STATUS=FAIL.
+
+### Step 3.3 — RED (verify test fails)
+
+Run the test. It must fail — we have not written the code yet.
+
+```bash
+pytest tests/test_todo.py::test_todo_has_id_title_and_completed_at -v
+```
+
+Expected: `FAILED` (class is not defined, method is missing, import does not work).
+
+If the test passes — you are testing existing behavior. The test must be rewritten.
+
+**→ JOURNAL:** After RED — entry `RED`, STATUS=COMPLETED (if it failed correctly) or FAIL (if it failed for another reason).
+
+### Step 3.4 — REVIEW RED
+
+Reviewer checks:
+- The test really failed (there is evidence — terminal output)
+- The reason for failure is specifically the missing feature, not a bug in the test
+- The error message matches expectations
+
+```python
+delegate_task(
+    goal="Verify the RED step: test failed for the right reason.",
+    context=f"Spec ref: {spec_ref}\nTest output:\n{terminal_output}",
+    toolsets=[]
+)
+```
+
+**PASS** → proceed to GREEN. Journal: `RED_REVIEW`, STATUS=PASS, PARENT=JID of RED.
+**FAIL** (test is broken, failed for the wrong reason) → fix the test → re-review RED. Journal: `RED_REVIEW`, STATUS=FAIL.
+
+### Step 3.5 — GREEN (write minimal implementation)
+
+Write the minimal code needed to make the test pass. Nothing extra.
+
+```python
+from dataclasses import dataclass, field
+from uuid import uuid4
+
+@dataclass
+class TodoItem:
+    title: str
+    id: str = field(default_factory=lambda: str(uuid4()))
+    completed_at: None = None
+```
+
+Run the test again:
+
+```bash
+pytest tests/test_todo.py::test_todo_has_id_title_and_completed_at -v
+```
+
+Expected: `PASSED`.
+
+**→ JOURNAL:** After GREEN — entry `GREEN`, STATUS=COMPLETED, PARENT=JID of RED_REVIEW.
+
+### Step 3.6 — REVIEW GREEN
+
+Reviewer checks:
+- The test passed (there is evidence)
+- The implementation is minimal (does nothing extra, does not violate YAGNI)
+- Whether there are bugs, security issues, or logic errors in the implementation
+- The implementation matches the spec (covers the acceptance criterion)
+
+```python
+delegate_task(
+    goal="Review the GREEN implementation. Is it minimal, correct, spec-compliant?",
+    context=f"Spec ref: {spec_ref}\nTest output:\n{terminal_output}\n\nNew code:\n{implementation_code}",
+    toolsets=["terminal"]
+)
+```
+
+**PASS** → proceed to the REFACTOR decision. Journal: `GREEN_REVIEW`, STATUS=PASS, PARENT=JID of GREEN.
+**FAIL** → fix → re-review GREEN. Journal: `GREEN_REVIEW`, STATUS=FAIL.
+
+### Step 3.7 — REFACTOR Decision
+
+**Ask the user or decide yourself:**
+- Are there code quality issues? (duplication, poor names, magic numbers)
+- Is refactoring needed?
+
+**NO** → journal: `REFACTOR`, STATUS=COMPLETED, DETAIL="Refactor skipped". Proceed to the next task or complete.
+
+**YES** → refactor (change only code structure, not behavior), then run the tests again (they must remain green):
+
+```bash
+pytest tests/ -q
+```
+
+Expected: all tests pass.
+
+**→ JOURNAL:** After refactoring — entry `REFACTOR`, STATUS=COMPLETED, PARENT=JID of GREEN_REVIEW.
+
+**→ REVIEW REFACTOR.** Reviewer checks:
+- Tests are still green
+- Refactor did not break behavior
+- The code became cleaner without changing functionality
+
+**PASS** → next task. Journal: `REFACTOR_REVIEW`, STATUS=PASS.
+**FAIL** → revert the refactor or fix → re-review. Journal: `REFACTOR_REVIEW`, STATUS=FAIL.
+
+## Phase 4 — Inter-Task Regression Check + Review
+
+After completing each task — run ALL tests (including all previous tasks):
+
+```bash
+pytest tests/ -q
+```
+
+All must be green. If there are regressions — fix them before moving to the next task.
+
+**→ JOURNAL:** `REGRESSION`, STATUS=PASS (all tests are green) or FAIL (regressions exist), PARENT=JID of the previous step.
+
+**→ REVIEW REGRESSION (optional but recommended).** Independent reviewer checks:
+- All tests are green (evidence from terminal output)
+- No regressions introduced by the latest task
+- The regression evidence is recorded in the journal
+
+**→ JOURNAL:** `REGRESSION_REVIEW`, STATUS=PASS or FAIL, PARENT=JID of the REGRESSION entry.
+
+If FAIL → fix regression → re-run tests → re-review → journal → commit journal.
+
+## Phase 5 — Final Review + Done
+
+Run a final independent review of the complete implementation.
+
+**Review scope:**
+- Are all acceptance criteria from the original spec covered by tests?
+- Are all tests green?
+- Is there a complete audit trail in JOURNAL.log?
+- Are there any regressions or uncovered edge cases?
+- Is documentation aligned with implementation?
+
+**→ JOURNAL:** `FINAL_REVIEW`, STATUS=PASS or FAIL, PARENT=JID of the last REGRESSION.
+
+If FAIL → fix → re-review → journal → commit journal.
+
+All tasks are completed. Final verification:
+- ✅ All acceptance criteria from the spec are covered by tests
+- ✅ All tests are green
+- ✅ Every stage was reviewed
+- ✅ No regressions
+- ✅ JOURNAL.log contains the full trail of all steps
+
+**→ JOURNAL:** `DONE`, STATUS=COMPLETED, PARENT=JID of the last FINAL_REVIEW.
+
+## Hermes Agent Integration
+
+### Local execution (single agent)
+
+```python
+# 1. Load skills
+from hermes_tools import skill_view
+skill_view("spec-driven-tdd")
+skill_view("writing-plans")
+skill_view("test-driven-development")
+skill_view("requesting-code-review")
+
+# 1b. Initialize journal
+import os, datetime
+JOURNAL_PATH = "JOURNAL.log"
+_jid_seq = [0]  # mutable counter for JID uniqueness
+def jlog(type_, spec, status, parent="—", depends="", detail=""):
+    _jid_seq[0] += 1
+    now = datetime.datetime.now()
+    jid = f"J-{now.strftime('%Y%m%d-%H%M%S')}-{_jid_seq[0]:03d}"
+    entry = f"\n=== {jid} ===\nTYPE: {type_}\nSPEC: {spec}\nSTATUS: {status}\nPARENT: {parent}\n"
+    if depends:
+        entry += f"DEPENDS: {depends}\n"
+    entry += f"DETAIL: {detail}\n"
+    with open(JOURNAL_PATH, "a") as f:
+        f.write(entry)
+    return jid
+
+# 2. Parse spec
+spec = """..."""
+spec_jid = jlog("SPEC_SPEC", "S-SDT-01", "COMPLETED", detail="Parsed spec from user input")
+
+# 3. REVIEW SPEC (Phase 1)
+review = delegate_task(
+    goal="Review this specification for completeness and testability.",
+    context="Spec:\n" + spec,
+    toolsets=[]
+)
+review_jid = jlog("SPEC_REVIEW", "S-SDT-01", "PASS", parent=spec_jid, detail="Spec review passed")
+
+# 4. Decompose into tasks (Phase 2)
+tasks = [
+    {"id": "task-1", "spec_ref": "S-SDT-01.01", "description": "TodoItem model"},
+]
+decomp_jid = jlog("DECOMPOSE", "S-SDT-01", "COMPLETED", parent=review_jid, detail="Decomposed into 3 tasks")
+
+# 5. For each task (Phase 3)
+for task in tasks:
+    # Step 3.1-3.2: WRITE TEST → REVIEW TEST
+    test = write_failing_test(task)
+    test_jid = jlog("TEST_WRITE", task["spec_ref"], "COMPLETED", parent=decomp_jid)
+    review_test = delegate_task(goal="Review test for spec compliance", ...)
+    jlog("TEST_REVIEW", task["spec_ref"], "PASS", parent=test_jid)
+    
+    # Step 3.3-3.4: RED → REVIEW RED
+    red_output = run_test(test)
+    red_jid = jlog("RED", task["spec_ref"], "COMPLETED", parent=test_jid)
+    review_red = delegate_task(goal="Verify RED failed correctly", ...)
+    jlog("RED_REVIEW", task["spec_ref"], "PASS", parent=red_jid)
+    
+    # Step 3.5-3.6: GREEN → REVIEW GREEN
+    impl = write_minimal_implementation(task, test)
+    green_jid = jlog("GREEN", task["spec_ref"], "COMPLETED", parent=red_jid)
+    review_green = delegate_task(goal="Review GREEN impl", ...)
+    jlog("GREEN_REVIEW", task["spec_ref"], "PASS", parent=green_jid)
+    
+    # Step 3.7: REFACTOR decision
+    # → REFACTOR? → REVIEW REFACTOR → jlog(...)
+    
+    # Phase 4: regression check
+    run_all_tests()
+    jlog("REGRESSION", task["spec_ref"], "PASS", parent=green_jid)
+
+# Phase 5: Done
+jlog("DONE", "S-SDT-01", "COMPLETED", detail="All tasks completed")
+```
+
+### Subagent delegation (autonomous worker)
+
+For full automation — delegate to a subagent while passing the path to JOURNAL.log:
+
+```python
+delegate_task(
+    goal="""Implement the following spec via spec-driven-tdd.
+
+    Full pipeline:
+    1. REVIEW SPEC — verify acceptance criteria are unambiguous
+    2. Decompose into tasks — each task = one acceptance criterion
+    3. For each task (review at every step):
+       a. WRITE TEST (failing, end-to-end, on spec) → REVIEW TEST
+       b. RED (verify fail) → REVIEW RED
+       c. GREEN (minimal impl) → REVIEW GREEN
+       d. REFACTOR? → if yes → REFACTOR → REVIEW REFACTOR
+    4. Inter-task regression check (all tests green)
+    5. Done
+
+    IMPORTANT: Journal every step into JOURNAL_PATH.
+    Create entry AFTER completing each step.
+    Use the jlog() helper from the integration example.
+
+    Spec:
+    [INSERT SPEC TEXT]
+
+    Test framework: pytest
+    """,
+    context=f"JOURNAL_PATH={journal_path}. Full pipeline autonomous. Each step — delegate_task for review.",
+    toolsets=["terminal", "file", "skills"]
+)
+```
+
+### Important for subagent delegation
+
+When delegating to a subagent — every `delegate_task` for review must be a separate call, not part of one goal. Each time, the reviewer receives fresh context, with no memory of previous steps. That is exactly what gives review its independence.
+
+```python
+# Correct: separate call per review
+review_test = delegate_task(goal="Review test", context=test_context, toolsets=[])
+# ... different context, different agent ...
+
+review_red = delegate_task(goal="Verify RED", context=red_context, toolsets=[])
+# ... fresh context again ...
+```
+
+### Codex CLI Code Review (additional review)
+
+For external, independent review of the skill or documentation — use Codex CLI directly:
+
+```bash
+# In the project root with SKILL.md and SPEC-DRAFT.md
+codex exec --skip-git-repo-check --sandbox danger-full-access \
+  "Review the skill SKILL.md against SPEC-DRAFT.md requirements. \
+   Check: journaling section, spec ID hierarchy, traceability, \
+   journal entries in all Phase 3 steps, pitfalls >=12. PASS/FAIL per item."
+```
+
+If the sandbox (bwrap) blocks local files — pass the content through stdin:
+
+```bash
+cat SKILL.md SPEC-DRAFT.md | codex exec --skip-git-repo-check \
+  --sandbox danger-full-access - "Review..."
+```
+
+> **Note:** Codex CLI does not support `--acp`. Use `codex exec` or `codex review --uncommitted`. For ACP review — `opencode acp` or `copilot --acp --stdio`.
+
+## Spec Format Example
+
+> **Full reference:** See [SPEC-EXAMPLE.md](references/SPEC-EXAMPLE.md) for a complete, end-to-end walkthrough of the pipeline (Counter API demo). The examples below are quick inline references.
+
+### Structured spec (recommended)
+
+```markdown
+# Todo API — Specification
+
+## §1 Entities
+
+### TodoItem
+- `id: str` — UUID, auto-generated
+- `title: str` — required, max 200 chars
+- `completed_at: datetime | None` — set when toggled done
+
+## §2 Operations
+
+### Create todo
+- Input: `title: str` (required, 1-200 chars, trimmed)
+- Output: `TodoItem`
+- Errors: `ValueError` if title empty or >200 chars
+
+### List todos
+- Returns: `list[TodoItem]` ordered by creation (newest first)
+
+### Toggle todo
+- Input: `id: str`
+- Flips `completed_at` between None and now
+- Errors: `KeyError` if id not found
+```
+
+### Free-form spec (still works)
+
+```
+Build a counter component:
+- Starts at 0
+- increment() → +1
+- decrement() → -1
+- Can't go below 0
+- get_value() returns current
+```
+
+## Pitfalls
+
+- **Spec too vague** — escalate to user for clarification before writing code
+- **Existing-codebase spec trap** — spec-driven-tdd assumes greenfield, but the user may say "go to repo X and update the spec." Before writing SPEC-DRAFT.md: (1) read the existing code to understand what's already implemented, (2) create the spec from requirements BUT mark each AC's implementation status (Already works / Partial / Missing), (3) distinguish net-new features from behavior that only needs a bugfix pass. The existing code is NOT the spec — the spec describes what SHOULD happen, but the AC table helps the reviewer and implementer know what's starting from scratch vs. what's already there.
+- **Ambiguous user terminology** — when a user uses an unclear term ("юрист" = lawyer in this session), don't guess. Flag it in the spec as an open question (§Open Questions), ask the user with concrete multiple-choice options, and create a SPEC-AMENDMENT once clarified. Never silently interpret ambiguous requirements.
+- **Tests too coupled to implementation** — test behavior, not internals
+- **Skipping RED verification** — if you didn't see it fail, you're testing existing behavior
+- **Refactoring while adding features** — refactor ONLY after GREEN, and ONLY to clean existing code
+- **Skipping review** — independent reviewer catches things you normalized
+- **Large tasks** — if a task takes more than 5 minutes, split it further
+- **Reviewer has no spec context** — always pass the relevant spec section to the reviewer
+- **SpecKit compatibility** — SpecKit `.spec.md` files can be parsed as-is; extract requirements from the "Specification" section
+- **Journal not initialized** — create JOURNAL.log at project start. No journal = no traceability.
+- **PARENT chain broken** — always pass the previous JID to the next journal entry. Without PARENT, traceability across steps is lost.
+- **Journal entries not post-factum** — write entries AFTER completing the step, not before. STATUS must reflect the actual outcome.
+- **Spec ID collision** — use unique hierarchical spec IDs (`S-SDT-01.01`, not just "task1"). Flat IDs break parent-child traceability.
+- **Mixed-language artifacts** — non-English content in spec files, journal entries, or code breaks traceability and reviewer independence. Keep all artifacts in English. Translate user input before committing.
+- **README self-consistency** — after modifying the skill's file structure (adding/removing references, templates, or core files), the README's "What's Included" table and result directory tree must be updated to match. The table must list ALL R1 files (including README.md itself — it is easy to forget self-reference). Stale directory entries (e.g. a `templates/` line in the tree after templates were removed) silently mislead users.
+- **Cross-reference staleness** — every local `references/` link in SKILL.md must point to an existing file in the installed skill. After adding or removing reference files, verify all SKILL.md references resolve. Unused files (installed but not referenced) and broken links (referenced but not installed) both degrade the skill. Use `scripts/verify-install.py` to automate this check.
+
+## Self-Consistency Checks
+
+After modifying the skill's file structure (references, README, core files), run a clean-install verification to catch cross-reference staleness and README mismatches:
+
+```bash
+# From the repo root
+cp scripts/verify-install.py /tmp/ && python3 /tmp/verify-install.py
+```
+
+The script performs all checks from SPEC-MINIMAL-INSTALL.md (S-SDT-01.03):
+
+| Check | What it verifies |
+|-------|-----------------|
+| AC1 | Installed dir contains exactly the R1 file set (no more, no less) |
+| AC2 | No git repo artifacts leaked (JOURNAL.log, SPEC-*.md, tests/, etc.) |
+| AC3 | README "What's Included" table and tree match the actual installed layout |
+| AC4 | README install commands (`cp SKILL.md`, `cp references/*`) produce the R1 set |
+| XREF | Every local `references/` link in SKILL.md resolves to an existing installed file |
+| XREF | No non-EXAMPLE files linked in SKILL.md's references (unless intentional) |
+
+To run the verification against a fresh install:
+
+```bash
+# Wipe and clean-install from repo
+rm -rf ~/.hermes/skills/software-development/spec-driven-tdd/
+mkdir -p ~/.hermes/skills/software-development/spec-driven-tdd/references
+cp SKILL.md README.md ~/.hermes/skills/software-development/spec-driven-tdd/
+cp references/* ~/.hermes/skills/software-development/spec-driven-tdd/references/
+
+# Verify
+python3 /tmp/verify-install.py
+```
+
+The script operates on the installed Hermes skill directory, not the repo. This catches cases where files were committed to the repo but never synced, or where old files lingered in the installed dir after removal.
+
+## References
+
+- [SPEC-EXAMPLE.md](references/SPEC-EXAMPLE.md) — **Canonical reference artifact.** Full Counter API demo walkthrough showing every stage of the pipeline from user input to DONE. Ships with this skill. Read it to see the complete workflow including commit-before-review, journal-commit loop, SPEC-AMENDMENT mechanism, and review scopes per stage.
+- [SpecKit](https://github.com/github/spec-kit) — GitHub's spec-driven development tooling. Write `.spec.md` files, generate tests, scaffold code.
+- [Hermes Skills Catalog](https://hermes-agent.nousresearch.com/docs/reference/skills-catalog) — complete list of available Hermes skills
+- Hermes skills used by this pipeline:
+  - `writing-plans` — task decomposition
+  - `test-driven-development` — RED-GREEN-REFACTOR cycle
+  - `requesting-code-review` — independent verification
+  - `systematic-debugging` — when RED fails unexpectedly
+  - `subagent-driven-development` — multi-task subagent orchestration
