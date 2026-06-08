@@ -13,23 +13,28 @@ ls ~/.hermes/skills/software-development/spec-driven-tdd/SKILL.md
 If installing manually from the cloned repo:
 
 ```bash
-# Create the skill directory
-mkdir -p ~/.hermes/skills/software-development/spec-driven-tdd/references
+# Check if already installed
+if [ -f ~/.hermes/skills/software-development/spec-driven-tdd/SKILL.md ]; then
+  echo "Skill already installed. Use -f to force overwrite."
+else
+  # Create the skill directory
+  mkdir -p ~/.hermes/skills/software-development/spec-driven-tdd/references
 
-# Copy only what the skill needs -- SKILL.md, README, references
-# Not the entire repo (no test dirs, specs, journal, etc.)
-cp SKILL.md README.md ~/.hermes/skills/software-development/spec-driven-tdd/
-cp references/* ~/.hermes/skills/software-development/spec-driven-tdd/references/
+  # Copy only what the skill needs -- SKILL.md, README, references
+  # Not the entire repo (no test dirs, specs, journal, etc.)
+  cp SKILL.md README.md ~/.hermes/skills/software-development/spec-driven-tdd/
+  cp references/* ~/.hermes/skills/software-development/spec-driven-tdd/references/
+fi
 ```
 
 The result:
 
 ```
 ~/.hermes/skills/software-development/spec-driven-tdd/
-├── SKILL.md          # Pipeline rules, phases, journaling
-├── README.md          # This file
-└── references/        # Reference artifacts (loaded via skill_view)
-    └── SPEC-EXAMPLE.md
+|-- SKILL.md          # Pipeline rules, phases, journaling
+|-- README.md          # This file
+'-- references/        # Reference artifacts (loaded via skill_view)
+    '-- SPEC-EXAMPLE.md
 ```
 
 ### What's Included
@@ -49,14 +54,16 @@ from hermes_tools import skill_view
 skill_view("spec-driven-tdd")
 ```
 
-### Auto-load (config `~/.hermes/config.yaml`)
+### Via agent prompt
 
-```yaml
-skills:
-  - spec-driven-tdd
-  - writing-plans
-  - test-driven-development
-  - requesting-code-review
+The skill is always listed in the agent's `<available_skills>` index. The agent loads it automatically via `skill_view()` when a relevant task is detected. Just mention the pipeline name in your prompt:
+
+> "Run this through spec-driven-tdd."
+
+Or load it explicitly in a Hermes Gateway session:
+
+```
+/skill spec-driven-tdd
 ```
 
 ### In a cron job
@@ -84,7 +91,3 @@ delegate_task(
 - **Hermes Agent** (any version with `delegate_task`)
 - **pytest** (for tests)
 - Optional: **Codex CLI** / **Claude Code** / **OpenCode** for independent review
-
----
-
-This repository is the result of a dogfooding session: the pipeline was applied to itself.
