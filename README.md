@@ -38,7 +38,7 @@ hermes skills install ToniDonDoni/elagentstudio/skills/spec-driven-tdd
 Or install directly from URL:
 
 ```bash
-hermes skills install https://raw.githubusercontent.com/ToniDonDoni/elagentstudio/main/skills/spec-driven-tdd/SKILL.md
+hermes skills install https://raw.githubusercontent.com/ToniDonDoni/elagentstudio/skill-install-packaging/skills/spec-driven-tdd/SKILL.md
 ```
 
 **Duplicate install behavior:** Warns and skips (use `--force` to reinstall).
