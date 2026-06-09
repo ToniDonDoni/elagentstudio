@@ -41,6 +41,10 @@ Or install directly from URL:
 hermes skills install https://raw.githubusercontent.com/ToniDonDoni/elagentstudio/main/skills/spec-driven-tdd/SKILL.md
 ```
 
+**Test result:** PASS - installs all expected files (SKILL.md, README.md, references/SPEC-EXAMPLE.md)
+
+**Duplicate install behavior:** Warns and skips (use `--force` to reinstall)
+
 ### Hermes Agent (Fallback)
 
 From a cloned repository:
@@ -53,13 +57,17 @@ install/hermes-spec-driven-tdd.sh
 install/hermes-spec-driven-tdd.sh --override
 ```
 
+**Test result:** PASS - installs to `~/.hermes/skills/software-development/spec-driven-tdd/`
+
 ---
 
 ### OpenCode
 
+**Native plugin/skill mechanism:** NOT SUPPORTED by current CLI/version
+
 OpenCode does not support installing skills from GitHub repos. The `opencode plugin` command only accepts npm modules.
 
-Use the fallback script:
+**Fallback install:**
 
 ```bash
 # Install
@@ -69,23 +77,30 @@ install/opencode-triagent.sh
 install/opencode-triagent.sh --override
 ```
 
+**Test result:** PASS (fallback script)
+
+**Installed files:**
+```
+~/.config/opencode/skills/triagent-driven-development/
+  SKILL.md
+  README.md
+
+~/.config/opencode/agents/
+  trdd-orchestrator.md
+  trdd-planner.md
+  trdd-builder.md
+  trdd-reviewer.md
+```
+
 ---
 
 ### Codex (Native)
 
-Codex plugin marketplace expects a `plugins/` directory at repo root with each plugin under `plugins/<name>/`.
+**Native plugin marketplace:** PARTIAL - requires repo restructure to `plugins/<name>/` layout
 
-```bash
-# Add this repo as a marketplace
-codex plugin marketplace add ToniDonDoni/elagentstudio
+Codex plugin marketplace expects a `plugins/` directory at repo root with each plugin under `plugins/<name>/`. Current repo structure is not compatible.
 
-# Install
-codex plugin add elagentstudio
-```
-
-### Codex (Fallback)
-
-From a cloned repository:
+**Fallback install:**
 
 ```bash
 # Install
@@ -93,6 +108,21 @@ install/codex-triagent.sh
 
 # Force reinstall
 install/codex-triagent.sh --override
+```
+
+**Test result:** PASS (fallback script)
+
+**Installed files:**
+```
+~/.codex/skills/triagent-driven-development/
+  SKILL.md
+  README.md
+
+~/.codex/agents/
+  trdd-orchestrator.md
+  trdd-planner.md
+  trdd-builder.md
+  trdd-reviewer.md
 ```
 
 ---
