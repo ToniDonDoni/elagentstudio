@@ -1,6 +1,32 @@
 {
   "name": "elagentstudio",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Reusable agent skills and workflows for Codex, OpenCode, and Hermes Agent.",
-  "skills": "./src/"
+  "author": {
+    "name": "ToniDonDoni"
+  },
+  "homepage": "https://github.com/ToniDonDoni/elagentstudio",
+  "repository": "https://github.com/ToniDonDoni/elagentstudio",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "agents",
+    "tdd",
+    "spec-driven",
+    "triagent",
+    "workflow",
+    "codex",
+    "opencode",
+    "hermes"
+  ],
+  "skills": "./skills/triagent-driven-development/",
+  "interface": {
+    "displayName": "ElAgentStudio",
+    "shortDescription": "Reusable agent skills for Codex, OpenCode, and Hermes",
+    "longDescription": "A collection of agent skills and workflows including Spec-Driven TDD for Hermes Agent and TriAgent-Driven Development for OpenCode and Codex.",
+    "developerName": "ToniDonDoni",
+    "category": "Development",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://github.com/ToniDonDoni/elagentstudio"
+  }
 }

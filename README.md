@@ -4,82 +4,200 @@ Reusable agent skills, workflows, and installation bundles for Codex, OpenCode, 
 
 ## Available Skills
 
-### TriAgent-Driven Development (trdd)
-
-A planner -> builder -> reviewer triagent workflow for structured implementation, bounded review loops, and task orchestration.
-
-- Path: `src/triagent-driven-development/`
-- Platforms: Codex, OpenCode
-
 ### Spec-Driven TDD (sdtdd)
 
 A spec-driven development pipeline with review at every step and a complete audit trail. Designed for Hermes Agent.
 
-- Path: `src/spec-driven-tdd/`
-- Platform: Hermes Agent
-- Requires: pytest, Hermes Agent with `delegate_task`
+- **Path:** `skills/spec-driven-tdd/`
+- **Platform:** Hermes Agent
+- **Requires:** pytest, Hermes Agent with `delegate_task`
 
-## Install
+### TriAgent-Driven Development (trdd)
 
-### Hermes Agent
+A planner -> builder -> reviewer triagent workflow for structured implementation, bounded review loops, and task orchestration.
+
+- **Path:** `skills/triagent-driven-development/`
+- **Platforms:** OpenCode, Codex
+
+---
+
+## Installation
+
+### Hermes Agent (Native)
+
+Hermes supports native skill installation via taps (GitHub repo sources):
+
+```bash
+# Add this repo as a tap
+hermes skills tap add ToniDonDoni/elagentstudio
+
+# Search for available skills
+hermes skills search spec-driven-tdd
+
+# Install from tap
+hermes skills install ToniDonDoni/elagentstudio/skills/spec-driven-tdd
+```
+
+Or install directly from URL:
+
+```bash
+hermes skills install https://raw.githubusercontent.com/ToniDonDoni/elagentstudio/main/skills/spec-driven-tdd/SKILL.md
+```
+
+**Installed files:**
+```
+~/.hermes/skills/software-development/spec-driven-tdd/
+  SKILL.md
+  README.md
+  references/SPEC-EXAMPLE.md
+```
+
+### Hermes Agent (Fallback)
 
 From a cloned repository:
 
 ```bash
+# Install
 install/hermes-spec-driven-tdd.sh
-```
 
-Force reinstall:
-
-```bash
+# Force reinstall
 install/hermes-spec-driven-tdd.sh --override
 ```
 
-If your Hermes version supports installing from a GitHub repo/path directly:
+---
+
+### OpenCode
+
+OpenCode does not support native skill installation from GitHub repos. Use the fallback script.
+
+**Fallback install:**
 
 ```bash
-hermes skills install ToniDonDoni/elagentstudio/src/spec-driven-tdd
+# Install
+install/opencode-triagent.sh
+
+# Force reinstall
+install/opencode-triagent.sh --override
+```
+
+**Installed files:**
+```
+~/.config/opencode/skills/triagent-driven-development/
+  SKILL.md
+  README.md
+
+~/.config/opencode/agents/
+  trdd-orchestrator.md
+  trdd-planner.md
+  trdd-builder.md
+  trdd-reviewer.md
+```
+
+---
+
+### Codex (Native)
+
+Codex supports plugin marketplaces:
+
+```bash
+# Add this repo as a marketplace
+codex plugin marketplace add ToniDonDoni/elagentstudio
+
+# List available plugins
+codex plugin list
+
+# Install
+codex plugin add elagentstudio
+```
+
+**Note:** Codex plugin installs the skill files. Agent files may require the fallback script.
+
+### Codex (Fallback)
+
+From a cloned repository:
+
+```bash
+# Install
+install/codex-triagent.sh
+
+# Force reinstall
+install/codex-triagent.sh --override
+```
+
+**Installed files:**
+```
+~/.codex/skills/triagent-driven-development/
+  SKILL.md
+  README.md
+
+~/.codex/agents/
+  trdd-orchestrator.md
+  trdd-planner.md
+  trdd-builder.md
+  trdd-reviewer.md
+```
+
+---
+
+## Verification
+
+### Hermes
+
+```bash
+hermes skills list | grep spec-driven-tdd
+hermes skills inspect spec-driven-tdd
 ```
 
 ### OpenCode
 
-From a cloned repository:
-
 ```bash
-install/opencode-triagent.sh
-```
-
-Force reinstall:
-
-```bash
-install/opencode-triagent.sh --override
+ls -la ~/.config/opencode/skills/triagent-driven-development/
+ls -la ~/.config/opencode/agents/trdd-*.md
 ```
 
 ### Codex
 
-Plugin-style install, when supported by your Codex CLI:
-
 ```bash
-codex plugin marketplace add ToniDonDoni/elagentstudio
-codex plugin add elagentstudio@elagentstudio
+codex plugin list
+ls -la ~/.codex/skills/triagent-driven-development/
+ls -la ~/.codex/agents/trdd-*.md
 ```
 
-Manual install from a cloned repository:
+---
 
-```bash
-install/codex-triagent.sh
+## Repository Structure
+
 ```
-
-Force reinstall:
-
-```bash
-install/codex-triagent.sh --override
+elagentstudio/
+├── skills/
+│   ├── spec-driven-tdd/
+│   │   ├── SKILL.md
+│   │   ├── README.md
+│   │   └── references/
+│   │       └── SPEC-EXAMPLE.md
+│   └── triagent-driven-development/
+│       ├── SKILL.md
+│       ├── README.md
+│       └── agents/
+│           ├── trdd-orchestrator.md
+│           ├── trdd-planner.md
+│           ├── trdd-builder.md
+│           └── trdd-reviewer.md
+├── install/
+│   ├── hermes-spec-driven-tdd.sh
+│   ├── opencode-triagent.sh
+│   └── codex-triagent.sh
+├── .codex-plugin/
+│   └── plugin.json
+├── src/                          # Legacy source (backward compat)
+│   ├── spec-driven-tdd/
+│   └── triagent-driven-development/
+└── README.md
 ```
 
 ## Existing detailed guides
 
 ```bash
-cat src/triagent-driven-development/README_OPENCODE_INSTALL.md
-cat src/triagent-driven-development/README_CODEX_INSTALL.md
-cat src/spec-driven-tdd/README.md
+cat skills/spec-driven-tdd/README.md
+cat skills/triagent-driven-development/README.md
 ```
