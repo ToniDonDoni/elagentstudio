@@ -41,7 +41,6 @@ Or install directly from URL:
 hermes skills install https://raw.githubusercontent.com/ToniDonDoni/elagentstudio/main/skills/spec-driven-tdd/SKILL.md
 ```
 
-
 **Duplicate install behavior:** Warns and skips (use `--force` to reinstall).
 
 ### Hermes Agent (Fallback)
@@ -115,4 +114,25 @@ install/codex-triagent.sh --override
 
 ---
 
+## Verification
 
+### Hermes
+
+```bash
+hermes skills list | grep spec-driven-tdd
+find ~/.hermes/skills -path '*spec-driven-tdd*' -type f | sort
+```
+
+### OpenCode
+
+```bash
+ls -la ~/.config/opencode/skills/triagent-driven-development/
+ls -la ~/.config/opencode/agents/trdd-*.md
+```
+
+### Codex
+
+```bash
+ls -la ~/.codex/skills/triagent-driven-development/
+ls -la ~/.codex/agents/trdd-*.md
+```
