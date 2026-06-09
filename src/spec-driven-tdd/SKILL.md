@@ -16,7 +16,7 @@ metadata:
 
 Take a specification (formal or informal) and produce production-ready code through a pipeline with review at every step:
 
-**parse spec -> REVIEW SPEC -> decompose into tasks -> for each task: WRITE TEST -> REVIEW TEST -> RED -> REVIEW RED -> GREEN -> REVIEW GREEN -> REFACTOR? -> REVIEW REFACTOR -> next task**
+**parse spec -> REVIEW SPEC -> decompose into tasks -> for each task: WRITE TEST -> REVIEW TEST -> RED -> REVIEW RED -> GREEN -> REVIEW GREEN -> next task**
 
 Every line of production code passes through:
 1. Spec -> reviewed
@@ -24,7 +24,6 @@ Every line of production code passes through:
 3. Test (failing, end-to-end, targets the acceptance criterion) -> reviewed
 4. RED (test fails) -> reviewed
 5. GREEN (minimal impl, test passes) -> reviewed
-6. REFACTOR (optional) -> reviewed
 
 **Core principle:** Reviewer at every stage. A fresh perspective -- every time. No shared memory with the author.
 
@@ -105,14 +104,8 @@ TASK N (from spec decomposition)
   │
   ├── 5. GREEN (minimal implementation)
   ├── 6. REVIEW GREEN -> PASS?
-  │     ├── PASS -> proceed
+  │     ├── PASS -> proceed to next task or done
   │     └── FAIL -> fix code -> re-review
-  │
-  ├── 7. REFACTOR NEEDED?
-  │     ├── YES -> REFACTOR -> REVIEW REFACTOR -> PASS?
-  │     │           ├── PASS -> next task or done
-  │     │           └── FAIL -> re-refactor -> re-review
-  │     └── NO -> next task or done
   │
   └── NEXT TASK or DONE
 
@@ -127,7 +120,7 @@ FAIL -> fix -> re-review of the same artifact
 
 2. **Reviewer = separate context.** No shared memory with the author. A fresh perspective every iteration.
 
-3. **Every artifact is reviewed before the next one is built on top of it.** Test -- before RED. RED -- before GREEN. GREEN -- before REFACTOR. REFACTOR -- before completion.
+3. **Every artifact is reviewed before the next one is built on top of it.** Test -- before RED. RED -- before GREEN. GREEN -- before completion.
 
 4. **RED must fail.** If the test passes during RED, you are testing existing behavior. The test must be fixed.
 
@@ -291,8 +284,6 @@ PARENT and DEPENDS = ` -- ` when there is no value. Entry is created post-factum
 | RED_REVIEW | RED review |
 | GREEN | Writing the minimal implementation |
 | GREEN_REVIEW | GREEN review |
-| REFACTOR | Refactor |
-| REFACTOR_REVIEW | Refactor review |
 | REGRESSION | Regression verification |
 | REGRESSION_REVIEW | Regression review (Phase 4) |
 | FINAL_REVIEW | Final implementation review (Phase 5) |
@@ -434,6 +425,26 @@ Tasks build on each other. The first task is the most basic entity, the last one
 PASS -> proceed to per-task loop (Phase 3).
 FAIL -> fix TASKS.md -> re-review -> journal -> commit journal.
 
+### Task Grouping for Review
+
+If task decomposition produces many tasks, request the spec reviewer to also evaluate task granularity:
+
+```python
+delegate_task(
+    goal="Review task decomposition for appropriate granularity.",
+    context=f"Spec:\\n{spec_text}\\n\\nTasks:\\n{tasks_text}",
+    toolsets=[]
+)
+```
+
+Reviewer should check:
+- Are tasks too granular (e.g., "import module" as separate task)?
+- Can related tasks be grouped (e.g., "CSV loading + parsing" as one task)?
+- Does each task map to exactly ONE acceptance criterion (not multiple, not partial)?
+
+Grouping tasks reduces total pipeline complexity. Grouped tasks share a single GREEN_REVIEW but still have individual TEST_WRITE -> RED -> GREEN cycles.
+Journal entries use combined spec IDs: `S-SAM-01.03-06` for tasks 3-6.
+
 ## Phase 3 -- Per-Task Loop (review at every step)
 
 For EVERY task from Phase 2:
@@ -552,34 +563,8 @@ delegate_task(
 )
 ```
 
-**PASS** -> proceed to the REFACTOR decision. Journal: `GREEN_REVIEW`, STATUS=PASS, PARENT=JID of GREEN.
+**PASS** -> proceed to next task or done. Journal: `GREEN_REVIEW`, STATUS=PASS, PARENT=JID of GREEN.
 **FAIL** -> fix -> re-review GREEN. Journal: `GREEN_REVIEW`, STATUS=FAIL.
-
-### Step 3.7 -- REFACTOR Decision
-
-**Ask the user or decide yourself:**
-- Are there code quality issues? (duplication, poor names, magic numbers)
-- Is refactoring needed?
-
-**NO** -> journal: `REFACTOR`, STATUS=COMPLETED, DETAIL="Refactor skipped". Proceed to the next task or complete.
-
-**YES** -> refactor (change only code structure, not behavior), then run the tests again (they must remain green):
-
-```bash
-pytest tests/ -q
-```
-
-Expected: all tests pass.
-
-** ->  JOURNAL:** After refactoring -- entry `REFACTOR`, STATUS=COMPLETED, PARENT=JID of GREEN_REVIEW.
-
-** ->  REVIEW REFACTOR.** Reviewer checks:
-- Tests are still green
-- Refactor did not break behavior
-- The code became cleaner without changing functionality
-
-**PASS** -> next task. Journal: `REFACTOR_REVIEW`, STATUS=PASS.
-**FAIL** -> revert the refactor or fix -> re-review. Journal: `REFACTOR_REVIEW`, STATUS=FAIL.
 
 ## Phase 4 -- Inter-Task Regression Check + Review
 
@@ -604,6 +589,22 @@ If FAIL -> fix regression -> re-run tests -> re-review -> journal -> commit jour
 
 ## Phase 5 -- Final Review + Done
 
+**MANDATORY: Git clean check before FINAL_REVIEW.**
+
+After each commit -- including journal updates, spec files, tests, and implementation -- verify no important artifacts are left uncommitted:
+
+```bash
+git status --porcelain
+```
+
+If uncommitted files exist:
+- **Add and commit them** if they are part of the task solution or the solution workflow requirements (spec files, tests, implementation, journal updates, documentation)
+- **Or explicitly exclude them** if they are temporary artifacts (e.g. `__pycache__/`, `.env`, `.pytest_cache/`)
+
+Uncommitted solution artifacts = pipeline incomplete. Do not proceed to FINAL_REVIEW until git is clean.
+
+---
+
 Run a final independent review of the complete implementation.
 
 **Review scope:**
@@ -612,6 +613,7 @@ Run a final independent review of the complete implementation.
 - Is there a complete audit trail in JOURNAL.log?
 - Are there any regressions or uncovered edge cases?
 - Is documentation aligned with implementation?
+- Is git clean (no uncommitted artifacts)?
 
 ** ->  JOURNAL:** `FINAL_REVIEW`, STATUS=PASS or FAIL, PARENT=JID of the last REGRESSION.
 
@@ -692,9 +694,6 @@ for task in tasks:
     review_green = delegate_task(goal="Review GREEN impl", ...)
     jlog("GREEN_REVIEW", task["spec_ref"], "PASS", parent=green_jid)
     
-    # Step 3.7: REFACTOR decision
-    # -> REFACTOR? -> REVIEW REFACTOR -> jlog(...)
-    
     # Phase 4: regression check
     run_all_tests()
     jlog("REGRESSION", task["spec_ref"], "PASS", parent=green_jid)
@@ -718,7 +717,6 @@ delegate_task(
        a. WRITE TEST (failing, end-to-end, on spec) -> REVIEW TEST
        b. RED (verify fail) -> REVIEW RED
        c. GREEN (minimal impl) -> REVIEW GREEN
-       d. REFACTOR? -> if yes -> REFACTOR -> REVIEW REFACTOR
     4. Inter-task regression check (all tests green)
     5. Done
 
@@ -820,7 +818,6 @@ Build a counter component:
 - **Ambiguous user terminology** -- when a user uses an unclear term ("юрист" = lawyer in this session), don't guess. Flag it in the spec as an open question (§Open Questions), ask the user with concrete multiple-choice options, and create a SPEC-AMENDMENT once clarified. Never silently interpret ambiguous requirements.
 - **Tests too coupled to implementation** -- test behavior, not internals
 - **Skipping RED verification** -- if you didn't see it fail, you're testing existing behavior
-- **Refactoring while adding features** -- refactor ONLY after GREEN, and ONLY to clean existing code
 - **Skipping review** -- independent reviewer catches things you normalized
 - **Large tasks** -- if a task takes more than 5 minutes, split it further
 - **Reviewer has no spec context** -- always pass the relevant spec section to the reviewer
@@ -875,7 +872,7 @@ The script operates on the installed Hermes skill directory, not the repo. This 
 - [Hermes Skills Catalog](https://hermes-agent.nousresearch.com/docs/reference/skills-catalog) -- complete list of available Hermes skills
 - Hermes skills used by this pipeline:
   - `writing-plans` -- task decomposition
-  - `test-driven-development` -- RED-GREEN-REFACTOR cycle
+  - `test-driven-development` -- RED-GREEN cycle
   - `requesting-code-review` -- independent verification
   - `systematic-debugging` -- when RED fails unexpectedly
   - `subagent-driven-development` -- multi-task subagent orchestration
