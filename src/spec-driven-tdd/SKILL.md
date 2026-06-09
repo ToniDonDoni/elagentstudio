@@ -51,6 +51,13 @@ Every `-> journal ->` means JOURNAL.log entry + commit (Rule 3, 5).
 **The #1 rule:** Never proceed to the next step without REVIEW = PASS
 on the current artifact. Ever. No exceptions.
 
+### Target State
+
+The cycle is complete when:
+- The goal from the spec is fully solved
+- All code passes all tests
+- Every commit along the chain has a **PASS** verdict from review
+
 ## When to Use
 
 - Building a feature from requirements (ticket, user story, verbal spec)
