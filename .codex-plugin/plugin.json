@@ -1,0 +1,6 @@
+{
+  "name": "elagentstudio",
+  "version": "0.1.0",
+  "description": "Reusable agent skills and workflows for Codex, OpenCode, and Hermes Agent.",
+  "skills": "./src/"
+}
