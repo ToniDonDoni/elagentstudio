@@ -427,7 +427,7 @@ FAIL -> fix TASKS.md -> re-review -> journal -> commit journal.
 
 ### Task Grouping for Review
 
-If task decomposition produces 10+ tasks, request the spec reviewer to also evaluate task granularity:
+If task decomposition produces many tasks, request the spec reviewer to also evaluate task granularity:
 
 ```python
 delegate_task(
@@ -442,7 +442,7 @@ Reviewer should check:
 - Can related tasks be grouped (e.g., "CSV loading + parsing" as one task)?
 - Does each task map to exactly ONE acceptance criterion (not multiple, not partial)?
 
-Grouped tasks share a single GREEN_REVIEW but still have individual TEST_WRITE -> RED -> GREEN cycles.
+Grouping tasks reduces total pipeline complexity. Grouped tasks share a single GREEN_REVIEW but still have individual TEST_WRITE -> RED -> GREEN cycles.
 Journal entries use combined spec IDs: `S-SAM-01.03-06` for tasks 3-6.
 
 ## Phase 3 -- Per-Task Loop (review at every step)
@@ -598,10 +598,10 @@ git status --porcelain
 ```
 
 If uncommitted files exist:
-- Add and commit them: `git add <files>` + `git commit -m "..."`
-- Or explicitly exclude them (e.g. `__pycache__/`, `.env`)
+- **Add and commit them** if they are part of the task solution or the solution workflow requirements (spec files, tests, implementation, journal updates, documentation)
+- **Or explicitly exclude them** if they are temporary artifacts (e.g. `__pycache__/`, `.env`, `.pytest_cache/`)
 
-Uncommitted artifacts = pipeline incomplete. Do not proceed to FINAL_REVIEW until git is clean.
+Uncommitted solution artifacts = pipeline incomplete. Do not proceed to FINAL_REVIEW until git is clean.
 
 ---
 
