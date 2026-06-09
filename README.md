@@ -57,35 +57,6 @@ install/hermes-spec-driven-tdd.sh --override
 
 ---
 
-### OpenCode
-
-**Native plugin/skill mechanism:** NOT SUPPORTED by current CLI/version
-
-OpenCode does not support installing skills from GitHub repos. The `opencode plugin` command only accepts npm modules.
-
-**Fallback install:**
-
-```bash
-# Install
-install/opencode-triagent.sh
-
-# Force reinstall
-install/opencode-triagent.sh --override
-```
-
-**Installed files:**
-```
-~/.config/opencode/skills/triagent-driven-development/
-  SKILL.md
-  README.md
-
-~/.config/opencode/agents/
-  trdd-orchestrator.md
-  trdd-planner.md
-  trdd-builder.md
-  trdd-reviewer.md
-```
-
 ---
 
 ### Codex (Native)
@@ -124,11 +95,6 @@ find ~/.hermes/skills -path '*spec-driven-tdd*' -type f | sort
 ```
 
 ### OpenCode
-
-```bash
-ls -la ~/.config/opencode/skills/triagent-driven-development/
-ls -la ~/.config/opencode/agents/trdd-*.md
-```
 
 ### Codex
 
