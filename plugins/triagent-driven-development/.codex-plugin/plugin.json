@@ -1,7 +1,7 @@
 {
-  "name": "elagentstudio",
+  "name": "triagent-driven-development",
   "version": "1.0.0",
-  "description": "Reusable agent skills and workflows for Codex, OpenCode, and Hermes Agent.",
+  "description": "Planner -> Builder -> Reviewer triagent workflow for structured implementation",
   "author": {
     "name": "ToniDonDoni"
   },
@@ -9,21 +9,19 @@
   "repository": "https://github.com/ToniDonDoni/elagentstudio",
   "license": "MIT",
   "keywords": [
-    "skills",
-    "agents",
-    "tdd",
-    "spec-driven",
     "triagent",
     "workflow",
+    "planner",
+    "builder",
+    "reviewer",
     "codex",
-    "opencode",
-    "hermes"
+    "opencode"
   ],
   "skills": "./skills/triagent-driven-development/",
   "interface": {
-    "displayName": "ElAgentStudio",
-    "shortDescription": "Reusable agent skills for Codex, OpenCode, and Hermes",
-    "longDescription": "A collection of agent skills and workflows including Spec-Driven TDD for Hermes Agent and TriAgent-Driven Development for OpenCode and Codex.",
+    "displayName": "TriAgent-Driven Development",
+    "shortDescription": "Planner -> Builder -> Reviewer workflow",
+    "longDescription": "A structured implementation workflow using three agent roles: Planner, Builder, and Reviewer. Bounded review loops with escalation.",
     "developerName": "ToniDonDoni",
     "category": "Development",
     "capabilities": ["Read", "Write"],
