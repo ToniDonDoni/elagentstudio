@@ -31,10 +31,7 @@ Hermes supports native skill installation via taps (GitHub repo sources):
 # Add this repo as a tap
 hermes skills tap add ToniDonDoni/elagentstudio
 
-# Search for available skills
-hermes skills search spec-driven-tdd
-
-# Install from tap
+# Install from repo path
 hermes skills install ToniDonDoni/elagentstudio/skills/spec-driven-tdd
 ```
 
@@ -44,13 +41,9 @@ Or install directly from URL:
 hermes skills install https://raw.githubusercontent.com/ToniDonDoni/elagentstudio/main/skills/spec-driven-tdd/SKILL.md
 ```
 
-**Installed files:**
-```
-~/.hermes/skills/software-development/spec-driven-tdd/
-  SKILL.md
-  README.md
-  references/SPEC-EXAMPLE.md
-```
+**Test result:** PASS - installs all expected files (SKILL.md, README.md, references/SPEC-EXAMPLE.md)
+
+**Duplicate install behavior:** Warns and skips (use `--force` to reinstall)
 
 ### Hermes Agent (Fallback)
 
@@ -64,11 +57,15 @@ install/hermes-spec-driven-tdd.sh
 install/hermes-spec-driven-tdd.sh --override
 ```
 
+**Test result:** PASS - installs to `~/.hermes/skills/software-development/spec-driven-tdd/`
+
 ---
 
 ### OpenCode
 
-OpenCode does not support native skill installation from GitHub repos. Use the fallback script.
+**Native plugin/skill mechanism:** NOT SUPPORTED by current CLI/version
+
+OpenCode does not support installing skills from GitHub repos. The `opencode plugin` command only accepts npm modules.
 
 **Fallback install:**
 
@@ -79,6 +76,8 @@ install/opencode-triagent.sh
 # Force reinstall
 install/opencode-triagent.sh --override
 ```
+
+**Test result:** PASS (fallback script)
 
 **Installed files:**
 ```
@@ -97,24 +96,11 @@ install/opencode-triagent.sh --override
 
 ### Codex (Native)
 
-Codex supports plugin marketplaces:
+**Native plugin marketplace:** PARTIAL - requires repo restructure to `plugins/<name>/` layout
 
-```bash
-# Add this repo as a marketplace
-codex plugin marketplace add ToniDonDoni/elagentstudio
+Codex plugin marketplace expects a `plugins/` directory at repo root with each plugin under `plugins/<name>/`. Current repo structure is not compatible.
 
-# List available plugins
-codex plugin list
-
-# Install
-codex plugin add elagentstudio
-```
-
-**Note:** Codex plugin installs the skill files. Agent files may require the fallback script.
-
-### Codex (Fallback)
-
-From a cloned repository:
+**Fallback install:**
 
 ```bash
 # Install
@@ -123,6 +109,8 @@ install/codex-triagent.sh
 # Force reinstall
 install/codex-triagent.sh --override
 ```
+
+**Test result:** PASS (fallback script)
 
 **Installed files:**
 ```
@@ -145,7 +133,7 @@ install/codex-triagent.sh --override
 
 ```bash
 hermes skills list | grep spec-driven-tdd
-hermes skills inspect spec-driven-tdd
+find ~/.hermes/skills -path '*spec-driven-tdd*' -type f | sort
 ```
 
 ### OpenCode
@@ -158,7 +146,6 @@ ls -la ~/.config/opencode/agents/trdd-*.md
 ### Codex
 
 ```bash
-codex plugin list
 ls -la ~/.codex/skills/triagent-driven-development/
 ls -la ~/.codex/agents/trdd-*.md
 ```
@@ -169,7 +156,7 @@ ls -la ~/.codex/agents/trdd-*.md
 
 ```
 elagentstudio/
-├── skills/
+├── skills/                         # Native installable skills
 │   ├── spec-driven-tdd/
 │   │   ├── SKILL.md
 │   │   ├── README.md
@@ -183,21 +170,14 @@ elagentstudio/
 │           ├── trdd-planner.md
 │           ├── trdd-builder.md
 │           └── trdd-reviewer.md
-├── install/
+├── install/                        # Fallback install scripts
 │   ├── hermes-spec-driven-tdd.sh
 │   ├── opencode-triagent.sh
 │   └── codex-triagent.sh
 ├── .codex-plugin/
 │   └── plugin.json
-├── src/                          # Legacy source (backward compat)
+├── src/                            # Legacy source (backward compat)
 │   ├── spec-driven-tdd/
 │   └── triagent-driven-development/
 └── README.md
-```
-
-## Existing detailed guides
-
-```bash
-cat skills/spec-driven-tdd/README.md
-cat skills/triagent-driven-development/README.md
 ```
