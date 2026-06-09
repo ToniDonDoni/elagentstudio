@@ -41,11 +41,11 @@ Three stages. One rigid cycle. Every artifact goes through the same loop:
                                -> REVIEW again (same loop)
 
 Stage 1: SPEC-DRAFT.md -> REVIEW -> PASS -> next stage
-Stage 2: Tests (*.py)   -> REVIEW -> PASS -> next stage
-Stage 3: Code (*.py)    -> REVIEW -> PASS -> next stage
+Stage 2: Tests -> REVIEW -> PASS -> next stage
+Stage 3: Code  -> REVIEW -> PASS -> next stage
 
-Every `-> REVIEW ->` means a SEPARATE delegate_task call with fresh context.
-Every `-> COMMIT ->` means a git commit (Rule 1: commit before review).
+Every `-> REVIEW ->` means a SEPARATE delegate_task call — a fresh reviewer agent, no shared memory with the author.
+Every `-> COMMIT ->` means review always runs on committed changes (Rule 1: commit before review).
 Every `-> journal ->` means JOURNAL.log entry + commit (Rule 3, 5).
 
 **The #1 rule:** Never proceed to the next step without REVIEW = PASS
