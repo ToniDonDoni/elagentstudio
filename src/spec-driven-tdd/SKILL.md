@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "Spec-driven TDD with review at every step. Spec -> REVIEW -> tasks -> TEST -> REVIEW -> RED -> REVIEW -> GREEN -> REVIEW -> REFACTOR -> REVIEW. The test is end-to-end and targets the acceptance criterion from the spec."
-version: 1.0.0
+version: 1.1.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -27,6 +27,36 @@ Every line of production code passes through:
 6. REFACTOR (optional) -> reviewed
 
 **Core principle:** Reviewer at every stage. A fresh perspective -- every time. No shared memory with the author.
+
+## Core Idea (read this first)
+
+Three stages. One rigid cycle. Every artifact goes through the same loop:
+
+  CREATE -> COMMIT -> REVIEW (via delegate_task)
+                           |
+                     PASS or FAIL?
+                     |-- PASS -> next stage
+                     |-- FAIL -> journal FAIL -> COMMIT journal
+                               -> FIX artifact -> COMMIT fix
+                               -> REVIEW again (same loop)
+
+Stage 1: SPEC-DRAFT.md -> REVIEW -> PASS -> next stage
+Stage 2: Tests -> REVIEW -> PASS -> next stage
+Stage 3: Code  -> REVIEW -> PASS -> next stage
+
+Every `-> REVIEW ->` means a SEPARATE delegate_task call — a fresh reviewer agent, no shared memory with the author.
+Every `-> COMMIT ->` means review always runs on committed changes (Rule 1: commit before review).
+Every `-> journal ->` means JOURNAL.log entry + commit (Rule 3, 5).
+
+**The #1 rule:** Never proceed to the next step without REVIEW = PASS
+on the current artifact. Ever. No exceptions.
+
+### Target State
+
+The cycle is complete when:
+- The goal from the spec is fully solved
+- All code passes all tests
+- Every commit along the chain has a **PASS** verdict from review
 
 ## When to Use
 
