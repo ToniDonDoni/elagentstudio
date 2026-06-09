@@ -57,6 +57,16 @@ install/hermes-spec-driven-tdd.sh --override
 
 ---
 
+### OpenCode
+
+```bash
+# Install
+install/opencode-triagent.sh
+
+# Force reinstall
+install/opencode-triagent.sh --override
+```
+
 ---
 
 ### Codex (Native)
