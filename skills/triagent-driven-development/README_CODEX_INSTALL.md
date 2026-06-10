@@ -28,12 +28,12 @@ Install:
 
 from repo root
 ```bash
-src/triagent-driven-development/codex_install.sh
+skills/triagent-driven-development/codex_install.sh
 ```
 
 Force reinstall over existing files:
 ```bash
-src/triagent-driven-development/codex_install.sh --override
+skills/triagent-driven-development/codex_install.sh --override
 ```
 
 ## How to use
