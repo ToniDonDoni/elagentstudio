@@ -3,7 +3,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  src/triagent-driven-development/opencode_install.sh [--override]
+  install/opencode-triagent.sh [--override]
 
 Options:
   --override   Replace existing installed TriDD files.
@@ -39,7 +39,7 @@ fi
 
 mkdir -p ~/.config/opencode/agents
 mkdir -p ~/.config/opencode/skills/triagent-driven-development
-cp src/triagent-driven-development/trdd-*.md ~/.config/opencode/agents/
-cp src/triagent-driven-development/SKILL.md ~/.config/opencode/skills/triagent-driven-development/
+cp skills/triagent-driven-development/agents/trdd-*.md ~/.config/opencode/agents/
+cp skills/triagent-driven-development/SKILL.md ~/.config/opencode/skills/triagent-driven-development/
 
 echo "DONE"

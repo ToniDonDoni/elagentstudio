@@ -56,7 +56,6 @@ fi
 # Install
 mkdir -p "$DEST/references"
 cp "$SOURCE/SKILL.md" "$DEST/"
-cp "$SOURCE/README.md" "$DEST/"
 if [ -d "$SOURCE/references" ] && [ -n "$(ls -A "$SOURCE/references" 2>/dev/null)" ]; then
   cp "$SOURCE/references/"* "$DEST/references/"
 fi
