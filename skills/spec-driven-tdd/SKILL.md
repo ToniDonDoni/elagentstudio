@@ -49,6 +49,27 @@ Every stage produces two types of artifacts - the work output (spec/test/code) a
 **The #1 rule:** Never proceed to the next step without REVIEW = PASS
 on the current artifact. Ever. No exceptions.
 
+### Why Per-Stage Commits + Journal Are Required (Audit Trail)
+
+Commit after every stage and journal every result — this is not ceremony. It exists to make the process **verifiable without trust**:
+
+```
+git log --oneline --reverse
+
+abc1234 TEST: write failing tests for autocomplete
+def5678 TEST_REVIEW: PASS  ← reviewer verified before any code
+7890123 RED: run tests → 4/4 FAIL  ← proof tests can fail
+3456789 RED_REVIEW: PASS  ← reviewer confirmed failure is correct
+...
+```
+
+Each commit is a tamper-proof snapshot. Anyone (user, reviewer, future agent) can inspect the chain and see **tests existed before code**, **RED actually failed**, **review happened before GREEN**. Without per-stage commits, the journal is just an unverifiable self-report.
+
+Three purposes:
+1. **Audit** — `git log` proves the sequence: tests → RED → GREEN. No trust required.
+2. **Analysis** — when a solution fails, the commit chain shows exactly which stage introduced the issue (test gap? RED missed something? GREEN overcomplicated?), making debugging reproducible.
+3. **Skill improvement** — pattern-matching across past runs reveals where agents most often shortcut the process (skipped RED, skipped REVIEW, batched commits), driving targeted fixes to this SKILL.md itself.
+
 ### Target State
 
 The cycle is complete when:
