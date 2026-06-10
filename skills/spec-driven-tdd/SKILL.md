@@ -44,7 +44,7 @@ Stage 3: Code  -> REVIEW -> PASS -> next stage
 
 Every `-> REVIEW ->` means a SEPARATE delegate_task call - a fresh reviewer agent, no shared memory with the author.
 Every `-> COMMIT ->` means review always runs on committed changes (Rule 1: commit before review).
-Every stage produces twp types of artifacts - the work output (spec/test/code) and updated JOURNAL_SDD_TDD_SKILL.log file with a new entry with the step result. Both exist in the project tree when the step is done. A step is not done until both are committed.
+Every stage produces two types of artifacts - the work output (spec/test/code) and updated JOURNAL_SDD_TDD_SKILL.log file with a new entry with the step result. Both exist in the project tree when the step is done. A step is not done until both are committed.
 
 **The #1 rule:** Never proceed to the next step without REVIEW = PASS
 on the current artifact. Ever. No exceptions.
@@ -55,7 +55,7 @@ The cycle is complete when:
 - The goal from the spec is fully solved
 - All code passes all tests
 - Every commit along the chain has a **PASS** verdict from review
-- JOURNAL_SDD_TDD_SKILL.log contains an unbroken PARENT chain from USER_INPUT to DONE**
+- JOURNAL_SDD_TDD_SKILL.log exists and updated for every completed step and review result and contains an unbroken PARENT chain from USER_INPUT to DONE
 
 ## When to Use
 
@@ -114,6 +114,8 @@ PASS -> next stage
 FAIL -> fix -> re-review of the same artifact
 ```
 
+In the pipeline above, each completed stage still requires a committed `JOURNAL_SDD_TDD_SKILL.log` entry before the next stage starts.
+
 ### Key Principles
 
 1. **Test targets the spec, not the code.** The test is end-to-end (end-to-end for one of the acceptance criteria from the spec). It verifies the SPEC is satisfied, not that function X returns Y. The test reviewer checks: "Does this test prove that the spec is satisfied?"
@@ -152,9 +154,9 @@ Every review request must include:
 - task ID (if applicable)
 - expected review scope
 
-### Rule 3 -- Every review updates the journal
+### Rule 3 -- Every completed step updates the journal
 
-After every review result, append a record to JOURNAL_SDD_TDD_SKILL.log.
+Every completed step and every review result appends a record to `JOURNAL_SDD_TDD_SKILL.log`.After every review result, append a record to JOURNAL_SDD_TDD_SKILL.log.
 
 Review outcomes: PASS, FAIL, NEEDS_CLARIFICATION, CANCELLED.
 
@@ -620,11 +622,11 @@ Run a final independent review of the complete implementation.
 If FAIL -> fix -> re-review -> journal -> commit journal.
 
 All tasks are completed. Final verification:
-- ✅ All acceptance criteria from the spec are covered by tests
-- ✅ All tests are green
-- ✅ Every stage was reviewed
-- ✅ No regressions
-- ✅ JOURNAL_SDD_TDD_SKILL.log contains the full trail of all steps
+- All acceptance criteria from the spec are covered by tests
+- All tests are green
+- Every stage was reviewed
+- No regressions
+- `JOURNAL_SDD_TDD_SKILL.log` exists, is updated for every completed step and review result, and contains an unbroken `PARENT` chain from `USER_INPUT` to `DONE`
 
 ** ->  JOURNAL:** `DONE`, STATUS=COMPLETED, PARENT=JID of the last FINAL_REVIEW.
 
