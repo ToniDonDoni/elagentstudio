@@ -54,6 +54,10 @@ A planner -> builder -> reviewer triagent workflow for structured implementation
 ### Install
 
 ```bash
+# Codex (native plugin)
+codex plugin marketplace add ToniDonDoni/elagentstudio
+codex plugin add triagent-driven-development@elagentstudio
+
 # Codex (from cloned repo)
 install/codex-triagent.sh
 install/codex-triagent.sh --override
