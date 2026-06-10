@@ -66,7 +66,6 @@ fi
 # Install skill
 mkdir -p "$SKILL_DEST"
 cp "$SOURCE/SKILL.md" "$SKILL_DEST/"
-cp "$SOURCE/README.md" "$SKILL_DEST/"
 
 # Install agents
 mkdir -p "$AGENTS_DEST"
