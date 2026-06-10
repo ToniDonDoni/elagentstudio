@@ -67,9 +67,9 @@ def5678 SPEC REVIEW PASSED                                # journal only
 ...
 ```
 
-Each REVIEW commit (`SPEC REVIEW PASSED`, `RED REVIEW PASSED`, `GREEN REVIEW PASSED`) contains **only the journal update** — the reviewer verdict is appended to `JOURNAL_SDD_TDD_SKILL.log`. No test changes, no code changes. This is how you verify that review happened independently of any implementation work.
+Each REVIEW commit (`SPEC REVIEW PASSED`, `SPEC REVIEW FAILED`, `RED REVIEW PASSED`, `RED REVIEW FAILED`, `GREEN REVIEW PASSED`, `GREEN REVIEW FAILED`) contains **only the journal update** — the reviewer verdict is appended to `JOURNAL_SDD_TDD_SKILL.log`. No test changes, no code changes. This is how you verify that review happened independently of any implementation work.
 
-If review fails → fix → `COMPLETED FIXED` commit → re-review → `REVIEW PASSED`.
+If review verdict is FAIL → fix the artifact (test or code), commit with `COMPLETED FIXED` (includes the fix + journal update) → re-review → new review verdict commit (journal only).
 
 Each commit is a permanent record of what existed at each stage. Anyone (user, reviewer, future agent) can inspect the chain and see **tests existed before code**, **RED actually failed**, **review happened before GREEN**. Without per-stage commits, there is no data to learn from — you cannot tell where the process broke, what got skipped, or which stage caused a regression.
 
