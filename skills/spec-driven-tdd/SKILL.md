@@ -57,7 +57,6 @@ Commit after every stage and journal every result — this is not ceremony. It e
 git log --oneline --reverse
 
 abc1234 TEST: write failing tests for autocomplete       # tests/ + journal
-def5678 TEST_REVIEW: PASS                                 # journal only
 7890123 RED: run tests → 4/4 FAIL                         # test output + journal
 3456789 RED_REVIEW: PASS                                  # journal only
 4567890 GREEN: implement → 4/4 PASS                       # src/ + journal
@@ -65,7 +64,7 @@ def5678 TEST_REVIEW: PASS                                 # journal only
 ...
 ```
 
-Each REVIEW commit (`TEST_REVIEW: PASS`, `RED_REVIEW: PASS`, `GREEN_REVIEW: PASS`) contains **only the journal update** — the reviewer verdict is appended to `JOURNAL_SDD_TDD_SKILL.log`. No test changes, no code changes. This is how you verify that review happened independently of any implementation work.
+Each REVIEW commit (`RED_REVIEW: PASS`, `GREEN_REVIEW: PASS`) contains **only the journal update** — the reviewer verdict is appended to `JOURNAL_SDD_TDD_SKILL.log`. No test changes, no code changes. This is how you verify that review happened independently of any implementation work.
 
 Each commit is a tamper-proof snapshot. Anyone (user, reviewer, future agent) can inspect the chain and see **tests existed before code**, **RED actually failed**, **review happened before GREEN**. Without per-stage commits, the journal is just an unverifiable self-report.
 
