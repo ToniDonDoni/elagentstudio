@@ -28,44 +28,16 @@ cat src/triagent-driven-development/README_OPENCODE_INSTALL.md
 cat src/triagent-driven-development/README_CODEX_INSTALL.md
 ```
 
-### Codex (Plugin)
-
-```bash
-codex plugin marketplace add ToniDonDoni/elagentstudio
-codex plugin add triagent-driven-development@elagentstudio
-```
-
 ---
 
 ### Spec-Driven TDD (sdtdd)
 
 A spec-driven development pipeline with review at every step and a complete audit trail. Every line of production code passes through: spec -> review -> decompose -> test -> RED -> GREEN -> refactor -> final review. Designed for Hermes Agent.
 
-- **Path:** `skills/spec-driven-tdd/`
+- **Path:** `src/spec-driven-tdd/`
 - **Platform:** Hermes Agent
 - **Requires:** pytest, Hermes Agent with `delegate_task`
 
-### Hermes
-
 ```bash
 cat src/spec-driven-tdd/README.md
-```
-
-### Hermes (Native)
-
-```bash
-hermes skills install ToniDonDoni/elagentstudio/skills/spec-driven-tdd
-```
-
-### Hermes (Fallback)
-
-```bash
-install/hermes-spec-driven-tdd.sh
-install/hermes-spec-driven-tdd.sh --override
-```
-
-### Verify
-
-```bash
-hermes skills list | grep spec-driven-tdd
 ```
