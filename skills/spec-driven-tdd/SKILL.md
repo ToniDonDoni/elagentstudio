@@ -55,7 +55,7 @@ The cycle is complete when:
 - The goal from the spec is fully solved
 - All code passes all tests
 - Every commit along the chain has a **PASS** verdict from review
-- Journal file JOURNAL_SDD_TDD_SKILL.log exists and updated for every completed step and review result and contains an unbroken PARENT chain from USER_INPUT to DONE
+- The journal file `JOURNAL_SDD_TDD_SKILL.log` exists, is updated for every completed step and review result, and contains an unbroken `PARENT` chain from `USER_INPUT` to `DONE`
 
 ## When to Use
 
@@ -156,7 +156,7 @@ Every review request must include:
 
 ### Rule 3 -- Every completed step updates the journal
 
-Every completed step and every review result appends a record to journal file `JOURNAL_SDD_TDD_SKILL.log`.After every review result, append a record to JOURNAL_SDD_TDD_SKILL.log.
+Every completed step and every review result appends a record to the journal file `JOURNAL_SDD_TDD_SKILL.log`.
 
 Review outcomes: PASS, FAIL, NEEDS_CLARIFICATION, CANCELLED.
 
