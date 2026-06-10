@@ -39,7 +39,7 @@ fi
 
 mkdir -p ~/.codex/agents
 mkdir -p ~/.codex/skills/triagent-driven-development
-cp skills/triagent-driven-development/agents/trdd-*.md ~/.codex/agents/
+cp skills/triagent-driven-development/trdd-*.md ~/.codex/agents/
 cp skills/triagent-driven-development/SKILL.md ~/.codex/skills/triagent-driven-development/
 
 echo "DONE"
