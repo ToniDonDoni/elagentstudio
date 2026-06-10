@@ -35,8 +35,7 @@ Three stages. One rigid cycle. Every artifact goes through the same loop:
                            |
                      PASS or FAIL?
                      |-- PASS -> next stage
-                     |-- FAIL -> journal FAIL -> COMMIT journal
-                               -> FIX artifact -> COMMIT fix
+                     |-- FAIL -> FIX artifact -> COMMIT fix
                                -> REVIEW again (same loop)
 
 Stage 1: SPEC-DRAFT.md -> REVIEW -> PASS -> next stage
@@ -45,7 +44,7 @@ Stage 3: Code  -> REVIEW -> PASS -> next stage
 
 Every `-> REVIEW ->` means a SEPARATE delegate_task call - a fresh reviewer agent, no shared memory with the author.
 Every `-> COMMIT ->` means review always runs on committed changes (Rule 1: commit before review).
-**Every step produces TWO artifacts** - the work output (spec/test/code) AND update JOURNAL_SDD_TDD_SKILL.log with an new entry with the step result. Both exist in the project tree when the step is done. A step is not done until both are committed.
+Every stage produces twp types of artifacts - the work output (spec/test/code) and updated JOURNAL_SDD_TDD_SKILL.log file with a new entry with the step result. Both exist in the project tree when the step is done. A step is not done until both are committed.
 
 **The #1 rule:** Never proceed to the next step without REVIEW = PASS
 on the current artifact. Ever. No exceptions.
@@ -56,7 +55,7 @@ The cycle is complete when:
 - The goal from the spec is fully solved
 - All code passes all tests
 - Every commit along the chain has a **PASS** verdict from review
-- **JOURNAL_SDD_TDD_SKILL.log contains an unbroken PARENT chain from USER_INPUT to DONE**
+- JOURNAL_SDD_TDD_SKILL.log contains an unbroken PARENT chain from USER_INPUT to DONE**
 
 ## When to Use
 
@@ -86,34 +85,33 @@ It does NOT replace them. It sequences them into a pipeline.
 ```
 SPEC
   │
-  ├── WRITE SPEC + JOURNAL_SDD_TDD_SKILL.log entry
-  ├── REVIEW SPEC + JOURNAL_SDD_TDD_SKILL.log entry
-  │     ├── PASS -> decompose
-  │     └── FAIL -> fix spec + JOURNAL_SDD_TDD_SKILL.log entry -> re-review
+  ├── REVIEW SPEC
+  │     ├── PASS -> decompose into tasks
+  │     └── FAIL -> write to journal + ask user -> re-review
   │
   ▼
 TASK N (from spec decomposition)
   │
-  ├── 1. WRITE TEST + JOURNAL_SDD_TDD_SKILL.log entry
-  ├── 2. REVIEW TEST + JOURNAL_SDD_TDD_SKILL.log entry -> PASS?
+  ├── 1. WRITE TEST (failing, spec-compliant, end-to-end)
+  ├── 2. REVIEW TEST -> PASS?
   │     ├── PASS -> proceed
-  │     └── FAIL -> fix test + JOURNAL_SDD_TDD_SKILL.log entry -> re-review
+  │     └── FAIL -> fix test -> re-review
   │
-  ├── 3. RED + JOURNAL_SDD_TDD_SKILL.log entry
-  ├── 4. REVIEW RED + JOURNAL_SDD_TDD_SKILL.log entry -> PASS?
+  ├── 3. RED (verify test fails)
+  ├── 4. REVIEW RED -> PASS?
   │     ├── PASS -> proceed
-  │     └── FAIL -> fix setup + JOURNAL_SDD_TDD_SKILL.log entry -> re-review
+  │     └── FAIL -> fix setup -> re-review
   │
-  ├── 5. GREEN + JOURNAL_SDD_TDD_SKILL.log entry
-  ├── 6. REVIEW GREEN + JOURNAL_SDD_TDD_SKILL.log entry -> PASS?
+  ├── 5. GREEN (minimal implementation)
+  ├── 6. REVIEW GREEN -> PASS?
   │     ├── PASS -> proceed to next task or done
-  │     └── FAIL -> fix code + JOURNAL_SDD_TDD_SKILL.log entry -> re-review
+  │     └── FAIL -> fix code -> re-review
   │
-  └── NEXT TASK or DONE + REGRESSION + JOURNAL_SDD_TDD_SKILL.log entry
+  └── NEXT TASK or DONE
 
 === After each review ===
 PASS -> next stage
-FAIL -> fix + JOURNAL_SDD_TDD_SKILL.log entry -> re-review of the same artifact
+FAIL -> fix -> re-review of the same artifact
 ```
 
 ### Key Principles
