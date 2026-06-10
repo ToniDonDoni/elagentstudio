@@ -71,7 +71,7 @@ Each REVIEW commit (`SPEC REVIEW PASSED`, `SPEC REVIEW FAILED`, `RED REVIEW PASS
 
 If review verdict is FAIL → fix the artifact (test or code), commit with `COMPLETED FIXED` (includes the fix + journal update) → re-review → new review verdict commit (journal only).
 
-Each commit is a permanent record of what existed at each stage. If a task needs to be solved differently next time — better, faster, or with a different approach — we need to see what actually happened during the process: where time was spent, what was tried and rejected, which steps caused rework. Without per-stage commits, there is no data to learn from — you cannot tell why the solution turned out the way it did, where the bottlenecks were, or what to change to improve future solutions.
+Each commit is a permanent record of what existed at each stage. This is needed to understand how to improve the solution of the task — and for that we need a full log of the process by steps, to understand when and what happened. Without per-stage commits, there is no data to learn from: you cannot tell why the solution turned out the way it did, where the bottlenecks were, or what to change next time.
 
 Three purposes:
 1. **Audit** — `git log` documents the sequence: tests → RED → GREEN. Makes every run reproducible and reviewable.
