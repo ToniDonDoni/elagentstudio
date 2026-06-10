@@ -60,7 +60,8 @@ abc1234 TEST: write failing tests for autocomplete       # tests/ + journal
 def5678 TEST_REVIEW: PASS                                 # journal only
 7890123 RED: run tests → 4/4 FAIL                         # test output + journal
 3456789 RED_REVIEW: PASS                                  # journal only
-123abcd GREEN: implement autocomplete                     # src/ + journal
+4567890 GREEN: implement → 4/4 PASS                       # src/ + journal
+5678901 GREEN_REVIEW: PASS                                # journal only
 ...
 ```
 
