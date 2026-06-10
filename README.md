@@ -51,8 +51,21 @@ A spec-driven development pipeline with review at every step and a complete audi
 cat src/spec-driven-tdd/README.md
 ```
 
-### Hermes (Plugin)
+### Hermes (Native)
 
 ```bash
-hermes skills install ToniDonDoni/elagentstudio/src/spec-driven-tdd
+hermes skills install ToniDonDoni/elagentstudio/skills/spec-driven-tdd
+```
+
+### Hermes (Fallback)
+
+```bash
+install/hermes-spec-driven-tdd.sh
+install/hermes-spec-driven-tdd.sh --override
+```
+
+### Verify
+
+```bash
+hermes skills list | grep spec-driven-tdd
 ```
