@@ -55,7 +55,7 @@ The cycle is complete when:
 - The goal from the spec is fully solved
 - All code passes all tests
 - Every commit along the chain has a **PASS** verdict from review
-- JOURNAL_SDD_TDD_SKILL.log exists and updated for every completed step and review result and contains an unbroken PARENT chain from USER_INPUT to DONE
+- The journal file `JOURNAL_SDD_TDD_SKILL.log` exists, is updated for every completed step and review result, and contains an unbroken `PARENT` chain from `USER_INPUT` to `DONE`
 
 ## When to Use
 
@@ -87,7 +87,7 @@ SPEC
   │
   ├── REVIEW SPEC
   │     ├── PASS -> decompose into tasks
-  │     └── FAIL -> write to journal + ask user -> re-review
+  │     └── FAIL -> ask user -> re-review
   │
   ▼
 TASK N (from spec decomposition)
@@ -114,7 +114,7 @@ PASS -> next stage
 FAIL -> fix -> re-review of the same artifact
 ```
 
-In the pipeline above, each completed stage still requires a committed `JOURNAL_SDD_TDD_SKILL.log` entry before the next stage starts.
+In the pipeline above, each completed stage still requires a committed journal file `JOURNAL_SDD_TDD_SKILL.log` entry before the next stage starts.
 
 ### Key Principles
 
@@ -156,7 +156,7 @@ Every review request must include:
 
 ### Rule 3 -- Every completed step updates the journal
 
-Every completed step and every review result appends a record to `JOURNAL_SDD_TDD_SKILL.log`.After every review result, append a record to JOURNAL_SDD_TDD_SKILL.log.
+Every completed step and every review result appends a record to the journal file `JOURNAL_SDD_TDD_SKILL.log`.
 
 Review outcomes: PASS, FAIL, NEEDS_CLARIFICATION, CANCELLED.
 
@@ -626,7 +626,7 @@ All tasks are completed. Final verification:
 - All tests are green
 - Every stage was reviewed
 - No regressions
-- `JOURNAL_SDD_TDD_SKILL.log` exists, is updated for every completed step and review result, and contains an unbroken `PARENT` chain from `USER_INPUT` to `DONE`
+- Journal file `JOURNAL_SDD_TDD_SKILL.log` exists, is updated for every completed step and review result, and contains an unbroken `PARENT` chain from `USER_INPUT` to `DONE`
 
 ** ->  JOURNAL:** `DONE`, STATUS=COMPLETED, PARENT=JID of the last FINAL_REVIEW.
 

@@ -32,7 +32,7 @@ cat skills/triagent-driven-development/README_CODEX_INSTALL.md
 
 ### Spec-Driven TDD
 
-A spec-driven development test-driven development (TDD) pipeline with review at every step and a complete audit trail. Every line of production code passes through: spec -> review -> decompose -> test -> RED -> GREEN -> refactor -> final review. Designed for Hermes Agent.
+A spec-driven development test-driven development (TDD) pipeline with review at every step and a complete audit trail. Every line of production code passes through: spec -> review -> decompose -> test -> RED -> GREEN -> final review. Designed for Hermes Agent.
 
 - **Path:** `skills/spec-driven-tdd/`
 - **Platform:** Hermes Agent
