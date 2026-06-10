@@ -39,7 +39,7 @@ fi
 
 mkdir -p ~/.config/opencode/agents
 mkdir -p ~/.config/opencode/skills/triagent-driven-development
-cp skills/triagent-driven-development/agents/trdd-*.md ~/.config/opencode/agents/
+cp skills/triagent-driven-development/trdd-*.md ~/.config/opencode/agents/
 cp skills/triagent-driven-development/SKILL.md ~/.config/opencode/skills/triagent-driven-development/
 
 echo "DONE"
