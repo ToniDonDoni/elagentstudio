@@ -3,7 +3,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  src/triagent-driven-development/opencode_install.sh [--override]
+  skills/triagent-driven-development/codex_install.sh [--override]
 
 Options:
   --override   Replace existing installed TriDD files.
@@ -31,15 +31,15 @@ for arg in "$@"; do
 done
 
 if [ "$override" != true ] && \
-   { [ -f ~/.config/opencode/skills/triagent-driven-development/SKILL.md ] || \
-     ls ~/.config/opencode/agents/trdd-*.md >/dev/null 2>&1; }; then
+   { [ -f ~/.codex/skills/triagent-driven-development/SKILL.md ] || \
+     ls ~/.codex/agents/trdd-*.md >/dev/null 2>&1; }; then
   echo "ERROR: TRIAGENT-DRIVEN DEVELOPMENT DIRECTORY IS NOT CLEAN. RE-RUN WITH --override TO REPLACE EXISTING FILES." >&2
   exit 1
 fi
 
-mkdir -p ~/.config/opencode/agents
-mkdir -p ~/.config/opencode/skills/triagent-driven-development
-cp src/triagent-driven-development/trdd-*.md ~/.config/opencode/agents/
-cp src/triagent-driven-development/SKILL.md ~/.config/opencode/skills/triagent-driven-development/
+mkdir -p ~/.codex/agents
+mkdir -p ~/.codex/skills/triagent-driven-development
+cp skills/triagent-driven-development/trdd-*.md ~/.codex/agents/
+cp skills/triagent-driven-development/SKILL.md ~/.codex/skills/triagent-driven-development/
 
 echo "DONE"
