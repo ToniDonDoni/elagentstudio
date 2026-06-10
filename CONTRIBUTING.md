@@ -6,5 +6,5 @@ All project communication in code, comments, documentation, issues, pull request
 
 Commit Messages
 
-Commit messages must be written in English.
+Commit messages must be written in English and contain ASCII characters only.
 
