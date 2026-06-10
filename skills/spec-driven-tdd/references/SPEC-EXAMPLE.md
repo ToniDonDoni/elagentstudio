@@ -9,8 +9,8 @@ Core idea:
 Every meaningful change creates an artifact.  
 Every artifact is committed.  
 Every committed artifact is reviewed.  
-Every review result is written to JOURNAL.log.  
-Every JOURNAL.log update is also committed.  
+Every review result is written to JOURNAL_SDD_TDD_SKILL.log.  
+Every JOURNAL_SDD_TDD_SKILL.log update is also committed.  
 Every fix after review is a new commit.
 
 Nothing is silently edited.  
@@ -25,36 +25,36 @@ User Input
  ->  SPEC-DRAFT.md  
  ->  commit  
  ->  review spec  
- ->  JOURNAL.log update  
+ ->  JOURNAL_SDD_TDD_SKILL.log update  
  ->  commit journal  
  ->  TASKS.md  
  ->  commit  
  ->  review tasks  
- ->  JOURNAL.log update  
+ ->  JOURNAL_SDD_TDD_SKILL.log update  
  ->  commit journal  
  ->  test file  
  ->  commit  
  ->  review test  
- ->  JOURNAL.log update  
+ ->  JOURNAL_SDD_TDD_SKILL.log update  
  ->  commit journal  
  ->  RED test run  
- ->  JOURNAL.log update  
+ ->  JOURNAL_SDD_TDD_SKILL.log update  
  ->  commit journal  
  ->  review RED  
- ->  JOURNAL.log update  
+ ->  JOURNAL_SDD_TDD_SKILL.log update  
  ->  commit journal  
  ->  implementation code  
  ->  commit  
  ->  review GREEN  
- ->  JOURNAL.log update  
+ ->  JOURNAL_SDD_TDD_SKILL.log update  
  ->  commit journal  
  ->  optional refactor  
  ->  commit  
  ->  review refactor  
- ->  JOURNAL.log update  
+ ->  JOURNAL_SDD_TDD_SKILL.log update  
  ->  commit journal  
  ->  regression run  
- ->  JOURNAL.log update  
+ ->  JOURNAL_SDD_TDD_SKILL.log update  
  ->  commit journal  
  ->  DONE
 
@@ -90,7 +90,7 @@ Every review request must include:
 
 ### Rule 3 -- Every review updates the journal
 
-After every review result, append a record to JOURNAL.log.
+After every review result, append a record to JOURNAL_SDD_TDD_SKILL.log.
 
 Review outcomes:
 
@@ -101,7 +101,7 @@ Review outcomes:
 
 ### Rule 4 -- Journal updates are committed
 
-After appending to JOURNAL.log, commit the journal change.
+After appending to JOURNAL_SDD_TDD_SKILL.log, commit the journal change.
 
 The journal commit becomes part of the audit trail.
 
@@ -120,7 +120,7 @@ Default behavior:
 
 SPEC-DRAFT.md is immutable after initial commit.
 
-If the user clarifies or changes something, write it to JOURNAL.log and create a derived spec amendment artifact if needed.
+If the user clarifies or changes something, write it to JOURNAL_SDD_TDD_SKILL.log and create a derived spec amendment artifact if needed.
 
 Original input stays preserved.
 
@@ -158,7 +158,7 @@ Immutable original feature request.
 TASKS.md  
 Task decomposition. Each task maps to exactly one acceptance criterion.
 
-JOURNAL.log  
+JOURNAL_SDD_TDD_SKILL.log  
 Append-only audit trail. Every event gets a JID.
 
 tests/test_counter.py  
@@ -751,7 +751,7 @@ counter.py
 
 Journal records:
 
-Search S-DEMO-01.04 in JOURNAL.log.
+Search S-DEMO-01.04 in JOURNAL_SDD_TDD_SKILL.log.
 
 Commits:
 
@@ -770,7 +770,7 @@ A stage is complete only when:
 1. the artifact exists,
 2. the artifact is committed,
 3. the commit is reviewed,
-4. the review result is written to JOURNAL.log,
+4. the review result is written to JOURNAL_SDD_TDD_SKILL.log,
 5. the journal update is committed.
 
 That is the contract.

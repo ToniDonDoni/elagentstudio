@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "Spec-driven TDD with review at every step. Spec -> REVIEW -> tasks -> TEST -> REVIEW -> RED -> REVIEW -> GREEN -> REVIEW -> REFACTOR -> REVIEW. The test is end-to-end and targets the acceptance criterion from the spec."
-version: 1.1.0
+version: 1.2.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -35,17 +35,16 @@ Three stages. One rigid cycle. Every artifact goes through the same loop:
                            |
                      PASS or FAIL?
                      |-- PASS -> next stage
-                     |-- FAIL -> journal FAIL -> COMMIT journal
-                               -> FIX artifact -> COMMIT fix
+                     |-- FAIL -> FIX artifact -> COMMIT fix
                                -> REVIEW again (same loop)
 
 Stage 1: SPEC-DRAFT.md -> REVIEW -> PASS -> next stage
 Stage 2: Tests -> REVIEW -> PASS -> next stage
 Stage 3: Code  -> REVIEW -> PASS -> next stage
 
-Every `-> REVIEW ->` means a SEPARATE delegate_task call — a fresh reviewer agent, no shared memory with the author.
+Every `-> REVIEW ->` means a SEPARATE delegate_task call - a fresh reviewer agent, no shared memory with the author.
 Every `-> COMMIT ->` means review always runs on committed changes (Rule 1: commit before review).
-Every `-> journal ->` means JOURNAL.log entry + commit (Rule 3, 5).
+Every stage produces two types of artifacts - the work output (spec/test/code) and updated JOURNAL_SDD_TDD_SKILL.log file with a new entry with the step result. Both exist in the project tree when the step is done. A step is not done until both are committed.
 
 **The #1 rule:** Never proceed to the next step without REVIEW = PASS
 on the current artifact. Ever. No exceptions.
@@ -56,6 +55,7 @@ The cycle is complete when:
 - The goal from the spec is fully solved
 - All code passes all tests
 - Every commit along the chain has a **PASS** verdict from review
+- JOURNAL_SDD_TDD_SKILL.log exists and updated for every completed step and review result and contains an unbroken PARENT chain from USER_INPUT to DONE
 
 ## When to Use
 
@@ -114,6 +114,8 @@ PASS -> next stage
 FAIL -> fix -> re-review of the same artifact
 ```
 
+In the pipeline above, each completed stage still requires a committed `JOURNAL_SDD_TDD_SKILL.log` entry before the next stage starts.
+
 ### Key Principles
 
 1. **Test targets the spec, not the code.** The test is end-to-end (end-to-end for one of the acceptance criteria from the spec). It verifies the SPEC is satisfied, not that function X returns Y. The test reviewer checks: "Does this test prove that the spec is satisfied?"
@@ -124,7 +126,7 @@ FAIL -> fix -> re-review of the same artifact
 
 4. **RED must fail.** If the test passes during RED, you are testing existing behavior. The test must be fixed.
 
-5. **Spec Draft -- immutable input.** SPEC-DRAFT.md (or TASK-DRAFT.md) is written once and never edited again. All discussion, clarifications, and reviewer comments go only into JOURNAL.log. If the spec is incomplete -- ask the user rather than editing the spec yourself. This preserves traceability: you can always find the original statement and track which decisions led to what.
+5. **Spec Draft -- immutable input.** SPEC-DRAFT.md (or TASK-DRAFT.md) is written once and never edited again. All discussion, clarifications, and reviewer comments go only into JOURNAL_SDD_TDD_SKILL.log. If the spec is incomplete -- ask the user rather than editing the spec yourself. This preserves traceability: you can always find the original statement and track which decisions led to what.
 
 ## Global Rules
 
@@ -152,15 +154,15 @@ Every review request must include:
 - task ID (if applicable)
 - expected review scope
 
-### Rule 3 -- Every review updates the journal
+### Rule 3 -- Every completed step updates the journal
 
-After every review result, append a record to JOURNAL.log.
+Every completed step and every review result appends a record to `JOURNAL_SDD_TDD_SKILL.log`.After every review result, append a record to JOURNAL_SDD_TDD_SKILL.log.
 
 Review outcomes: PASS, FAIL, NEEDS_CLARIFICATION, CANCELLED.
 
 ### Rule 4 -- Journal updates are committed
 
-After appending to JOURNAL.log, commit the journal change. The journal commit becomes part of the audit trail.
+After appending to JOURNAL_SDD_TDD_SKILL.log, commit the journal change. The journal commit becomes part of the audit trail.
 
 ### Rule 5 -- Every fix is a new commit
 
@@ -172,7 +174,7 @@ If review fails, do not amend history. Default behavior:
 
 ### Rule 6 -- No silent mutation of immutable input
 
-SPEC-DRAFT.md is immutable after initial commit. If the user clarifies or changes requirements, write it to JOURNAL.log and create a derived spec amendment artifact (SPEC-AMENDMENT-001.md) if needed. Original input stays preserved.
+SPEC-DRAFT.md is immutable after initial commit. If the user clarifies or changes requirements, write it to JOURNAL_SDD_TDD_SKILL.log and create a derived spec amendment artifact (SPEC-AMENDMENT-001.md) if needed. Original input stays preserved.
 
 ### Rule 7 -- SPEC-AMENDMENT mechanism
 
@@ -199,7 +201,7 @@ Each artifact has a review counter that resets when moving to the next artifact.
 Maximum **21 review attempts** per artifact total (including all PASS, FAIL, NEEDS_CLARIFICATION, and CANCELLED outcomes combined). After the 21st attempt:
 - If the review has not passed -- the process escalates to the user
 - The user decides: force-pass (review bypassed, proceeds to next stage), cancel (abort the artifact), revise the spec/amendment, or split/redefine the artifact
-- Escalation is recorded in JOURNAL.log with TYPE=ESCALATION
+- Escalation is recorded in JOURNAL_SDD_TDD_SKILL.log with TYPE=ESCALATION
 - On force-pass: proceed to the next stage as if PASS, but note in DETAIL that review was force-passed
 - On cancel: entry TYPE=CANCELLED, abort this artifact, move to next or stop
 - On revise: entry TYPE=SPEC_REVIEW STATUS=FAIL with detail "escalated for revision"
@@ -213,7 +215,7 @@ All artifacts in the project must be written in English. This includes:
 - spec files (SPEC-DRAFT.md, SPEC-EXAMPLE.md, etc.)
 - task files (TASKS.md)
 - tests and implementation code
-- JOURNAL.log entries
+- JOURNAL_SDD_TDD_SKILL.log entries
 - SKILL.md, README.md, and any other documentation
 - commit messages
 - review requests and responses
@@ -230,7 +232,7 @@ Rationale: traceability, reviewer independence (reviewers may not speak the user
 
 ## Journaling & Audit Trail
 
-Every transition between stages, review results, and returns for rework is journaled to the `JOURNAL.log` file at the project root.
+Every transition between stages, review results, and returns for rework is journaled to the `JOURNAL_SDD_TDD_SKILL.log` file at the project root.
 
 ### JID Format
 
@@ -341,7 +343,7 @@ Examples:
 
 | Direction | Mechanism |
 |-------------|----------|
-| Spec -> Journal entries | `grep "S-SDT-01.01" JOURNAL.log` |
+| Spec -> Journal entries | `grep "S-SDT-01.01" JOURNAL_SDD_TDD_SKILL.log` |
 | Journal -> Spec | SPEC field in the entry -> find the spec file by ID |
 | Child -> Parent | In the child spec, `parent:` -> find the parent spec |
 | Parent -> Children | `grep "parent: S-SDT-01" *.md` |
@@ -398,7 +400,7 @@ delegate_task(
 )
 ```
 
-PASS -> decompose. FAIL -> clarify with the user + record in JOURNAL.log -> re-review.
+PASS -> decompose. FAIL -> clarify with the user + record in JOURNAL_SDD_TDD_SKILL.log -> re-review.
 
 ## Phase 2 -- Task Decomposition + Review (from the spec)
 
@@ -610,7 +612,7 @@ Run a final independent review of the complete implementation.
 **Review scope:**
 - Are all acceptance criteria from the original spec covered by tests?
 - Are all tests green?
-- Is there a complete audit trail in JOURNAL.log?
+- Is there a complete audit trail in JOURNAL_SDD_TDD_SKILL.log?
 - Are there any regressions or uncovered edge cases?
 - Is documentation aligned with implementation?
 - Is git clean (no uncommitted artifacts)?
@@ -620,11 +622,11 @@ Run a final independent review of the complete implementation.
 If FAIL -> fix -> re-review -> journal -> commit journal.
 
 All tasks are completed. Final verification:
-- ✅ All acceptance criteria from the spec are covered by tests
-- ✅ All tests are green
-- ✅ Every stage was reviewed
-- ✅ No regressions
-- ✅ JOURNAL.log contains the full trail of all steps
+- All acceptance criteria from the spec are covered by tests
+- All tests are green
+- Every stage was reviewed
+- No regressions
+- `JOURNAL_SDD_TDD_SKILL.log` exists, is updated for every completed step and review result, and contains an unbroken `PARENT` chain from `USER_INPUT` to `DONE`
 
 ** ->  JOURNAL:** `DONE`, STATUS=COMPLETED, PARENT=JID of the last FINAL_REVIEW.
 
@@ -642,7 +644,7 @@ skill_view("requesting-code-review")
 
 # 1b. Initialize journal
 import os, datetime
-JOURNAL_PATH = "JOURNAL.log"
+JOURNAL_PATH = "JOURNAL_SDD_TDD_SKILL.log"
 _jid_seq = [0]  # mutable counter for JID uniqueness
 def jlog(type_, spec, status, parent=" -- ", depends="", detail=""):
     _jid_seq[0] += 1
@@ -704,7 +706,7 @@ jlog("DONE", "S-SDT-01", "COMPLETED", detail="All tasks completed")
 
 ### Subagent delegation (autonomous worker)
 
-For full automation -- delegate to a subagent while passing the path to JOURNAL.log:
+For full automation -- delegate to a subagent while passing the path to JOURNAL_SDD_TDD_SKILL.log:
 
 ```python
 delegate_task(
@@ -822,7 +824,7 @@ Build a counter component:
 - **Large tasks** -- if a task takes more than 5 minutes, split it further
 - **Reviewer has no spec context** -- always pass the relevant spec section to the reviewer
 - **SpecKit compatibility** -- SpecKit `.spec.md` files can be parsed as-is; extract requirements from the "Specification" section
-- **Journal not initialized** -- create JOURNAL.log at project start. No journal = no traceability.
+- **Journal not initialized** -- create JOURNAL_SDD_TDD_SKILL.log at project start. No journal = no traceability.
 - **PARENT chain broken** -- always pass the previous JID to the next journal entry. Without PARENT, traceability across steps is lost.
 - **Journal entries not post-factum** -- write entries AFTER completing the step, not before. STATUS must reflect the actual outcome.
 - **Spec ID collision** -- use unique hierarchical spec IDs (`S-SDT-01.01`, not just "task1"). Flat IDs break parent-child traceability.
@@ -844,7 +846,7 @@ The script performs all checks from SPEC-MINIMAL-INSTALL.md (S-SDT-01.03):
 | Check | What it verifies |
 |-------|-----------------|
 | AC1 | Installed dir contains exactly the R1 file set (no more, no less) |
-| AC2 | No git repo artifacts leaked (JOURNAL.log, SPEC-*.md, tests/, etc.) |
+| AC2 | No git repo artifacts leaked (JOURNAL_SDD_TDD_SKILL.log, SPEC-*.md, tests/, etc.) |
 | AC3 | README "What's Included" table and tree match the actual installed layout |
 | AC4 | README install commands (`cp SKILL.md`, `cp references/*`) produce the R1 set |
 | XREF | Every local `references/` link in SKILL.md resolves to an existing installed file |
