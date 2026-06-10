@@ -2,6 +2,10 @@
 
 Reusable agent skills for Hermes Agent, Codex, and OpenCode.
 
+**Available Skills:**
+- [Spec-Driven TDD](#spec-driven-tdd)
+- [TriAgent-Driven Development](#triagent-driven-development)
+
 ---
 
 ## Spec-Driven TDD
