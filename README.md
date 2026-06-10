@@ -2,105 +2,86 @@
 
 Reusable agent skills for Hermes Agent, Codex, and OpenCode.
 
-## Repository Structure
+---
 
-```
-skills/                          ← Single source of truth
-  spec-driven-tdd/
-    SKILL.md
-    references/SPEC-EXAMPLE.md
-  triagent-driven-development/
-    SKILL.md
-    agents/
-      trdd-orchestrator.md
-      trdd-planner.md
-      trdd-builder.md
-      trdd-reviewer.md
-
-install/                         ← Convenience install scripts
-  hermes-spec-driven-tdd.sh
-  opencode-triagent.sh
-  codex-triagent.sh
-```
-
-## Available Skills
-
-### Spec-Driven TDD
+## Spec-Driven TDD
 
 A spec-driven development pipeline with review at every step and a complete audit trail.
 
-- **Path:** `skills/spec-driven-tdd/`
-- **Platform:** Hermes Agent
-- **Requires:** pytest, Hermes Agent with `delegate_task`
+**What it does:** You write a spec, the agent implements against it with RED-GREEN-REFACTOR cycle, and every step gets reviewed. Journal tracks all decisions.
 
-### TriAgent-Driven Development
+**Platform:** Hermes Agent
+**Requires:** pytest, Hermes Agent with `delegate_task`
 
-A planner -> builder -> reviewer triagent workflow for structured implementation, bounded review loops, and task orchestration.
-
-- **Path:** `skills/triagent-driven-development/`
-- **Platforms:** Hermes Agent, Codex, OpenCode
-
----
-
-## Installation
-
-### Hermes Agent (Native)
+### Install
 
 ```bash
+# Native
 hermes skills install ToniDonDoni/elagentstudio/skills/spec-driven-tdd
-hermes skills install ToniDonDoni/elagentstudio/skills/triagent-driven-development
-```
 
-**Duplicate install:** Warns and skips (use `--force` to reinstall).
-
-### Hermes Agent (Fallback)
-
-From a cloned repository:
-
-```bash
+# From cloned repo
 install/hermes-spec-driven-tdd.sh
-install/hermes-spec-driven-tdd.sh --override   # force reinstall
+install/hermes-spec-driven-tdd.sh --override
 ```
 
-### OpenCode
-
-From a cloned repository:
-
-```bash
-install/opencode-triagent.sh
-install/opencode-triagent.sh --override
-```
-
-### Codex
-
-From a cloned repository:
-
-```bash
-install/codex-triagent.sh
-install/codex-triagent.sh --override
-```
-
----
-
-## Verification
-
-### Hermes
+### Verify
 
 ```bash
 hermes skills list | grep spec-driven-tdd
 find ~/.hermes/skills -path '*spec-driven-tdd*' -type f | sort
 ```
 
-### OpenCode
+### Use
+
+```
+/spec-driven-tdd <your task description>
+```
+
+---
+
+## TriAgent-Driven Development
+
+A planner -> builder -> reviewer triagent workflow for structured implementation, bounded review loops, and task orchestration.
+
+**What it does:** Three agents collaborate: Planner breaks down the task, Builder implements, Reviewer checks. Bounded loops prevent infinite review cycles.
+
+**Platforms:** Hermes Agent, Codex, OpenCode
+
+### Install
 
 ```bash
+# Hermes (native)
+hermes skills install ToniDonDoni/elagentstudio/skills/triagent-driven-development
+
+# Hermes (from cloned repo)
+install/hermes-spec-driven-tdd.sh
+
+# Codex (from cloned repo)
+install/codex-triagent.sh
+install/codex-triagent.sh --override
+
+# OpenCode (from cloned repo)
+install/opencode-triagent.sh
+install/opencode-triagent.sh --override
+```
+
+### Verify
+
+```bash
+# Hermes
+hermes skills list | grep triagent
+
+# Codex
+ls -la ~/.codex/skills/triagent-driven-development/
+ls -la ~/.codex/agents/trdd-*.md
+
+# OpenCode
 ls -la ~/.config/opencode/skills/triagent-driven-development/
 ls -la ~/.config/opencode/agents/trdd-*.md
 ```
 
-### Codex
+### Use
 
-```bash
-ls -la ~/.codex/skills/triagent-driven-development/
-ls -la ~/.codex/agents/trdd-*.md
+```
+/trdd <your task description>
 ```
