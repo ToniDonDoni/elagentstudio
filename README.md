@@ -3,8 +3,8 @@
 Reusable agent skills for Hermes Agent, Codex, and OpenCode.
 
 **Available Skills:**
-- [Spec-Driven TDD](#spec-driven-tdd)
-- [TriAgent-Driven Development](#triagent-driven-development)
+- [Spec-Driven TDD](#spec-driven-tdd) — Hermes Agent
+- [TriAgent-Driven Development](#triagent-driven-development) — Codex, OpenCode
 
 ---
 
@@ -49,17 +49,11 @@ A planner -> builder -> reviewer triagent workflow for structured implementation
 
 **What it does:** Three agents collaborate: Planner breaks down the task, Builder implements, Reviewer checks. Bounded loops prevent infinite review cycles.
 
-**Platforms:** Hermes Agent, Codex, OpenCode
+**Platforms:** Codex, OpenCode
 
 ### Install
 
 ```bash
-# Hermes (native)
-hermes skills install ToniDonDoni/elagentstudio/skills/triagent-driven-development
-
-# Hermes (from cloned repo)
-install/hermes-spec-driven-tdd.sh
-
 # Codex (from cloned repo)
 install/codex-triagent.sh
 install/codex-triagent.sh --override
@@ -72,9 +66,6 @@ install/opencode-triagent.sh --override
 ### Verify
 
 ```bash
-# Hermes
-hermes skills list | grep triagent
-
 # Codex
 ls -la ~/.codex/skills/triagent-driven-development/
 ls -la ~/.codex/agents/trdd-*.md
