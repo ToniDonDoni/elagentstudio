@@ -41,7 +41,7 @@ codex plugin add triagent-driven-development@elagentstudio
 
 A spec-driven development pipeline with review at every step and a complete audit trail. Every line of production code passes through: spec -> review -> decompose -> test -> RED -> GREEN -> refactor -> final review. Designed for Hermes Agent.
 
-- **Path:** `src/spec-driven-tdd/`
+- **Path:** `skills/spec-driven-tdd/`
 - **Platform:** Hermes Agent
 - **Requires:** pytest, Hermes Agent with `delegate_task`
 
@@ -51,8 +51,21 @@ A spec-driven development pipeline with review at every step and a complete audi
 cat src/spec-driven-tdd/README.md
 ```
 
-### Hermes (Plugin)
+### Hermes (Native)
 
 ```bash
-hermes skills install ToniDonDoni/elagentstudio/src/spec-driven-tdd
+hermes skills install ToniDonDoni/elagentstudio/skills/spec-driven-tdd
+```
+
+### Hermes (Fallback)
+
+```bash
+install/hermes-spec-driven-tdd.sh
+install/hermes-spec-driven-tdd.sh --override
+```
+
+### Verify
+
+```bash
+hermes skills list | grep spec-driven-tdd
 ```
