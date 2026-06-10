@@ -28,6 +28,13 @@ cat src/triagent-driven-development/README_OPENCODE_INSTALL.md
 cat src/triagent-driven-development/README_CODEX_INSTALL.md
 ```
 
+### Codex (Plugin)
+
+```bash
+codex plugin marketplace add ToniDonDoni/elagentstudio
+codex plugin add triagent-driven-development@elagentstudio
+```
+
 ---
 
 ### Spec-Driven TDD (sdtdd)
@@ -38,6 +45,14 @@ A spec-driven development pipeline with review at every step and a complete audi
 - **Platform:** Hermes Agent
 - **Requires:** pytest, Hermes Agent with `delegate_task`
 
+### Hermes
+
 ```bash
 cat src/spec-driven-tdd/README.md
+```
+
+### Hermes (Plugin)
+
+```bash
+hermes skills install ToniDonDoni/elagentstudio/src/spec-driven-tdd
 ```

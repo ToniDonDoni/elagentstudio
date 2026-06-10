@@ -1,0 +1,15 @@
+{
+  "name": "triagent-driven-development",
+  "version": "1.0.0",
+  "description": "Planner -> Builder -> Reviewer triagent workflow",
+  "author": {"name": "ToniDonDoni"},
+  "homepage": "https://github.com/ToniDonDoni/elagentstudio",
+  "repository": "https://github.com/ToniDonDoni/elagentstudio",
+  "license": "MIT",
+  "skills": "../../../src/triagent-driven-development/",
+  "interface": {
+    "displayName": "TriAgent-Driven Development",
+    "shortDescription": "Planner -> Builder -> Reviewer workflow",
+    "category": "Development"
+  }
+}
