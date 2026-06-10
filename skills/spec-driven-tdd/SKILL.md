@@ -56,15 +56,20 @@ Commit after every stage and journal every result — this is not ceremony. It e
 ```
 git log --oneline --reverse
 
-abc1234 TEST: write failing tests for autocomplete       # tests/ + journal
-7890123 RED: run tests → 4/4 FAIL                         # test output + journal
-3456789 RED_REVIEW: PASS                                  # journal only
-4567890 GREEN: implement → 4/4 PASS                       # src/ + journal
-5678901 GREEN_REVIEW: PASS                                # journal only
+abc1234 SPEC COMPLETED                                    # spec/ + journal
+def5678 SPEC REVIEW PASSED                                # journal only
+7890123 RED COMPLETED                                     # test output + journal
+3456789 RED REVIEW FAILED                                 # journal only
+5678901 RED COMPLETED FIXED                               # test fix + journal
+9012345 RED REVIEW PASSED                                 # journal only
+1234567 GREEN COMPLETED                                   # src/ + journal
+3456789 GREEN REVIEW PASSED                               # journal only
 ...
 ```
 
-Each REVIEW commit (`RED_REVIEW: PASS`, `GREEN_REVIEW: PASS`) contains **only the journal update** — the reviewer verdict is appended to `JOURNAL_SDD_TDD_SKILL.log`. No test changes, no code changes. This is how you verify that review happened independently of any implementation work.
+Each REVIEW commit (`SPEC REVIEW PASSED`, `RED REVIEW PASSED`, `GREEN REVIEW PASSED`) contains **only the journal update** — the reviewer verdict is appended to `JOURNAL_SDD_TDD_SKILL.log`. No test changes, no code changes. This is how you verify that review happened independently of any implementation work.
+
+If review fails → fix → `COMPLETED FIXED` commit → re-review → `REVIEW PASSED`.
 
 Each commit is a tamper-proof snapshot. Anyone (user, reviewer, future agent) can inspect the chain and see **tests existed before code**, **RED actually failed**, **review happened before GREEN**. Without per-stage commits, the journal is just an unverifiable self-report.
 
