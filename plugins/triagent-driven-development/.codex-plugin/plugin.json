@@ -1,0 +1,29 @@
+{
+  "name": "triagent-driven-development",
+  "version": "1.0.0",
+  "description": "Planner -> Builder -> Reviewer triagent workflow for structured implementation",
+  "author": {
+    "name": "ToniDonDoni"
+  },
+  "homepage": "https://github.com/ToniDonDoni/elagentstudio",
+  "repository": "https://github.com/ToniDonDoni/elagentstudio",
+  "license": "MIT",
+  "keywords": [
+    "triagent",
+    "workflow",
+    "planner",
+    "builder",
+    "reviewer",
+    "codex"
+  ],
+  "skills": "../../../skills/triagent-driven-development/",
+  "interface": {
+    "displayName": "TriAgent-Driven Development",
+    "shortDescription": "Planner -> Builder -> Reviewer workflow",
+    "longDescription": "A structured implementation workflow using three agent roles: Planner, Builder, and Reviewer. Bounded review loops with escalation.",
+    "developerName": "ToniDonDoni",
+    "category": "Development",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://github.com/ToniDonDoni/elagentstudio"
+  }
+}

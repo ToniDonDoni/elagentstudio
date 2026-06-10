@@ -1,43 +1,86 @@
 # ElAgentStudio
 
-Reusable agent skills, workflows, and installation bundles for Codex, OpenCode, Hermes Agent, and related platforms.
+Reusable agent skills for Hermes Agent, Codex, and OpenCode.
 
-## Available Skills
+**Available Skills:**
+- [Spec-Driven TDD](#spec-driven-tdd) — Hermes Agent
+- [TriAgent-Driven Development](#triagent-driven-development) — Codex, OpenCode
 
-### TriAgent-Driven Development (trdd)
+---
 
-A planner -> builder -> reviewer triagent workflow for structured implementation, bounded review loops, and task orchestration.
+## Spec-Driven TDD
 
-- Path: `src/triagent-driven-development/`
-- Platforms: Codex, OpenCode
+A spec-driven development pipeline with review at every step and a complete audit trail.
 
-## Install
+**What it does:** You write a spec, the agent implements against it with RED-GREEN-REFACTOR cycle, and every step gets reviewed. Journal tracks all decisions.
 
-From the repository root, choose your tool and read its install guide:
+**Platform:** Hermes Agent
+**Requires:** pytest, Hermes Agent with `delegate_task`
 
-### OpenCode
-
+### Install
 
 ```bash
-cat src/triagent-driven-development/README_OPENCODE_INSTALL.md
+# Native
+hermes skills install ToniDonDoni/elagentstudio/skills/spec-driven-tdd
+
+# From cloned repo
+install/hermes-spec-driven-tdd.sh
+install/hermes-spec-driven-tdd.sh --override
 ```
 
-### Codex
+### Verify
 
 ```bash
-cat src/triagent-driven-development/README_CODEX_INSTALL.md
+hermes skills list | grep spec-driven-tdd
+find ~/.hermes/skills -path '*spec-driven-tdd*' -type f | sort
+```
+
+### Use
+
+```
+/spec-driven-tdd <your task description>
 ```
 
 ---
 
-### Spec-Driven TDD (sdtdd)
+## TriAgent-Driven Development
 
-A spec-driven development pipeline with review at every step and a complete audit trail. Every line of production code passes through: spec -> review -> decompose -> test -> RED -> GREEN -> refactor -> final review. Designed for Hermes Agent.
+A planner -> builder -> reviewer triagent workflow for structured implementation, bounded review loops, and task orchestration.
 
-- **Path:** `src/spec-driven-tdd/`
-- **Platform:** Hermes Agent
-- **Requires:** pytest, Hermes Agent with `delegate_task`
+**What it does:** Three agents collaborate: Planner breaks down the task, Builder implements, Reviewer checks. Bounded loops prevent infinite review cycles.
+
+**Platforms:** Codex, OpenCode
+
+### Install
 
 ```bash
-cat src/spec-driven-tdd/README.md
+# Codex (native plugin)
+codex plugin marketplace add ToniDonDoni/elagentstudio
+codex plugin add triagent-driven-development@elagentstudio
+
+# Codex (from cloned repo)
+install/codex-triagent.sh
+install/codex-triagent.sh --override
+
+# OpenCode (from cloned repo)
+install/opencode-triagent.sh
+install/opencode-triagent.sh --override
+```
+
+### Verify
+
+```bash
+# Codex
+ls -la ~/.codex/skills/triagent-driven-development/
+ls -la ~/.codex/agents/trdd-*.md
+
+# OpenCode
+ls -la ~/.config/opencode/skills/triagent-driven-development/
+ls -la ~/.config/opencode/agents/trdd-*.md
+```
+
+### Use
+
+```
+/trdd <your task description>
 ```
