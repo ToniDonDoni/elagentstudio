@@ -51,7 +51,7 @@ on the current artifact. Ever. No exceptions.
 
 ### Why Per-Stage Commits + Journal Are Required (Audit Trail)
 
-Commit after every stage and journal every result — this is not ceremony. It exists to make the process **verifiable without trust**:
+Commit after every stage and journal every result — this is not ceremony. It exists to make the process **analyzable and improvable over time**:
 
 ```
 git log --oneline --reverse
@@ -71,10 +71,10 @@ Each REVIEW commit (`SPEC REVIEW PASSED`, `RED REVIEW PASSED`, `GREEN REVIEW PAS
 
 If review fails → fix → `COMPLETED FIXED` commit → re-review → `REVIEW PASSED`.
 
-Each commit is a tamper-proof snapshot. Anyone (user, reviewer, future agent) can inspect the chain and see **tests existed before code**, **RED actually failed**, **review happened before GREEN**. Without per-stage commits, the journal is just an unverifiable self-report.
+Each commit is a permanent record of what existed at each stage. Anyone (user, reviewer, future agent) can inspect the chain and see **tests existed before code**, **RED actually failed**, **review happened before GREEN**. Without per-stage commits, there is no data to learn from — you cannot tell where the process broke, what got skipped, or which stage caused a regression.
 
 Three purposes:
-1. **Audit** — `git log` proves the sequence: tests → RED → GREEN. No trust required.
+1. **Audit** — `git log` documents the sequence: tests → RED → GREEN. Makes every run reproducible and reviewable.
 2. **Analysis** — when a solution fails, the commit chain shows exactly which stage introduced the issue (test gap? RED missed something? GREEN overcomplicated?), making debugging reproducible.
 3. **Skill improvement** — pattern-matching across past runs reveals where agents most often shortcut the process (skipped RED, skipped REVIEW, batched commits), driving targeted fixes to this SKILL.md itself.
 
