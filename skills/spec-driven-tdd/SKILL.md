@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "Spec-driven TDD with review at every step. Spec -> REVIEW -> tasks -> TEST -> REVIEW -> RED -> REVIEW -> GREEN -> REVIEW -> REFACTOR -> REVIEW. The test is end-to-end and targets the acceptance criterion from the spec."
-version: 1.1.0
+version: 1.2.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -39,13 +39,13 @@ Three stages. One rigid cycle. Every artifact goes through the same loop:
                                -> FIX artifact -> COMMIT fix
                                -> REVIEW again (same loop)
 
-Stage 1: SPEC-DRAFT.md -> REVIEW -> PASS -> next stage
-Stage 2: Tests -> REVIEW -> PASS -> next stage
-Stage 3: Code  -> REVIEW -> PASS -> next stage
+Stage 1: SPEC-DRAFT.md + JOURNAL entry -> REVIEW + JOURNAL entry -> PASS -> next stage
+Stage 2: Tests + JOURNAL entry -> REVIEW + JOURNAL entry -> PASS -> next stage
+Stage 3: Code  + JOURNAL entry -> REVIEW + JOURNAL entry -> PASS -> next stage
 
 Every `-> REVIEW ->` means a SEPARATE delegate_task call — a fresh reviewer agent, no shared memory with the author.
 Every `-> COMMIT ->` means review always runs on committed changes (Rule 1: commit before review).
-Every `-> journal ->` means JOURNAL.log entry + commit (Rule 3, 5).
+**Every step produces TWO artifacts** — the work output (spec/test/code) AND a JOURNAL.log entry. Both exist in the project tree when the step is done. A step is not done until both are committed.
 
 **The #1 rule:** Never proceed to the next step without REVIEW = PASS
 on the current artifact. Ever. No exceptions.
@@ -56,6 +56,18 @@ The cycle is complete when:
 - The goal from the spec is fully solved
 - All code passes all tests
 - Every commit along the chain has a **PASS** verdict from review
+- **JOURNAL.log contains an unbroken PARENT chain from USER_INPUT to DONE**
+
+In the project root, when pipeline is done, these files exist:
+
+```
+  SPEC-DRAFT.md     — reviewed and accepted
+  tests/            — all passing
+  <implementation>  — acceptance criteria implemented
+  JOURNAL.log       — complete audit trail, one entry per step
+```
+
+**JOURNAL.log is an output artifact, equal to tests and code.** A missing entry means that step did not happen — the pipeline is incomplete. Every entry has a PARENT that links back to the step that triggered it; if the chain has a gap, traceability is broken.
 
 ## When to Use
 
@@ -85,33 +97,34 @@ It does NOT replace them. It sequences them into a pipeline.
 ```
 SPEC
   │
-  ├── REVIEW SPEC
-  │     ├── PASS -> decompose into tasks
-  │     └── FAIL -> write to journal + ask user -> re-review
+  ├── WRITE SPEC + JOURNAL entry
+  ├── REVIEW SPEC + JOURNAL entry
+  │     ├── PASS -> decompose
+  │     └── FAIL -> fix spec + JOURNAL entry -> re-review
   │
   ▼
 TASK N (from spec decomposition)
   │
-  ├── 1. WRITE TEST (failing, spec-compliant, end-to-end)
-  ├── 2. REVIEW TEST -> PASS?
+  ├── 1. WRITE TEST + JOURNAL entry
+  ├── 2. REVIEW TEST + JOURNAL entry -> PASS?
   │     ├── PASS -> proceed
-  │     └── FAIL -> fix test -> re-review
+  │     └── FAIL -> fix test + JOURNAL entry -> re-review
   │
-  ├── 3. RED (verify test fails)
-  ├── 4. REVIEW RED -> PASS?
+  ├── 3. RED + JOURNAL entry
+  ├── 4. REVIEW RED + JOURNAL entry -> PASS?
   │     ├── PASS -> proceed
-  │     └── FAIL -> fix setup -> re-review
+  │     └── FAIL -> fix setup + JOURNAL entry -> re-review
   │
-  ├── 5. GREEN (minimal implementation)
-  ├── 6. REVIEW GREEN -> PASS?
+  ├── 5. GREEN + JOURNAL entry
+  ├── 6. REVIEW GREEN + JOURNAL entry -> PASS?
   │     ├── PASS -> proceed to next task or done
-  │     └── FAIL -> fix code -> re-review
+  │     └── FAIL -> fix code + JOURNAL entry -> re-review
   │
-  └── NEXT TASK or DONE
+  └── NEXT TASK or DONE + REGRESSION + JOURNAL entry
 
 === After each review ===
 PASS -> next stage
-FAIL -> fix -> re-review of the same artifact
+FAIL -> fix + JOURNAL entry -> re-review of the same artifact
 ```
 
 ### Key Principles
