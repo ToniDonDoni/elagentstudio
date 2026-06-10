@@ -41,7 +41,7 @@ A spec-driven development test-driven development (TDD) pipeline with review at 
 ### Install
 
 ```bash
-hermes skills install ToniDonDoni/elagentstudio-test/skills/spec-driven-tdd
+hermes skills install ToniDonDoni/elagentstudio/skills/spec-driven-tdd
 ```
 
 ### Verify
@@ -54,6 +54,6 @@ hermes skills list | grep spec-driven-tdd
 
 prompt
 ```
-Use spec-driven-tdd skill for <your task description>
+Use the spec-driven-tdd skill for <your task description>
 ```
 
