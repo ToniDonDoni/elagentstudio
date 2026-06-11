@@ -4,15 +4,8 @@ Reusable agent skills, workflows, and installation bundles for Codex, OpenCode, 
 
 ## Navigation
 
-- [Available Skills](#available-skills)
 - [Spec-Driven TDD](#spec-driven-tdd)
-  - [Install Spec-Driven TDD](#install-spec-driven-tdd)
-  - [Verify Spec-Driven TDD](#verify-spec-driven-tdd)
-  - [Use Spec-Driven TDD](#use-spec-driven-tdd)
 - [TriAgent-Driven Development](#triagent-driven-development-trdd)
-  - [Install TriAgent-Driven Development](#install-triagent-driven-development)
-  - [Install TriAgent for OpenCode](#install-triagent-for-opencode)
-  - [Install TriAgent for Codex](#install-triagent-for-codex)
 
 ## Available Skills
 
