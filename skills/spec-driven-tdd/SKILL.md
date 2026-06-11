@@ -49,6 +49,35 @@ Every stage produces two types of artifacts - the work output (spec/test/code) a
 **The #1 rule:** Never proceed to the next step without REVIEW = PASS
 on the current artifact. Ever. No exceptions.
 
+### Why Per-Stage Commits + Journal Are Required (Audit Trail)
+
+Commit after every completed stage and journal every stage result — this is not ceremony. It exists to make the process **analyzable and improvable over time**:
+
+```
+git log --oneline --reverse
+
+abc1234 SPEC COMPLETED                                    # spec/ + journal
+def5678 SPEC REVIEW PASSED                                # journal only
+7890123 RED COMPLETED                                    # tests/ + test output + journal
+3456789 RED REVIEW FAILED                                 # journal only
+5678901 RED COMPLETED FIXED                              # test fix + journal
+9012345 RED REVIEW PASSED                                 # journal only
+1234567 GREEN COMPLETED                                   # src/ + journal
+3456779 GREEN REVIEW PASSED                               # journal only
+...
+```
+
+Each REVIEW commit (`SPEC REVIEW PASSED`, `SPEC REVIEW FAILED`, `RED REVIEW PASSED`, `RED REVIEW FAILED`, `GREEN REVIEW PASSED`, `GREEN REVIEW FAILED`) contains **only the journal update** — the reviewer verdict is appended to `JOURNAL_SDD_TDD_SKILL.log`. No test changes, no code changes. This is how you verify that review happened independently of any implementation work.
+
+If review verdict is FAIL → fix the artifact (test or code), commit with `COMPLETED FIXED` (includes the fix + journal update) → re-review → new review verdict commit (journal only).
+
+Each commit is a permanent record of what existed at each stage. This is needed to understand how to improve the solution of the task — and for that we need a full log of the process by steps, to understand when and what happened. Without per-stage commits, there is no data to learn from: you cannot tell why the solution turned out the way it did, where the bottlenecks were, or what to change next time.
+
+Three purposes:
+1. **Audit** — `git log` documents the sequence: tests → RED → GREEN. Makes every run reproducible and reviewable.
+2. **Analysis** — when a solution fails, the commit chain shows exactly which stage introduced the issue (test gap? RED missed something? GREEN overcomplicated?), making debugging reproducible.
+3. **Skill improvement** — pattern-matching across past runs reveals where agents most often shortcut the process (skipped RED, skipped REVIEW, batched commits), driving targeted fixes to this SKILL.md itself.
+
 ### Target State
 
 The cycle is complete when:
@@ -92,18 +121,13 @@ SPEC
   ▼
 TASK N (from spec decomposition)
   │
-  ├── 1. WRITE TEST (failing, spec-compliant, end-to-end)
-  ├── 2. REVIEW TEST -> PASS?
+  ├── 1. RED (write test + run, expect failure)
+  ├── 2. REVIEW RED -> PASS?
   │     ├── PASS -> proceed
-  │     └── FAIL -> fix test -> re-review
+  │     └── FAIL -> fix test -> re-run RED -> re-review
   │
-  ├── 3. RED (verify test fails)
-  ├── 4. REVIEW RED -> PASS?
-  │     ├── PASS -> proceed
-  │     └── FAIL -> fix setup -> re-review
-  │
-  ├── 5. GREEN (minimal implementation)
-  ├── 6. REVIEW GREEN -> PASS?
+  ├── 3. GREEN (minimal implementation)
+  ├── 4. REVIEW GREEN -> PASS?
   │     ├── PASS -> proceed to next task or done
   │     └── FAIL -> fix code -> re-review
   │
@@ -280,10 +304,8 @@ PARENT and DEPENDS = ` -- ` when there is no value. Entry is created post-factum
 | DECOMPOSE | Decomposition into tasks |
 | TASK_REVIEW | Task decomposition review (Phase 2) |
 | AGENT_DECISION | Agent selects which task to work on next |
-| TEST_WRITE | Writing the test |
-| TEST_REVIEW | Test review |
-| RED | Running the test (failure expected) |
-| RED_REVIEW | RED review |
+| RED | Writing + running the test (failure expected) |
+| RED_REVIEW | RED result review |
 | GREEN | Writing the minimal implementation |
 | GREEN_REVIEW | GREEN review |
 | REGRESSION | Regression verification |
@@ -434,7 +456,7 @@ If task decomposition produces many tasks, request the spec reviewer to also eva
 ```python
 delegate_task(
     goal="Review task decomposition for appropriate granularity.",
-    context=f"Spec:\\n{spec_text}\\n\\nTasks:\\n{tasks_text}",
+    context=f"Spec:\n{spec_text}\n\nTasks:\n{tasks_text}",
     toolsets=[]
 )
 ```
@@ -444,7 +466,7 @@ Reviewer should check:
 - Can related tasks be grouped (e.g., "CSV loading + parsing" as one task)?
 - Does each task map to exactly ONE acceptance criterion (not multiple, not partial)?
 
-Grouping tasks reduces total pipeline complexity. Grouped tasks share a single GREEN_REVIEW but still have individual TEST_WRITE -> RED -> GREEN cycles.
+Grouping tasks reduces total pipeline complexity. Grouped tasks share a single GREEN_REVIEW but still have individual RED -> GREEN cycles.
 Journal entries use combined spec IDs: `S-SAM-01.03-06` for tasks 3-6.
 
 ## Phase 3 -- Per-Task Loop (review at every step)
@@ -453,9 +475,9 @@ For EVERY task from Phase 2:
 
 ---
 
-### Step 3.1 -- WRITE TEST (failing, end-to-end, based on the spec)
+### Step 3.1 -- RED (write test + run, expect failure)
 
-Test targets the acceptance criterion from the spec, not the implementation. It is end-to-end -- it checks system behavior, not function internals.
+Write a failing test on RED stage targeting the acceptance criterion from the spec, not the implementation. The test is end-to-end — it checks system behavior, not function internals.
 
 ```python
 def test_todo_has_id_title_and_completed_at():
@@ -466,35 +488,9 @@ def test_todo_has_id_title_and_completed_at():
     assert item.completed_at is None
 ```
 
-**The test is not run yet.** It is only written and has not been executed yet.
+**Then run the test immediately.** It must fail — we have not written the code yet.
 
-** ->  JOURNAL:** After writing the test -- create a `TEST_WRITE` entry, STATUS=COMPLETED, SPEC=current spec ID, PARENT=JID of the decomposition step.
-
-### Step 3.2 -- REVIEW TEST
-
-Reviewer checks:
-
-1. **Test targets the spec, not the code** -- the test checks the acceptance criterion, not implementation details
-2. **End-to-end approach** -- the test checks system behavior as a whole (or at minimum the module's public API), not internal functions
-3. **One test = one acceptance criterion**
-4. **Wording is clear** -- from the name and docstring it is clear what is being verified
-
-```python
-delegate_task(
-    goal="""Review this test for spec compliance.
-    Does it correctly and fully test the acceptance criterion from the spec?
-    Is it end-to-end (behavioral, not implementation-coupled)?""",
-    context=f"Spec section:\n{spec_section}\n\nTest:\n{test_code}",
-    toolsets=[]
-)
-```
-
-**PASS** -> journal: `TEST_REVIEW`, STATUS=PASS, PARENT=JID of the test entry.
-**FAIL** -> fix -> re-review. Journal: `TEST_REVIEW`, STATUS=FAIL.
-
-### Step 3.3 -- RED (verify test fails)
-
-Run the test. It must fail -- we have not written the code yet.
+**Commit RED artifact: test file + RED evidence (test output) + journal entry.**
 
 ```bash
 pytest tests/test_todo.py::test_todo_has_id_title_and_completed_at -v
@@ -502,29 +498,51 @@ pytest tests/test_todo.py::test_todo_has_id_title_and_completed_at -v
 
 Expected: `FAILED` (class is not defined, method is missing, import does not work).
 
-If the test passes -- you are testing existing behavior. The test must be rewritten.
+If the test passes — you are testing existing behavior. The test must be rewritten.
 
-** ->  JOURNAL:** After RED -- entry `RED`, STATUS=COMPLETED (if it failed correctly) or FAIL (if it failed for another reason).
+** ->  JOURNAL:** After writing and running — create a `RED` entry, STATUS=COMPLETED, SPEC=current spec ID, PARENT=JID of the decomposition step. Include test output in DETAIL.
 
-### Step 3.4 -- REVIEW RED
+```journal
+TYPE: RED
+SPEC: S-SDT-01.01
+STATUS: COMPLETED
+PARENT: J-<decomp jid>
+DETAIL: Tests written and RED: FAILED (ImportError: cannot import name 'TodoItem')
+```
 
-Reviewer checks:
-- The test really failed (there is evidence -- terminal output)
-- The reason for failure is specifically the missing feature, not a bug in the test
-- The error message matches expectations
+### Step 3.2 -- REVIEW RED
+
+Reviewer checks **both** the test code and the RED output:
+
+**Test quality:**
+1. **Test targets the spec, not the code** — the test checks the acceptance criterion, not implementation details
+2. **End-to-end approach** — the test checks system behavior as a whole (or at minimum the module's public API), not internal functions
+3. **One test = one acceptance criterion**
+4. **Wording is clear** — from the name and docstring it is clear what is being verified
+
+**RED result:**
+- Did the test fail for the right reason (missing feature, not a test bug)?
+- Are edge cases covered?
 
 ```python
 delegate_task(
-    goal="Verify the RED step: test failed for the right reason.",
-    context=f"Spec ref: {spec_ref}\nTest output:\n{terminal_output}",
+    goal="""Review the test and RED result:
+    1. Does the test correctly cover the acceptance criterion from the spec?
+    2. Did it fail for the right reason (missing feature, not a test bug)?
+    3. Is it end-to-end (behavioral, not implementation-coupled)?
+    4. Are edge cases covered?
+    5. Is wording clear?
+
+    Return a verdict (PASS or FAIL) with reasoning for each criterion.""",
+    context=f"Spec section:\n{spec_section}\n\nTest:\n{test_code}\n\nRED output:\n{terminal_output}",
     toolsets=[]
 )
 ```
 
 **PASS** -> proceed to GREEN. Journal: `RED_REVIEW`, STATUS=PASS, PARENT=JID of RED.
-**FAIL** (test is broken, failed for the wrong reason) -> fix the test -> re-review RED. Journal: `RED_REVIEW`, STATUS=FAIL.
+**FAIL** (test is broken, failed for wrong reason, or doesn't cover the spec) -> fix the test -> re-run RED -> journal `RED` entry with DETAIL="FIXED" -> re-review RED.
 
-### Step 3.5 -- GREEN (write minimal implementation)
+### Step 3.3 -- GREEN (write minimal implementation)
 
 Write the minimal code needed to make the test pass. Nothing extra.
 
@@ -547,9 +565,9 @@ pytest tests/test_todo.py::test_todo_has_id_title_and_completed_at -v
 
 Expected: `PASSED`.
 
-** ->  JOURNAL:** After GREEN -- entry `GREEN`, STATUS=COMPLETED, PARENT=JID of RED_REVIEW.
+** ->  JOURNAL:** After GREEN — entry `GREEN`, STATUS=COMPLETED, PARENT=JID of RED_REVIEW.
 
-### Step 3.6 -- REVIEW GREEN
+### Step 3.4 -- REVIEW GREEN
 
 Reviewer checks:
 - The test passed (there is evidence)
@@ -678,24 +696,35 @@ decomp_jid = jlog("DECOMPOSE", "S-SDT-01", "COMPLETED", parent=review_jid, detai
 
 # 5. For each task (Phase 3)
 for task in tasks:
-    # Step 3.1-3.2: WRITE TEST -> REVIEW TEST
+    # Step 3.1: RED (write test + run, expect failure) + REVIEW RED
     test = write_failing_test(task)
-    test_jid = jlog("TEST_WRITE", task["spec_ref"], "COMPLETED", parent=decomp_jid)
-    review_test = delegate_task(goal="Review test for spec compliance", ...)
-    jlog("TEST_REVIEW", task["spec_ref"], "PASS", parent=test_jid)
-    
-    # Step 3.3-3.4: RED -> REVIEW RED
-    red_output = run_test(test)
-    red_jid = jlog("RED", task["spec_ref"], "COMPLETED", parent=test_jid)
-    review_red = delegate_task(goal="Verify RED failed correctly", ...)
-    jlog("RED_REVIEW", task["spec_ref"], "PASS", parent=red_jid)
-    
-    # Step 3.5-3.6: GREEN -> REVIEW GREEN
+    red_output = run_test(test)  # expected: FAIL — confirms test works
+    red_jid = jlog("RED", task["spec_ref"], "COMPLETED", parent=decomp_jid,
+                   detail=f"Tests written and RED: {red_output.strip()}")
+    review_red = delegate_task(
+        goal="Review test and RED result. Does the test cover the spec? "
+             "Did it fail for the right reason (missing feature, not a test bug)?",
+        context=f"Spec ref: {task['spec_ref']}\nTest:\n{test}\nRED output:\n{red_output}",
+        toolsets=[]
+    )
+    jlog("RED_REVIEW", task["spec_ref"], review_red["verdict"], parent=red_jid,
+         detail=review_red.get("detail", ""))
+    # If FAIL → fix test → jlog("RED", ..., detail="FIXED") → re-review
+
+    # Step 3.3-3.4: GREEN + REVIEW GREEN
     impl = write_minimal_implementation(task, test)
-    green_jid = jlog("GREEN", task["spec_ref"], "COMPLETED", parent=red_jid)
-    review_green = delegate_task(goal="Review GREEN impl", ...)
-    jlog("GREEN_REVIEW", task["spec_ref"], "PASS", parent=green_jid)
-    
+    green_output = run_test(test)  # expected: PASS
+    green_jid = jlog("GREEN", task["spec_ref"], "COMPLETED", parent=red_jid,
+                     detail=f"Implementation done and tests: {green_output.strip()}")
+    review_green = delegate_task(
+        goal="Review GREEN implementation. Is it minimal, correct, spec-compliant?",
+        context=f"Spec ref: {task['spec_ref']}\nTest output:\n{green_output}\n\nNew code:\n{impl}",
+        toolsets=["terminal"]
+    )
+    jlog("GREEN_REVIEW", task["spec_ref"], review_green["verdict"], parent=green_jid,
+         detail=review_green.get("detail", ""))
+    # If FAIL → fix impl → jlog("GREEN", ..., detail="FIXED") → re-review
+
     # Phase 4: regression check
     run_all_tests()
     jlog("REGRESSION", task["spec_ref"], "PASS", parent=green_jid)
