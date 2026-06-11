@@ -32,7 +32,7 @@ User Input
  ->  review tasks  
  ->  JOURNAL_SDD_TDD_SKILL.log update  
  ->  commit journal  
- ->  TRED (write test + run, expect failure)
+ ->  RED (write test + run, expect failure)
  ->  commit
  ->  review RED
  ->  JOURNAL_SDD_TDD_SKILL.log update
@@ -331,7 +331,7 @@ Commit journal:
 
 journal: select lower-bound counter task
 
-## Stage 3.2 -- TRED (Write Test + Run, Expect Failure)
+## Stage 3.2 -- RED (Write Test + Run, Expect Failure)
 
 Action:
 
@@ -371,14 +371,14 @@ Then run the test and confirm FAIL.
 
 Journal update:
 
-TYPE: TRED
+TYPE: RED
 SPEC: S-DEMO-01.04
 STATUS: COMPLETED
 DETAIL: Test written and RED — failure confirms required behavior is missing.
 
 Commit journal:
 
-journal: record TRED result for S-DEMO-01.04
+journal: record RED result for S-DEMO-01.04
 
 Review request:
 
@@ -403,11 +403,11 @@ Journal update:
 TYPE: RED_REVIEW
 SPEC: S-DEMO-01.04
 STATUS: PASS
-DETAIL: TRED is valid. Test matches acceptance criterion and failure proves behavior is not implemented. Reviewed commit <hash>.
+DETAIL: RED is valid. Test matches acceptance criterion and failure proves behavior is not implemented. Reviewed commit <hash>.
 
 Commit journal:
 
-journal: record TRED review for S-DEMO-01.04
+journal: record RED review for S-DEMO-01.04
 
 If review fails:
 
@@ -563,8 +563,8 @@ journal: record regression review for S-DEMO-01.04
 Completion criteria for T-DEMO-01.04:
 
 - task selected and journaled
-- TRED completed and committed (test written + run, RED confirmed)
-- TRED reviewed (covers test quality + RED result)
+- RED completed and committed (test written + run, RED confirmed)
+- RED reviewed (covers test quality + RED result)
 - review result journaled and committed
 - implementation committed
 - GREEN reviewed
@@ -597,9 +597,9 @@ Each task follows:
 1. select task
 2. journal selection
 3. commit journal
-4. TRED: write test + run (expect fail)
-5. commit TRED
-6. review TRED commit (covers test + RED result)
+4. RED: write test + run (expect fail)
+5. commit RED
+6. review RED commit (covers test + RED result)
 7. journal review
 8. commit journal
 9. write minimal implementation
@@ -629,7 +629,7 @@ Checks:
 - all acceptance criteria are covered
 - every spec ID has at least one task
 - every task has a test
-- every TRED was reviewed
+- every RED was reviewed
 - every GREEN was reviewed
 - every refactor was reviewed or explicitly skipped
 - every journal update was committed
