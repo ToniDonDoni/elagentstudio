@@ -2,14 +2,17 @@
 
 Reusable agent skills, workflows, and installation bundles for Codex, OpenCode, Hermes Agent, and related platforms.
 
-Navigation
+## Navigation
 
-* Spec-Driven TDD￼
-    * Install Spec-Driven TDD￼
-    * Verify Spec-Driven TDD￼
-    * Use Spec-Driven TDD￼
-* TriAgent-Driven Development￼
-    * Install TriAgent￼
+- [Available Skills](#available-skills)
+- [Spec-Driven TDD](#spec-driven-tdd)
+  - [Install Spec-Driven TDD](#install-spec-driven-tdd)
+  - [Verify Spec-Driven TDD](#verify-spec-driven-tdd)
+  - [Use Spec-Driven TDD](#use-spec-driven-tdd)
+- [TriAgent-Driven Development](#triagent-driven-development-trdd)
+  - [Install TriAgent-Driven Development](#install-triagent-driven-development)
+  - [Install TriAgent for OpenCode](#install-triagent-for-opencode)
+  - [Install TriAgent for Codex](#install-triagent-for-codex)
 
 ## Available Skills
 
@@ -21,22 +24,21 @@ A spec-driven development test-driven development (TDD) pipeline with review at 
 - **Platform:** Hermes Agent
 - **Requires:** pytest, Hermes Agent with `delegate_task`
 
-### Install
+#### Install Spec-Driven TDD
 
 ```bash
 hermes skills install ToniDonDoni/elagentstudio/skills/spec-driven-tdd
 ```
 
-### Verify
+#### Verify Spec-Driven TDD
 
 ```bash
 hermes skills list | grep spec-driven-tdd
 ```
 
-### Use
+#### Use Spec-Driven TDD
 
-prompt
-```
+```prompt
 Use the spec-driven-tdd skill for <your task description>
 ```
 
@@ -46,21 +48,20 @@ Use the spec-driven-tdd skill for <your task description>
 
 A planner -> builder -> reviewer triagent workflow for structured implementation, bounded review loops, and task orchestration.
 
-- Path: `skills/triagent-driven-development/`
-- Platforms: Codex, OpenCode
+- **Path:** `skills/triagent-driven-development/`
+- **Platforms:** Codex, OpenCode
 
-## Install
+#### Install TriAgent-Driven Development
 
-From the repository root, choose your tool and read its install guide:
+From the repository root, choose your tool and read its install guide.
 
-### OpenCode
-
+##### Install TriAgent for OpenCode
 
 ```bash
 cat skills/triagent-driven-development/README_OPENCODE_INSTALL.md
 ```
 
-### Codex
+##### Install TriAgent for Codex
 
 ```bash
 cat skills/triagent-driven-development/README_CODEX_INSTALL.md
