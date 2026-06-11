@@ -58,9 +58,9 @@ git log --oneline --reverse
 
 abc1234 SPEC COMPLETED                                    # spec/ + journal
 def5678 SPEC REVIEW PASSED                                # journal only
-7890123 RED COMPLETED                                     # test output + journal
+7890123 TRED COMPLETED                                    # tests/ + test output + journal
 3456789 RED REVIEW FAILED                                 # journal only
-5678901 RED COMPLETED FIXED                               # test fix + journal
+5678901 TRED COMPLETED FIXED                              # test fix + journal
 9012345 RED REVIEW PASSED                                 # journal only
 1234567 GREEN COMPLETED                                   # src/ + journal
 3456789 GREEN REVIEW PASSED                               # journal only
@@ -121,10 +121,10 @@ SPEC
   ▼
 TASK N (from spec decomposition)
   │
-  ├── 1. WRITE TEST + RED (write + run, expect failure)
+  ├── 1. TRED (write test + run, expect failure)
   ├── 2. REVIEW RED -> PASS?
   │     ├── PASS -> proceed
-  │     └── FAIL -> fix test -> re-run RED -> re-review
+  │     └── FAIL -> fix test -> re-run TRED -> re-review
   │
   ├── 3. GREEN (minimal implementation)
   ├── 4. REVIEW GREEN -> PASS?
@@ -475,9 +475,9 @@ For EVERY task from Phase 2:
 
 ---
 
-### Step 3.1 -- WRITE TEST + RED (write test, run, expect failure)
+### Step 3.1 -- TRED (write test + run, expect failure)
 
-Write a failing test targeting the acceptance criterion from the spec, not the implementation. The test is end-to-end — it checks system behavior, not function internals.
+Write a failing test on TRED stage targeting the acceptance criterion from the spec, not the implementation. The test is end-to-end — it checks system behavior, not function internals.
 
 ```python
 def test_todo_has_id_title_and_completed_at():
@@ -690,7 +690,7 @@ decomp_jid = jlog("DECOMPOSE", "S-SDT-01", "COMPLETED", parent=review_jid, detai
 
 # 5. For each task (Phase 3)
 for task in tasks:
-    # Step 3.1-3.2: WRITE TEST + RED (run + expect failure) + REVIEW RED
+    # Step 3.1: TRED (write test + run, expect failure) + REVIEW RED
     test = write_failing_test(task)
     red_output = run_test(test)  # expected: FAIL — confirms test works
     red_jid = jlog("RED", task["spec_ref"], "COMPLETED", parent=decomp_jid,
