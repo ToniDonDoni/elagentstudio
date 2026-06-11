@@ -512,11 +512,15 @@ DETAIL: Tests written and RED: FAILED (ImportError: cannot import name 'TodoItem
 
 Reviewer checks **both** the test code and the RED output:
 
-- Does the test correctly test the acceptance criterion from the spec?
+**Test quality:**
+1. **Test targets the spec, not the code** — the test checks the acceptance criterion, not implementation details
+2. **End-to-end approach** — the test checks system behavior as a whole (or at minimum the module's public API), not internal functions
+3. **One test = one acceptance criterion**
+4. **Wording is clear** — from the name and docstring it is clear what is being verified
+
+**RED result:**
 - Did the test fail for the right reason (missing feature, not a test bug)?
-- Is the test end-to-end (behavioral, not implementation-coupled)?
 - Are edge cases covered?
-- Is wording clear?
 
 ```python
 delegate_task(
