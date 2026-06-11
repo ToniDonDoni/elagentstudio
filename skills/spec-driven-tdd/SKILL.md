@@ -456,7 +456,7 @@ If task decomposition produces many tasks, request the spec reviewer to also eva
 ```python
 delegate_task(
     goal="Review task decomposition for appropriate granularity.",
-    context=f"Spec:\\n{spec_text}\\n\\nTasks:\\n{tasks_text}",
+    context=f"Spec:\n{spec_text}\n\nTasks:\n{tasks_text}",
     toolsets=[]
 )
 ```
@@ -534,7 +534,7 @@ delegate_task(
     5. Is wording clear?
 
     Return a verdict (PASS or FAIL) with reasoning for each criterion.""",
-    context=f"Spec section:\\n{spec_section}\\n\\nTest:\\n{test_code}\\n\\nRED output:\\n{terminal_output}",
+    context=f"Spec section:\n{spec_section}\n\nTest:\n{test_code}\n\nRED output:\n{terminal_output}",
     toolsets=[]
 )
 ```
@@ -578,7 +578,7 @@ Reviewer checks:
 ```python
 delegate_task(
     goal="Review the GREEN implementation. Is it minimal, correct, spec-compliant?",
-    context=f"Spec ref: {spec_ref}\\nTest output:\\n{terminal_output}\\n\\nNew code:\\n{implementation_code}",
+    context=f"Spec ref: {spec_ref}\nTest output:\n{terminal_output}\n\nNew code:\n{implementation_code}",
     toolsets=["terminal"]
 )
 ```
