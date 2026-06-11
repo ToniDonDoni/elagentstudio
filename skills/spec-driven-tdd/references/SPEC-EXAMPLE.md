@@ -363,9 +363,11 @@ Invalid failure reasons:
 - test cannot run
 - environment failure
 
-Commit:
+Commit RED artifact: test file + RED evidence (test output) + journal entry
 
+```
 test: add lower-bound acceptance test for counter
+```
 
 Then run the test and confirm FAIL.
 

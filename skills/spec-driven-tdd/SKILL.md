@@ -51,7 +51,7 @@ on the current artifact. Ever. No exceptions.
 
 ### Why Per-Stage Commits + Journal Are Required (Audit Trail)
 
-Commit after every stage and journal every result — this is not ceremony. It exists to make the process **analyzable and improvable over time**:
+Commit after every completed stage and journal every stage result — this is not ceremony. It exists to make the process **analyzable and improvable over time**:
 
 ```
 git log --oneline --reverse
@@ -63,7 +63,7 @@ def5678 SPEC REVIEW PASSED                                # journal only
 5678901 RED COMPLETED FIXED                              # test fix + journal
 9012345 RED REVIEW PASSED                                 # journal only
 1234567 GREEN COMPLETED                                   # src/ + journal
-3456789 GREEN REVIEW PASSED                               # journal only
+3456779 GREEN REVIEW PASSED                               # journal only
 ...
 ```
 
@@ -489,6 +489,8 @@ def test_todo_has_id_title_and_completed_at():
 ```
 
 **Then run the test immediately.** It must fail — we have not written the code yet.
+
+**Commit RED artifact: test file + RED evidence (test output) + journal entry.**
 
 ```bash
 pytest tests/test_todo.py::test_todo_has_id_title_and_completed_at -v
