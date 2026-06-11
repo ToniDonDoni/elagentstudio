@@ -2,33 +2,16 @@
 
 Reusable agent skills, workflows, and installation bundles for Codex, OpenCode, Hermes Agent, and related platforms.
 
+Navigation
+
+* Spec-Driven TDD￼
+    * Install Spec-Driven TDD￼
+    * Verify Spec-Driven TDD￼
+    * Use Spec-Driven TDD￼
+* TriAgent-Driven Development￼
+    * Install TriAgent￼
+
 ## Available Skills
-
-### TriAgent-Driven Development (trdd)
-
-A planner -> builder -> reviewer triagent workflow for structured implementation, bounded review loops, and task orchestration.
-
-- Path: `skills/triagent-driven-development/`
-- Platforms: Codex, OpenCode
-
-## Install
-
-From the repository root, choose your tool and read its install guide:
-
-### OpenCode
-
-
-```bash
-cat skills/triagent-driven-development/README_OPENCODE_INSTALL.md
-```
-
-### Codex
-
-```bash
-cat skills/triagent-driven-development/README_CODEX_INSTALL.md
-```
-
----
 
 ### Spec-Driven TDD
 
@@ -57,3 +40,28 @@ prompt
 Use the spec-driven-tdd skill for <your task description>
 ```
 
+---
+
+### TriAgent-Driven Development (trdd)
+
+A planner -> builder -> reviewer triagent workflow for structured implementation, bounded review loops, and task orchestration.
+
+- Path: `skills/triagent-driven-development/`
+- Platforms: Codex, OpenCode
+
+## Install
+
+From the repository root, choose your tool and read its install guide:
+
+### OpenCode
+
+
+```bash
+cat skills/triagent-driven-development/README_OPENCODE_INSTALL.md
+```
+
+### Codex
+
+```bash
+cat skills/triagent-driven-development/README_CODEX_INSTALL.md
+```
