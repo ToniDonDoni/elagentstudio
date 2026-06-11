@@ -32,17 +32,11 @@ User Input
  ->  review tasks  
  ->  JOURNAL_SDD_TDD_SKILL.log update  
  ->  commit journal  
- ->  test file  
- ->  commit  
- ->  review test  
- ->  JOURNAL_SDD_TDD_SKILL.log update  
- ->  commit journal  
- ->  RED test run  
- ->  JOURNAL_SDD_TDD_SKILL.log update  
- ->  commit journal  
- ->  review RED  
- ->  JOURNAL_SDD_TDD_SKILL.log update  
- ->  commit journal  
+ ->  RED (write test + run, expect failure)
+ ->  commit
+ ->  review RED
+ ->  JOURNAL_SDD_TDD_SKILL.log update
+ ->  commit journal
  ->  implementation code  
  ->  commit  
  ->  review GREEN  
@@ -337,11 +331,11 @@ Commit journal:
 
 journal: select lower-bound counter task
 
-## Stage 3.2 -- Write Test
+## Stage 3.2 -- RED (Write Test + Run, Expect Failure)
 
 Action:
 
-Create or update tests/test_counter.py.
+Write a failing test targeting the acceptance criterion, then run it immediately.
 
 Test intent:
 
@@ -351,52 +345,9 @@ Test intent:
 - test public behavior only
 - do not inspect private fields
 
-Commit:
-
-test: add lower-bound acceptance test for counter
-
-Review request:
-
-Review commit <hash>.
-
-Scope:
-
-- Does the test verify S-DEMO-01.04?
-- Does it test behavior, not implementation details?
-- Is it focused on exactly one acceptance criterion?
-- Would it fail without lower-bound behavior?
-
-Expected review result:
-
-PASS.
-
-Journal update:
-
-TYPE: TEST_REVIEW  
-SPEC: S-DEMO-01.04  
-STATUS: PASS  
-DETAIL: Lower-bound test matches acceptance criterion and public behavior. Reviewed commit <hash>.
-
-Commit journal:
-
-journal: record test review for S-DEMO-01.04
-
-If review fails:
-
-- create fix commit for test
-- re-review new commit
-- append FAIL and retry records to journal
-- commit journal after each review/fix
-
-## Stage 3.3 -- RED
-
-Action:
-
-Run the focused test before implementation.
-
 Expected result:
 
-The test fails.
+The test fails before implementation.
 
 Valid failure reasons:
 
@@ -412,12 +363,20 @@ Invalid failure reasons:
 - test cannot run
 - environment failure
 
+Commit RED artifact: test file + RED evidence (test output) + journal entry
+
+```
+test: add lower-bound acceptance test for counter
+```
+
+Then run the test and confirm FAIL.
+
 Journal update:
 
-TYPE: RED  
-SPEC: S-DEMO-01.04  
-STATUS: COMPLETED  
-DETAIL: Focused test failed before implementation. Failure reason: missing lower-bound behavior.
+TYPE: RED
+SPEC: S-DEMO-01.04
+STATUS: COMPLETED
+DETAIL: Test written and RED — failure confirms required behavior is missing.
 
 Commit journal:
 
@@ -425,13 +384,16 @@ journal: record RED result for S-DEMO-01.04
 
 Review request:
 
-Review journal commit <hash> and RED evidence.
+Review commit <hash> and RED evidence.
 
 Scope:
 
+- Does the test verify S-DEMO-01.04?
+- Does it test behavior, not implementation details?
+- Is it focused on exactly one acceptance criterion?
+- Would it fail without lower-bound behavior?
 - Did the test actually fail?
-- Did it fail for the correct reason?
-- Is this a real RED and not a broken test?
+- Did it fail for the correct reason (missing behavior, not a broken test)?
 - Is terminal evidence recorded?
 
 Expected review result:
@@ -440,24 +402,24 @@ PASS.
 
 Journal update:
 
-TYPE: RED_REVIEW  
-SPEC: S-DEMO-01.04  
-STATUS: PASS  
-DETAIL: RED is valid. Failure proves behavior is not implemented.
+TYPE: RED_REVIEW
+SPEC: S-DEMO-01.04
+STATUS: PASS
+DETAIL: RED is valid. Test matches acceptance criterion and failure proves behavior is not implemented. Reviewed commit <hash>.
 
 Commit journal:
 
 journal: record RED review for S-DEMO-01.04
 
-If RED review fails:
+If review fails:
 
 - fix test/setup in a new commit
-- run RED again
+- re-run test
 - journal retry
 - commit journal
 - re-review
 
-## Stage 3.4 -- GREEN
+## Stage 3.3 -- GREEN
 
 Action:
 
@@ -526,7 +488,7 @@ If GREEN review fails:
 - commit journal
 - re-review
 
-## Stage 3.5 -- Refactor Decision
+## Stage 3.4 -- Refactor Decision
 
 Action:
 
@@ -556,7 +518,7 @@ If refactor is needed:
 - append review result to journal
 - commit journal
 
-## Stage 3.6 -- Regression Check
+## Stage 3.5 -- Regression Check
 
 Action:
 
@@ -598,17 +560,14 @@ Commit journal:
 
 journal: record regression review for S-DEMO-01.04
 
-## Stage 3.7 -- Mark Task Done
+## Stage 3.6 -- Mark Task Done
 
 Completion criteria for T-DEMO-01.04:
 
 - task selected and journaled
-- test created and committed
-- test reviewed
+- RED completed and committed (test written + run, RED confirmed)
+- RED reviewed (covers test quality + RED result)
 - review result journaled and committed
-- RED run journaled and committed
-- RED reviewed
-- RED review journaled and committed
 - implementation committed
 - GREEN reviewed
 - GREEN review journaled and committed
@@ -640,32 +599,26 @@ Each task follows:
 1. select task
 2. journal selection
 3. commit journal
-4. write test
-5. commit test
-6. review test commit
+4. RED: write test + run (expect fail)
+5. commit RED
+6. review RED commit (covers test + RED result)
 7. journal review
 8. commit journal
-9. run RED
-10. journal RED
-11. commit journal
-12. review RED
-13. journal RED review
-14. commit journal
-15. write minimal implementation
-16. commit implementation
-17. review GREEN commit
-18. journal GREEN review
-19. commit journal
-20. decide refactor
-21. commit refactor if any
-22. review refactor if any
-23. journal refactor result
-24. commit journal
-25. run regression
-26. journal regression
-27. commit journal
-28. mark task done
-29. commit journal
+9. write minimal implementation
+10. commit implementation
+11. review GREEN commit
+12. journal GREEN review
+13. commit journal
+14. decide refactor
+15. commit refactor if any
+16. review refactor if any
+17. journal refactor result
+18. commit journal
+19. run regression
+20. journal regression
+21. commit journal
+22. mark task done
+23. commit journal
 
 ## Stage 5 -- Final Feature Review
 
@@ -678,7 +631,6 @@ Checks:
 - all acceptance criteria are covered
 - every spec ID has at least one task
 - every task has a test
-- every test was reviewed before RED
 - every RED was reviewed
 - every GREEN was reviewed
 - every refactor was reviewed or explicitly skipped
