@@ -6,8 +6,14 @@ the PARENT chain from any entry reaches USER_INPUT, and all entries
 form a single tree (no orphans).
 
 The test generates a realistic sample JOURNAL from a simulated Tetris
-SDD run and validates it. Synthetic error cases verify each detection
-independently.
+SDD run and validates it (7 tests total, including 6 synthetic error
+cases).
+
+Directory structure:
+  tests/test_journal_task_tree/
+    SKILL.md              — copy of the skill under test
+    TASK.md               — Tetris task specification
+    test_journal_task_tree.py  — this test file
 """
 
 import re
@@ -18,18 +24,100 @@ from typing import Any
 # T1: Journal generator
 # =============================================================================
 
+def _jid(seq: int) -> str:
+    """Generate a predictable JID for a given sequence number."""
+    return f"J-TETRIS-{seq:03d}"
+
+
 def generate_tetris_journal() -> str:
     """Generate a sample JOURNAL from a simulated Tetris SDD run.
 
     Returns a journal string tracing a full Tetris game implementation
-    through the SDD pipeline: USER_INPUT -> SPEC -> REVIEW -> DECOMPOSE
-    -> TASKS -> per-task RED/GREEN -> REGRESSION -> FINAL_REVIEW -> DONE.
-
-    4 tasks (board, pieces, collision, game loop), each with RED,
-    RED_REVIEW, GREEN, GREEN_REVIEW. All entries share a single ROOT
-    and form an unbroken PARENT chain back to USER_INPUT.
+    through the SDD pipeline. All entries form an unbroken PARENT chain
+    from DONE back to USER_INPUT. Single ROOT for the entire tree.
     """
-    raise NotImplementedError("Generator not implemented yet")
+    # Sequence numbering for JIDs
+    s = 0
+
+    def next_jid() -> str:
+        nonlocal s
+        s += 1
+        return _jid(s)
+
+    root = _jid(1)  # J-TETRIS-001
+
+    def entry(jid: str, typ: str, spec: str, status: str,
+              parent: str, detail: str, root_jid: str = "",
+              task: str = "") -> str:
+        lines = [f"=== {jid} ===",
+                 f"TYPE: {typ}",
+                 f"SPEC: {spec}",
+                 f"STATUS: {status}",
+                 f"PARENT: {parent}"]
+        if root_jid:
+            lines.append(f"ROOT: {root_jid}")
+        if task:
+            lines.append(f"TASK: {task}")
+        lines.append(f"DETAIL: {detail}")
+        lines.append("")
+        return "\n".join(lines)
+
+    ui = next_jid()  # 001
+    spec_spec = next_jid()  # 002
+    spec_rev = next_jid()  # 003
+    decomp = next_jid()  # 004
+    task_rev = next_jid()  # 005
+
+    tasks = [
+        ("T-S-JTT-01-001", "Board model (10x20 grid, block storage)"),
+        ("T-S-JTT-01-002", "Piece definitions and rotation (7 tetrominoes)"),
+        ("T-S-JTT-01-003", "Collision detection and line clearing"),
+        ("T-S-JTT-01-004", "Game loop (input handling, gravity, scoring)"),
+    ]
+
+    parts = [
+        entry(ui, "USER_INPUT", "S-JTT-01", "COMPLETED", "--",
+              "Tetris game implementation via SDD pipeline", root_jid=root),
+        entry(spec_spec, "SPEC_SPEC", "S-JTT-01", "COMPLETED", ui,
+              "SPEC-DRAFT.md created with 4 entities and 4 tasks", root_jid=root),
+        entry(spec_rev, "SPEC_REVIEW", "S-JTT-01", "PASS", spec_spec,
+              "SPEC REVIEW PASS - spec is complete and testable", root_jid=root),
+        entry(decomp, "DECOMPOSE", "S-JTT-01", "COMPLETED", spec_rev,
+              "Decomposed into 4 tasks: board, pieces, collision, game loop", root_jid=root),
+        entry(task_rev, "TASK_REVIEW", "S-JTT-01", "PASS", decomp,
+              "TASK REVIEW PASS - all tasks map to acceptance criteria", root_jid=root),
+    ]
+
+    # Per-task loop: previous_entry starts as task_rev for T1
+    prev = task_rev
+    for i, (task_id, task_desc) in enumerate(tasks):
+        red = next_jid()
+        red_rev = next_jid()
+        green = next_jid()
+        green_rev = next_jid()
+        regr = next_jid()
+
+        parts.append(entry(red, "RED", "S-JTT-01", "COMPLETED", prev,
+                           f"T{i+1} RED: {task_desc} — test expects FAIL", root_jid=root, task=task_id))
+        parts.append(entry(red_rev, "RED_REVIEW", "S-JTT-01", "PASS", red,
+                           f"T{i+1} RED REVIEW PASS — test fails for right reason", root_jid=root, task=task_id))
+        parts.append(entry(green, "GREEN", "S-JTT-01", "COMPLETED", red_rev,
+                           f"T{i+1} GREEN: {task_desc} — minimal implementation", root_jid=root, task=task_id))
+        parts.append(entry(green_rev, "GREEN_REVIEW", "S-JTT-01", "PASS", green,
+                           f"T{i+1} GREEN REVIEW PASS — impl is minimal and correct", root_jid=root, task=task_id))
+        parts.append(entry(regr, "REGRESSION", "S-JTT-01", "PASS", green_rev,
+                           f"T{i+1} REGRESSION: all {i+1} tests green", root_jid=root))
+        prev = regr
+
+    final_rev = next_jid()
+    done = next_jid()
+
+    parts.append(entry(final_rev, "FINAL_REVIEW", "S-JTT-01", "PASS", prev,
+                       "FINAL REVIEW PASS — all ACs covered, all tests green", root_jid=root))
+    parts.append(entry(done, "DONE", "S-JTT-01", "COMPLETED", final_rev,
+                       "Tetris implementation complete via SDD pipeline", root_jid=root))
+
+    return "\n".join(parts)
 
 
 # =============================================================================
@@ -42,7 +130,56 @@ def parse_journal(text: str) -> list[dict[str, Any]]:
     Each entry has keys: jid, type, spec, status, parent, root, task, detail.
     Only populated keys are present (optional fields may be absent).
     """
-    raise NotImplementedError("Parser not implemented yet")
+    entries: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+
+    for line in text.split("\n"):
+        stripped = line.strip()
+
+        # Start of a new entry: === JID ===
+        if stripped.startswith("===") and stripped.endswith("==="):
+            if current is not None:
+                entries.append(current)
+            jid = stripped[3:-3].strip()
+            current = {"jid": jid}
+            continue
+
+        if current is None:
+            continue
+
+        # Parse KEY: VALUE pairs
+        if ":" in stripped:
+            key, _, value = stripped.partition(":")
+            key = key.strip().lower()
+            value = value.strip()
+            # Map keys to our field names
+            if key == "type":
+                current["type"] = value
+            elif key == "spec":
+                current["spec"] = value
+            elif key == "status":
+                current["status"] = value
+            elif key == "parent":
+                current["parent"] = value
+            elif key == "root":
+                current["root"] = value
+            elif key == "task":
+                current["task"] = value
+            elif key == "depends":
+                current["depends"] = value
+            elif key == "detail":
+                current.setdefault("detail", "")
+                if current["detail"]:
+                    current["detail"] += "\n" + value
+                else:
+                    current["detail"] = value
+            elif key == "detail" and value:
+                current["detail"] = value
+
+    if current is not None:
+        entries.append(current)
+
+    return entries
 
 
 # =============================================================================
@@ -271,40 +408,6 @@ DETAIL: Cycle node B
 
 
 def test_detects_broken_chain():
-    """C15: Chain terminating before USER_INPUT is detected."""
-    journal = _make_minimal_journal("""
-=== J-UID-001 ===
-TYPE: USER_INPUT
-SPEC: S-TEST
-STATUS: COMPLETED
-PARENT: --
-ROOT: J-UID-001
-DETAIL: Root
-
-=== J-MID-001 ===
-TYPE: SPEC_SPEC
-SPEC: S-TEST
-STATUS: COMPLETED
-PARENT: J-UID-001
-ROOT: J-UID-001
-DETAIL: Mid
-
-=== J-BROKEN-001 ===
-TYPE: DONE
-SPEC: S-TEST
-STATUS: COMPLETED
-PARENT: J-MID-001
-ROOT: J-UID-001
-DETAIL: Broken chain (SPEC_REVIEW missing)
-""")
-    errors = validate_journal(journal)
-    # J-MID-001 is not USER_INPUT and is not at chain root,
-    # but the chain does reach USER_INPUT (J-MID-001 -> J-UID-001 -> --)
-    # Actually this DOES reach USER_INPUT. Let me make a truly broken chain.
-    pass
-
-
-def test_detects_broken_chain_v2():
     """C15: Chain terminating at non-USER_INPUT with PARENT: -- is detected."""
     journal = _make_minimal_journal("""
 === J-UID-001 ===
