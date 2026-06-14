@@ -227,3 +227,30 @@ STATUS: COMPLETED
 PARENT: J-20260614-011600-001
 ROOT: J-20260614-010000-001
 DETAIL: DONE. tests/test_journal_task_tree/ contains: (1) validator script, tested on good+bad journals, (2) REAL Tetris SDD run with 27-entry journal, (3) Tetris game implementation (board, pieces, collision, game), (4) 24 Tetris tests + 8 validator tests = 32/32 green. Real journal validates with 0 errors.
+
+=== J-20260614-023921-001 ===
+TYPE: GREEN_REVIEW
+SPEC: S-JTT-01
+STATUS: FAIL
+PARENT: J-20260614-011700-001
+ROOT: J-20260614-010000-001
+TASK: T-S-JTT-01-001
+DETAIL: JOURNAL.md fix review — issue 2.1 FAIL. Sections 2.7 and 4.6 still require TASK for DECOMPOSE/TASK_REVIEW, contradicting section 3. Other 8 issues PASS. Fixed in 886a055.
+
+=== J-20260614-023921-002 ===
+TYPE: GREEN
+SPEC: S-JTT-01
+STATUS: COMPLETED FIXED
+PARENT: J-20260614-023921-001
+ROOT: J-20260614-010000-001
+TASK: T-S-JTT-01-001
+DETAIL: Fix applied: sections 2.7 and 4.6 updated to mark TASK optional for DECOMPOSE/TASK_REVIEW, required only for subtask decomposition. Committed 886a055.
+
+=== J-20260614-023921-003 ===
+TYPE: GREEN_REVIEW
+SPEC: S-JTT-01
+STATUS: PASS
+PARENT: J-20260614-023921-002
+ROOT: J-20260614-010000-001
+TASK: T-S-JTT-01-001
+DETAIL: Re-review PASS — issue 2.1 fully resolved. All 9 issues now verified correct. GREEN_REVIEW passed.
