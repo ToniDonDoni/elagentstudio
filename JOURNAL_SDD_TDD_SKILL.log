@@ -159,3 +159,12 @@ PARENT: J-20260614-010700-001
 ROOT: J-20260614-010000-001
 TASK: T-S-JTT-01-001
 DETAIL: T1 RED: 4 tests for generator written. All fail with NotImplementedError. RED confirmed.
+
+=== J-20260614-010900-001 ===
+TYPE: RED_REVIEW
+SPEC: S-JTT-01
+STATUS: FAIL
+PARENT: J-20260614-010800-001
+ROOT: J-20260614-010000-001
+TASK: T-S-JTT-01-001
+DETAIL: RED REVIEW FAIL. Test bug: journal.count("===") counts 2 per entry (54 for 27 entries). Fix to count "=== J-" prefix instead.
