@@ -195,3 +195,11 @@ PARENT: J-20260614-011100-001
 ROOT: J-20260614-010000-001
 TASK: T-S-JTT-01-001
 DETAIL: T1-T8 GREEN: Generator, parser, validation (traceability + linearity after TASK_REVIEW), 8 tests, standalone validate_journal.py script. All 8/8 tests pass. Clean journal validates with 0 errors. Script detects real bugs in existing journal.
+
+=== J-20260614-011400-001 ===
+TYPE: REGRESSION
+SPEC: S-JTT-01
+STATUS: PASS
+PARENT: J-20260614-011200-001
+ROOT: J-20260614-010000-001
+DETAIL: REGRESSION: all 8 tests green. Generator, parser, validation, all 6 synthetic error tests pass. Standalone validate_journal.py functional.
