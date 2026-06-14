@@ -142,3 +142,11 @@ STATUS: FAIL
 PARENT: J-20260614-010500-001
 ROOT: J-20260614-010000-001
 DETAIL: TASK REVIEW FAIL. 3 issues: (1) flat task IDs, should be hierarchical (S-JTT-01.NN), (2) Task 3 bundles 15 checks (too large), (3) Task 4 bundles 9 test scenarios (too large), (4) R2 orphaned in Task 1.
+
+=== J-20260614-010700-001 ===
+TYPE: DECOMPOSE
+SPEC: S-JTT-01
+STATUS: COMPLETED
+PARENT: J-20260614-010600-001
+ROOT: J-20260614-010000-001
+DETAIL: TASK v2 - 8 hierarchical tasks (S-JTT-01.01 to S-JTT-01.08): generator, parser, structural checks (C1-C4), chain integrity (C5-C7), ROOT checks (C8-C10), TASK/SPEC checks (C11-C13), completeness (C14-C15), main test + synthetic errors.
