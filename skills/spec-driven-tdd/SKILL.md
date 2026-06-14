@@ -319,7 +319,6 @@ Blank line between entries. Fields are strictly in this order. Empty optional fi
 | REGRESSION_REVIEW | Regression review (Phase 4) |
 | FINAL_REVIEW | Final implementation review (Phase 5) |
 | ESCALATION | User escalation when review limit exceeded (Rule 8) |
-| CODEX_REVIEW | Review by Codex CLI |
 | DONE | Completion |
 
 ### Lifecycle Rules
@@ -561,7 +560,6 @@ The following table specifies what value goes in the `SPEC` and `TASK` fields fo
 | REGRESSION_REVIEW | The spec ID | — |
 | FINAL_REVIEW | The spec ID | — |
 | ESCALATION | The spec ID | Task ID if applicable |
-| CODEX_REVIEW | The spec ID | — |
 | DONE | The spec ID | — |
 
 ## Phase 0 -- User Input Recording
@@ -972,27 +970,6 @@ review_test = delegate_task(goal="Review test", context=test_context, toolsets=[
 review_red = delegate_task(goal="Verify RED", context=red_context, toolsets=[])
 # ... fresh context again ...
 ```
-
-### Codex CLI Code Review (additional review)
-
-For external, independent review of the skill or documentation -- use Codex CLI directly:
-
-```bash
-# In the project root with SKILL.md and SPEC-DRAFT.md
-codex exec --skip-git-repo-check --sandbox danger-full-access \
-  "Review the skill SKILL.md against SPEC-DRAFT.md requirements. \
-   Check: journaling section, spec ID hierarchy, traceability, \
-   journal entries in all Phase 3 steps, pitfalls >=12. PASS/FAIL per item."
-```
-
-If the sandbox (bwrap) blocks local files -- pass the content through stdin:
-
-```bash
-cat SKILL.md SPEC-DRAFT.md | codex exec --skip-git-repo-check \
-  --sandbox danger-full-access - "Review..."
-```
-
-> **Note:** Codex CLI does not support `--acp`. Use `codex exec` or `codex review --uncommitted`. For ACP review -- `opencode acp` or `copilot --acp --stdio`.
 
 ## Spec Format Example
 
