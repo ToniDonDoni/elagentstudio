@@ -119,36 +119,36 @@ Optional for entries of type: `DECOMPOSE`, `TASK_REVIEW` (required only when
 decomposing or reviewing a specific task's subtasks; omitted for top-level
 spec decomposition or task-set review).
 
-**Task ID grammar (ABNF):**
+**Task ID grammar (regex):**
 
 ```
-task-id       = "T-" spec-id "-" integer
-                 ; e.g. T-S-TETRIS-01-001
-
-subtask-id    = task-id "." integer
-                 ; e.g. T-S-TETRIS-01-001.001
-
-full-task-id  = task-id / subtask-id
+^T-(S-[A-Z]{2,6}-\d{2}(?:\.\d{2})*)-\d{3}(?:\.\d{3})*$
 ```
+
+Group 1 = SPEC_ID (e.g., `S-TETRIS-01`, `S-TETRIS-01.01`)
+Group 2+ = task number + optional subtask suffix (e.g., `001`, `001.002`, `001.002.003`)
 
 **Parsing rules (unambiguous):**
 
-1. Strip the trailing `-NNN` (task number) from the right. Everything
-   before `-NNN` is the SPEC_ID frame.
-2. Within the remaining string after dropping `T-` prefix, any dot `.`
-   belongs to the SPEC_ID (e.g. `S-TETRIS-01.01`).
-3. A subtask is identified by a dot AFTER the task number:
-   `T-{SPEC_ID}-{NNN}.{SUFFIX}`.
-4. The presence of ANY dot in the TASK string is NOT sufficient to
-   classify it as a subtask. Only a dot after the task-number segment
-   indicates a subtask.
+1. The full TASK string MUST match the regex
+   `^T-(S-[A-Z]{2,6}-\d{2}(?:\.\d{2})*)-\d{3}(?:\.\d{3})*$`.
+2. The SPEC_ID is everything between `T-` and the LAST `-NNN...` segment.
+3. The task number is the segment AFTER the last `-`. If it contains dots
+   (e.g., `001.002`), each dot-separated part is a subtask level:
+   - `001` = task number
+   - `001.002` = task 001, subtask 002
+   - `001.002.003` = task 001, subtask 002, sub-subtask 003
+4. Any dot INSIDE the SPEC_ID (before the task number) is part of the
+   sub-spec reference and does NOT indicate a subtask.
+5. Subtask depth is arbitrary: `001.002.003.004` is valid.
 
 Examples:
-- `T-S-TETRIS-01-001` — top-level task (no dot after number)
-- `T-S-TETRIS-01-001.001` — subtask (dot after 001)
-- `T-S-TETRIS-01.01-001` — task for sub-spec, NOT a subtask
-  (dot is inside SPEC_ID, before the task number)
-- `T-S-TETRIS-01.01-001.002` — subtask of task for sub-spec
+| Value | SPEC_ID | Task | Is subtask? |
+|-------|---------|------|-------------|
+| `T-S-TETRIS-01-001` | `S-TETRIS-01` | `001` | No (top-level task) |
+| `T-S-TETRIS-01-001.002` | `S-TETRIS-01` | `001.002` | Yes (subtask of 001) |
+| `T-S-TETRIS-01.01-001` | `S-TETRIS-01.01` | `001` | No (sub-spec, not subtask) |
+| `T-S-TETRIS-01.01-001.002.003` | `S-TETRIS-01.01` | `001.002.003` | Yes (sub-subtask) |
 
 ### 2.8 TASK_PARENT — Parent task (optional)
 
@@ -228,8 +228,9 @@ Notes:
   top-level spec decomposition.
 - `TASK` on TASK_REVIEW is required when reviewing decomposition of a
   specific task. Omitted for top-level task set review.
-- `TASK_PARENT` on RED/RED_REVIEW/GREEN/GREEN_REVIEW is required when the
-  entry belongs to a subtask.
+- `TASK_PARENT` on any entry with a subtask TASK (containing a dot after
+  the task number) is required, regardless of TYPE. This ensures all entries
+  for the same subtask have consistent TASK_PARENT.
 - `DEPENDS` on TASKS_COMPLETE lists the final JID of each task branch.
 - `DEPENDS` on REGRESSION MAY list the TASKS_COMPLETE entry and/or individual
   task-final JIDs when there is no explicit TASKS_COMPLETE barrier.
@@ -271,27 +272,41 @@ Any transition not listed here is a validation error.
 
 | Parent TYPE | Parent STATUS | Allowed child TYPE(s) |
 |-------------|---------------|----------------------|
-| USER_INPUT | any | SPEC_SPEC |
-| SPEC_SPEC | any | SPEC_REVIEW |
+| -- | -- | PROJECT_INIT |
+| -- | -- | USER_INPUT |
+| PROJECT_INIT | COMPLETED | SPEC_SPEC |
+| USER_INPUT | COMPLETED | SPEC_SPEC |
+| USER_INPUT | CANCELLED | (terminal) |
+| SPEC_SPEC | COMPLETED | SPEC_REVIEW |
 | SPEC_REVIEW | PASS | DECOMPOSE |
 | SPEC_REVIEW | FAIL, NEEDS_CLARIFICATION | SPEC_SPEC (re-fix) |
-| DECOMPOSE | any | TASK_REVIEW |
-| TASK_REVIEW | PASS | RED |
+| DECOMPOSE | COMPLETED | TASK_REVIEW |
+| TASK_REVIEW | PASS | RED, TASKS_COMPLETE |
 | TASK_REVIEW | FAIL, NEEDS_CLARIFICATION | DECOMPOSE (re-decompose) |
+| AGENT_DECISION | COMPLETED | DECOMPOSE, RED |
 | RED | COMPLETED | RED_REVIEW |
 | RED | FIXED | RED_REVIEW |
 | RED_REVIEW | PASS | GREEN |
 | RED_REVIEW | FAIL, NEEDS_CLARIFICATION | RED (re-fix) |
 | GREEN | COMPLETED | GREEN_REVIEW |
 | GREEN | FIXED | GREEN_REVIEW |
-|| GREEN_REVIEW | PASS | TASKS_COMPLETE, REGRESSION |
+|| GREEN_REVIEW | PASS | REGRESSION |
 | GREEN_REVIEW | FAIL, NEEDS_CLARIFICATION | GREEN (re-fix) |
-| TASKS_COMPLETE | any | REGRESSION |
+| TASKS_COMPLETE | COMPLETED | REGRESSION |
 | REGRESSION | COMPLETED | REGRESSION_REVIEW |
 | REGRESSION_REVIEW | PASS | FINAL_REVIEW |
 | REGRESSION_REVIEW | FAIL | GREEN (re-fix) or REGRESSION (re-run) |
 | FINAL_REVIEW | PASS | DONE |
 | FINAL_REVIEW | FAIL | GREEN (re-fix) or REGRESSION (re-run) |
+| SPEC_REVIEW | ESCALATED | ESCALATION |
+| TASK_REVIEW | ESCALATED | ESCALATION |
+| RED_REVIEW | ESCALATED | ESCALATION |
+| GREEN_REVIEW | ESCALATED | ESCALATION |
+| REGRESSION_REVIEW | ESCALATED | ESCALATION |
+| FINAL_REVIEW | ESCALATED | ESCALATION |
+| ESCALATION | COMPLETED | SPEC_SPEC, DECOMPOSE, RED, GREEN |
+| ESCALATION | CANCELLED | (terminal) |
+| any non-CANCELLED entry | (any active status) | child per transition rules |
 | any | CANCELLED | (terminal — no children) |
 
 **Transition constraints:**
@@ -362,17 +377,22 @@ TASK_REVIEW
 
 **Convergence rules:**
 
-1. When a pipeline has multiple task branches, the pipeline MUST NOT proceed
+1. A single USER_INPUT MAY have multiple spec pipelines (multiple
+   SPEC_SPEC children). Each pipeline is independent and MUST have
+   its OWN convergence and completion.
+2. When a pipeline has multiple task branches, the pipeline MUST NOT proceed
    directly from a single GREEN_REVIEW(PASS) to REGRESSION.
-2. Instead, a `TASKS_COMPLETE` entry MUST be created with:
+3. Instead, a `TASKS_COMPLETE` entry MUST be created with:
    - `PARENT` pointing to the common ancestor (TASK_REVIEW)
    - `DEPENDS` listing the JID of the LAST entry in EACH task branch
      (typically GREEN_REVIEW(PASS) for each task)
-3. After TASKS_COMPLETE, the pipeline continues linearly:
+4. TASKS_COMPLETE MUST NOT list branches from a DIFFERENT spec pipeline
+   in its DEPENDS, even within the same ROOT.
+5. After TASKS_COMPLETE, the pipeline continues linearly:
    REGRESSION → REGRESSION_REVIEW → FINAL_REVIEW → DONE
-4. A single-task pipeline (only one branch from TASK_REVIEW) MAY omit
+6. A single-task pipeline (only one branch from TASK_REVIEW) MAY omit
    TASKS_COMPLETE and go directly to REGRESSION.
-5. If any task branch has STATUS=CANCELLED, it is excluded from
+7. If any task branch has STATUS=CANCELLED, it is excluded from
    TASKS_COMPLETE DEPENDS.
 
 ### 4.6 TASK Fields
@@ -605,6 +625,46 @@ Key structural features:
 ### 5.2 Incorrect Journal (missing convergence — WRONG)
 
 ```journal
+=== J-20260614-100000-001 ===
+TYPE: USER_INPUT
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: --
+ROOT: J-20260614-100000-001
+DETAIL: Implement Tetris game
+
+=== J-20260614-100000-002 ===
+TYPE: SPEC_SPEC
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-001
+ROOT: J-20260614-100000-001
+DETAIL: Tetris spec created
+
+=== J-20260614-100000-003 ===
+TYPE: SPEC_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-20260614-100000-002
+ROOT: J-20260614-100000-001
+DETAIL: Spec approved
+
+=== J-20260614-100000-004 ===
+TYPE: DECOMPOSE
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-003
+ROOT: J-20260614-100000-001
+DETAIL: 2 tasks identified
+
+=== J-20260614-100000-005 ===
+TYPE: TASK_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-20260614-100000-004
+ROOT: J-20260614-100000-001
+DETAIL: Both tasks approved
+
 === J-20260614-100000-006 ===
 TYPE: RED
 SPEC: S-TETRIS-01
@@ -615,28 +675,57 @@ TASK: T-S-TETRIS-01-001
 DETAIL: T1 RED
 
 === J-20260614-100000-007 ===
+TYPE: RED_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-20260614-100000-006
+ROOT: J-20260614-100000-001
+TASK: T-S-TETRIS-01-001
+DETAIL: T1 RED approved
+
+=== J-20260614-100000-008 ===
+TYPE: GREEN
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-007
+ROOT: J-20260614-100000-001
+TASK: T-S-TETRIS-01-001
+DETAIL: T1 GREEN
+
+=== J-20260614-100000-009 ===
 TYPE: GREEN_REVIEW
 SPEC: S-TETRIS-01
 STATUS: PASS
 PARENT: J-20260614-100000-008
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-001
-DETAIL: T1 done
+DETAIL: T1 GREEN approved
 
-=== J-20260614-100000-009 ===
+=== J-20260614-100000-010 ===
+TYPE: RED
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-005
+ROOT: J-20260614-100000-001
+TASK: T-S-TETRIS-01-002
+DETAIL: T2 RED
+
+=== J-20260614-100000-011 ===
 TYPE: REGRESSION
 SPEC: S-TETRIS-01
 STATUS: COMPLETED
-PARENT: J-20260614-100000-007
+PARENT: J-20260614-100000-009
 ROOT: J-20260614-100000-001
 DETAIL: Regression ← WRONG: went directly from T1 GREEN_REVIEW
                          to REGRESSION without TASKS_COMPLETE barrier.
-                         T2 is orphaned.
+                         T2 is incomplete.
 ```
 
 Error: T1 GREEN_REVIEW(PASS) jumps directly to REGRESSION without
-TASKS_COMPLETE. Task T2 exists (has RED entries) but is not included in
-DEPENDS. The pipeline claims completion without waiting for all branches.
+TASKS_COMPLETE. Task T2 exists (has RED entry) but is not included in
+any barrier. The pipeline claims completion without waiting for all branches.
+PARENT chains, transitions, and field formats are all valid — only
+convergence is missing.
 
 ### 5.3 Incorrect Journal (cycle in PARENT — WRONG)
 
@@ -651,9 +740,9 @@ TASK: T-S-TETRIS-01-001
 DETAIL: A
 
 === J-20260614-100000-021 ===
-TYPE: GREEN
+TYPE: RED_REVIEW
 SPEC: S-TETRIS-01
-STATUS: COMPLETED
+STATUS: PASS
 PARENT: J-20260614-100000-020
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-001
@@ -661,7 +750,8 @@ DETAIL: B
 ```
 
 Error: J-020 → J-021 and J-021 → J-020 form a cycle. Neither chain
-reaches USER_INPUT. All other fields (JID, SPEC, ROOT) are valid.
+reaches USER_INPUT. Types, transitions, SPEC, and ROOT are all valid —
+only the PARENT cycle is wrong.
 
 ### 5.4 Incorrect Journal (orphan PARENT — WRONG)
 
@@ -760,6 +850,30 @@ function validate_journal(journal_text):
                             f"{entry.jid}.spec={entry.spec} vs {other.jid}.spec={other.spec}"
                         )
 
+        # TASK_PARENT consistency: all entries with same TASK must have
+        # same TASK_PARENT
+        if entry.task:
+            for other in entries:
+                if other.jid != entry.jid and other.task == entry.task:
+                    tp_a = entry.task_parent or ""
+                    tp_b = other.task_parent or ""
+                    if tp_a != tp_b:
+                        errors.append(
+                            f"TASK {entry.task} has inconsistent TASK_PARENT: "
+                            f"{entry.jid}={tp_a} vs {other.jid}={tp_b}"
+                        )
+
+        # TASK_PARENT ROOT consistency: parent and child must share ROOT
+        if entry.task_parent:
+            for other in entries:
+                if other.task == entry.task_parent:
+                    if other.root != entry.root:
+                        errors.append(
+                            f"TASK_PARENT {entry.task_parent} ROOT mismatch: "
+                            f"parent={other.root}, child={entry.root}"
+                        )
+                        break
+
     # --- Phase 2: duplicate JIDs ---
     if duplicate_jids(entries): errors.append("Duplicate JIDs found")
 
@@ -797,7 +911,12 @@ function validate_journal(journal_text):
     for entry in entries:
         if not entry.depends:
             continue
-        for dep_jid in split(entry.depends, ","):
+        depends_list = split(entry.depends, ",")
+        # Check uniqueness of DEPENDS values
+        stripped_deps = [strip(j) for j in depends_list]
+        if len(stripped_deps) != len(set(stripped_deps)):
+            errors.append(f"Duplicate JIDs in DEPENDS at {entry.jid}")
+        for dep_jid in stripped_deps:
             dep_jid = strip(dep_jid)
             if dep_jid not in entries:
                 errors.append(f"DEPENDS references non-existent JID: {dep_jid}")
@@ -840,31 +959,84 @@ function validate_journal(journal_text):
                     f"TASKS_COMPLETE {entry.jid} DEPENDS on FAILED entry {jid}"
                 )
 
-    # --- Phase 8: Convergence check ---
+    # --- Phase 8: Convergence check (per pipeline) ---
+    # A pipeline is defined as: a SPEC_SPEC child of USER_INPUT and all
+    # its descendants. Multiple pipelines may share a USER_INPUT root.
     for root_jid, root_entries in by_root.items():
-        task_branches = count_task_branches(root_entries)
-        has_tasks_complete = any(e.type == TASKS_COMPLETE for e in root_entries)
-        has_done = any(e.type == DONE for e in root_entries)
-
-        if task_branches > 1 and has_done and not has_tasks_complete:
-            errors.append(
-                f"ROOT {root_jid}: multi-task pipeline with DONE but no TASKS_COMPLETE"
-            )
-
-    # --- Phase 9: Mandatory regression + final review path ---
-    for root_jid, root_entries in by_root.items():
-        done_entries = [e for e in root_entries if e.type == DONE]
-        for d in done_entries:
-            # Trace DONE's PARENT chain back; must pass through FINAL_REVIEW and REGRESSION
-            chain = parent_chain(d, entries)
-            chain_types = [entries[c].type for c in chain]
-            if "FINAL_REVIEW" not in chain_types:
+        # Identify pipelines: each SPEC_SPEC that is a direct child of USER_INPUT
+        user_input = next((e for e in root_entries if e.type == "USER_INPUT"), None)
+        if not user_input:
+            continue
+        spec_specs = [
+            e for e in root_entries
+            if e.type == "SPEC_SPEC" and e.parent == user_input.jid
+        ]
+        # For each pipeline, collect its descendants
+        for spec in spec_specs:
+            pipeline_jids = collect_descendants(spec.jid, entries)
+            pipeline_entries = [entries[j] for j in pipeline_jids]
+            task_branches = count_task_branches(pipeline_entries)
+            has_tasks_complete = any(e.type == "TASKS_COMPLETE" for e in pipeline_entries)
+            has_done = any(e.type == "DONE" for e in pipeline_entries)
+            if task_branches > 1 and has_done and not has_tasks_complete:
                 errors.append(
-                    f"DONE {d.jid} PARENT chain does not include FINAL_REVIEW"
+                    f"Pipeline starting at {spec.jid}: multi-task pipeline "
+                    f"with DONE but no TASKS_COMPLETE"
                 )
-            if "REGRESSION" not in chain_types:
+
+    # --- Phase 9: Mandatory regression + final review path (with order check) ---
+    for d in [e for e in entries if e.type == "DONE"]:
+        # Verify exact order: DONE -> ... -> FINAL_REVIEW(PASS) -> REGRESSION_REVIEW(PASS) -> REGRESSION(COMPLETED)
+        chain = parent_chain(d, entries)  # ordered from d up to root
+        # Check mandatory presence
+        chain_types = [entries[c].type for c in chain]
+        if "FINAL_REVIEW" not in chain_types:
+            errors.append(f"DONE {d.jid} PARENT chain does not include FINAL_REVIEW")
+        if "REGRESSION_REVIEW" not in chain_types:
+            errors.append(f"DONE {d.jid} PARENT chain does not include REGRESSION_REVIEW")
+        if "REGRESSION" not in chain_types:
+            errors.append(f"DONE {d.jid} PARENT chain does not include REGRESSION")
+        # Check correct order: FINAL_REVIEW must appear AFTER REGRESSION_REVIEW
+        # which must appear AFTER REGRESSION in the parent chain
+        fr_pos = next((i for i, t in enumerate(chain_types) if t == "FINAL_REVIEW"), -1)
+        rr_pos = next((i for i, t in enumerate(chain_types) if t == "REGRESSION_REVIEW"), -1)
+        reg_pos = next((i for i, t in enumerate(chain_types) if t == "REGRESSION"), -1)
+        # chain[0] = DONE, chain[-1] = USER_INPUT. Order: DONE -> ... -> REGRESSION -> ... -> USER_INPUT
+        # FINAL_REVIEW should be before REGRESSION_REVIEW in the chain (closer to DONE)
+        if fr_pos >= 0 and rr_pos >= 0 and fr_pos > rr_pos:
+            errors.append(
+                f"DONE {d.jid}: FINAL_REVIEW must be closer to DONE than REGRESSION_REVIEW"
+            )
+        if rr_pos >= 0 and reg_pos >= 0 and rr_pos > reg_pos:
+            errors.append(
+                f"DONE {d.jid}: REGRESSION_REVIEW must be closer to DONE than REGRESSION"
+            )
+        # Check statuses: REGRESSION_REVIEW must be PASS, FINAL_REVIEW must be PASS
+        for j in chain:
+            e = entries[j]
+            if e.type == "FINAL_REVIEW" and e.status != "PASS":
+                errors.append(f"DONE {d.jid}: FINAL_REVIEW has status {e.status}, expected PASS")
+            if e.type == "REGRESSION_REVIEW" and e.status != "PASS":
                 errors.append(
-                    f"DONE {d.jid} PARENT chain does not include REGRESSION"
+                    f"DONE {d.jid}: REGRESSION_REVIEW has status {e.status}, expected PASS"
+                )
+        # Check that all non-cancelled task branches are complete
+        root_entries = entries_for_root(d.root, entries)
+        task_branches = find_task_branches(root_entries)
+        active_branches = [
+            b for b in task_branches
+            if not any(e.status == "CANCELLED" for e in b)
+        ]
+        for branch in active_branches:
+            has_green_review_pass = any(
+                e.type == "GREEN_REVIEW" and e.status == "PASS"
+                for e in branch
+            )
+            if not has_green_review_pass:
+                first = branch[0]
+                errors.append(
+                    f"DONE {d.jid}: active task branch starting at {first.jid} "
+                    f"has no GREEN_REVIEW(PASS)"
                 )
 
     # --- Phase 10: TASK_PARENT cycles ---
