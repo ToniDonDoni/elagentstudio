@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "Spec-driven TDD with review at every step. Spec -> REVIEW -> tasks -> TEST -> REVIEW -> RED -> REVIEW -> GREEN -> REVIEW -> REFACTOR -> REVIEW. The test is end-to-end and targets the acceptance criterion from the spec."
-version: 1.2.0
+version: 1.3.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -84,7 +84,10 @@ The cycle is complete when:
 - The goal from the spec is fully solved
 - All code passes all tests
 - Every commit along the chain has a **PASS** verdict from review
-- The journal file `JOURNAL_SDD_TDD_SKILL.log` exists, is updated for every completed step and review result, and contains an unbroken `PARENT` chain from `USER_INPUT` to `DONE`
+- The journal file `JOURNAL_SDD_TDD_SKILL.log` exists, is updated for every completed step and review result, and contains:
+  - An unbroken `PARENT` chain from `USER_INPUT` to `DONE`
+  - Every journal entry has a `ROOT` field identifying the originating `USER_INPUT`
+  - Per-task entries (`RED`, `GREEN`, `RED_REVIEW`, `GREEN_REVIEW`) carry a `TASK` field with the task ID
 
 ## When to Use
 
@@ -274,12 +277,14 @@ TYPE: {TYPE}
 SPEC: {SPEC}
 STATUS: {STATUS}
 PARENT: {PARENT_JID}
-DEPENDS: {DEPENDS_JID}
+ROOT: {ROOT_JID}        (optional — JID of root USER_INPUT for this spec tree)
+DEPENDS: {DEPENDS_JID}   (optional — JID of previous step in the chain)
+TASK: {TASK_ID}          (optional — Task ID for per-task entries)
 DETAIL: {detail text}
 ```
 
-Blank line between entries. Fields are strictly in this order. Empty fields are omitted.
-PARENT and DEPENDS = ` -- ` when there is no value. Entry is created post-factum AFTER completing the step.
+Blank line between entries. Fields are strictly in this order. Empty optional fields are omitted.
+`PARENT` = ` -- ` and `ROOT` = ` -- ` for root USER_INPUT. Entry is created post-factum AFTER completing the step.
 
 ### Fields
 
@@ -287,10 +292,12 @@ PARENT and DEPENDS = ` -- ` when there is no value. Entry is created post-factum
 |-------|----------|-------------|
 | JID | yes | Unique entry ID |
 | TYPE | yes | Stage type (enum) |
-| SPEC | yes | Spec ID |
+| SPEC | yes | Spec ID — always a Spec ID, not a Task ID |
 | STATUS | yes | PASS, FAIL, NEEDS_CLARIFICATION, COMPLETED, CANCELLED |
-| PARENT | yes | JID of the trigger entry (` -- ` for the root) |
+| PARENT | yes | JID of the trigger entry (` -- ` for root USER_INPUT) |
+| ROOT | no | JID of the originating USER_INPUT entry for this spec tree |
 | DEPENDS | no | JID of the previous step in the chain |
+| TASK | no | Task ID (`T-{SPEC_ID}-{NNN}`) for per-task entries (RED, GREEN, RED_REVIEW, GREEN_REVIEW) |
 | DETAIL | no | Description of what happened |
 
 ### TYPE Enum
@@ -321,26 +328,44 @@ PARENT and DEPENDS = ` -- ` when there is no value. Entry is created post-factum
 2. **STATUS** = outcome: COMPLETED (work), PASS/FAIL/NEEDS_CLARIFICATION (review), CANCELLED (interrupted).
 3. **APPEND only** -- entries are only added to the end of the file.
 4. **Chronological** -- entry order = event order.
-5. **PARENT** = JID of the step that triggered this one (SPEC_REVIEW -> preceding SPEC_SPEC).
+5. **PARENT** = JID of the step that triggered this one (SPEC_REVIEW -> preceding SPEC_SPEC). ROOT is the JID of the originating USER_INPUT entry for the spec tree; it is copied from the USER_INPUT entry to all derived entries. TASK is the Task ID for per-task entries.
+6. **PARENT chain validation** — Before writing a DONE entry, verify the complete unbroken PARENT chain by iteratively following PARENT links from DONE until `PARENT: --` is found. The entry with `PARENT: --` MUST have TYPE=USER_INPUT. If the chain breaks (referenced JID does not exist) or the root is not USER_INPUT, the DONE entry MUST NOT be written until the chain is fixed.
 
 ### Example
 
 ```journal
 === J-20260608-204500-001 ===
+TYPE: USER_INPUT
+SPEC: S-SDT-01
+STATUS: COMPLETED
+PARENT: --
+ROOT: J-20260608-204500-001
+DETAIL: Initial feature request received.
+
+=== J-20260608-204500-002 ===
 TYPE: SPEC_SPEC
 SPEC: S-SDT-01
 STATUS: COMPLETED
-PARENT: -- 
-DEPENDS: -- 
+PARENT: J-20260608-204500-001
+ROOT: J-20260608-204500-001
 DETAIL: Initial spec draft created with 6 subspecs
 
-=== J-20260608-204500-002 ===
+=== J-20260608-204500-003 ===
 TYPE: SPEC_REVIEW
 SPEC: S-SDT-01
 STATUS: FAIL
-PARENT: J-20260608-204500-001
-DEPENDS: J-20260608-204500-001
+PARENT: J-20260608-204500-002
+ROOT: J-20260608-204500-001
 DETAIL: Spec review FAIL -- acceptance criteria too vague
+
+=== J-20260608-204500-004 ===
+TYPE: RED
+SPEC: S-SDT-01.01
+STATUS: COMPLETED
+PARENT: J-20260608-204500-003
+ROOT: J-20260608-204500-001
+TASK: T-S-SDT-01.01-001
+DETAIL: Test written for TodoItem model. RED: ImportError expected.
 ```
 
 ### Spec ID Scheme
@@ -369,6 +394,62 @@ Examples:
 | Journal -> Spec | SPEC field in the entry -> find the spec file by ID |
 | Child -> Parent | In the child spec, `parent:` -> find the parent spec |
 | Parent -> Children | `grep "parent: S-SDT-01" *.md` |
+| Task -> Spec | Extract SPEC_ID from TASK ID (`T-{SPEC_ID}-{NNN}`) -> find spec |
+| Entry -> Root User Input | `grep "^ROOT: <JID>" JOURNAL_SDD_TDD_SKILL.log` shows all entries from that input |
+
+### Task ID Scheme
+
+Task IDs follow a hierarchical format that encodes the parent spec relationship:
+
+```
+T-{SPEC_ID}-{NNN}
+```
+
+Where:
+- `{SPEC_ID}` is the Spec ID the task belongs to (e.g. `S-SDT-01`)
+- `{NNN}` is a zero-padded 3-digit sequence number (001, 002, ...)
+
+Examples:
+- `T-S-SDT-01-001` — Task 1 of root spec S-SDT-01
+- `T-S-SDT-01.01-001` — Task 1 of child spec S-SDT-01.01
+- `T-S-SDT-01.01-002` — Task 2 of child spec S-SDT-01.01
+
+**Rules:**
+1. Task ID = `T-` + parent spec ID + `-` + zero-padded sequence number
+2. Sequence numbers restart per spec ID (`S-SDT-01-001`, `S-SDT-01.01-001` — both have `-001`)
+3. Every per-task journal entry (RED, GREEN, RED_REVIEW, GREEN_REVIEW) carries the Task ID in the `TASK` field
+4. The `SPEC` field in per-task entries still holds the Spec ID (not the Task ID)
+
+**Traceability from a Task ID:**
+1. Extract `{SPEC_ID}` from the Task ID: `T-{SPEC_ID}-{NNN}`
+2. Find the spec file by `{SPEC_ID}` (e.g. `S-SDT-01.01`)
+3. From the spec's `parent:` field, find the parent spec
+4. Recurse until `parent: --` (root spec)
+5. The root spec's USER_INPUT is the journal entry with `TYPE=USER_INPUT` for that SPEC
+
+### SPEC/TASK Field Usage by TYPE
+
+The following table specifies what value goes in the `SPEC` and `TASK` fields for each journal entry TYPE:
+
+| TYPE | SPEC value | TASK value |
+|------|-----------|------------|
+| USER_INPUT | Assigned spec ID | — (absent) |
+| PROJECT_INIT | Project spec ID | — |
+| SPEC_SPEC | The spec ID being created | — |
+| SPEC_REVIEW | The spec ID being reviewed | — |
+| DECOMPOSE | The spec ID being decomposed | — |
+| TASK_REVIEW | The spec ID | — (or absent) |
+| AGENT_DECISION | The spec ID | Task ID if selecting a specific task |
+| RED | The parent spec ID | Task ID |
+| RED_REVIEW | The parent spec ID | Task ID |
+| GREEN | The parent spec ID | Task ID |
+| GREEN_REVIEW | The parent spec ID | Task ID |
+| REGRESSION | The spec ID | — |
+| REGRESSION_REVIEW | The spec ID | — |
+| FINAL_REVIEW | The spec ID | — |
+| ESCALATION | The spec ID | Task ID if applicable |
+| CODEX_REVIEW | The spec ID | — |
+| DONE | The spec ID | — |
 
 ## Phase 0 -- User Input Recording
 
@@ -382,7 +463,8 @@ The user provides the initial request (text description, bullet points, user sto
 TYPE: USER_INPUT
 SPEC: <assigned spec ID>
 STATUS: COMPLETED
-PARENT: -- 
+PARENT: --
+ROOT: <JID of this entry — same as the JID in === JID ===>
 DETAIL: Initial feature request received.
 ```
 
@@ -390,7 +472,7 @@ DETAIL: Initial feature request received.
 
 No feature review yet. This only records incoming context.
 
-** ->  JOURNAL:** `USER_INPUT`, STATUS=COMPLETED, PARENT= -- .
+** ->  JOURNAL:** `USER_INPUT`, STATUS=COMPLETED, PARENT= -- , ROOT=<JID of this entry>.
 
 Then commit the journal update.
 
