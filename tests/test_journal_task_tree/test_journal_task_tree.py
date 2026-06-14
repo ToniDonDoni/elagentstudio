@@ -6,8 +6,9 @@ the PARENT chain from any entry reaches USER_INPUT, and all entries
 form a single tree (no orphans).
 
 The test generates a realistic sample JOURNAL from a simulated Tetris
-SDD run and validates it (7 tests total, including 6 synthetic error
-cases).
+SDD run and validates it (8 tests total, including 7 synthetic error
+cases: missing PARENT, orphan PARENT, self-reference, cycle, broken
+chain, multiple roots, and branching after TASK_REVIEW).
 
 Directory structure:
   tests/test_journal_task_tree/
@@ -198,7 +199,7 @@ def validate_journal(journal_text: str) -> list[str]:
       - No self-references (PARENT == own JID)
       - No cycles in PARENT chains
       - From every entry, following PARENT reaches USER_INPUT
-      - Exactly one USER_INPUT (single tree root)
+      - Single-child invariant (no entry is PARENT of more than one other)
       - USER_INPUT has PARENT: --
     """
     errors = []
@@ -235,6 +236,71 @@ def validate_journal(journal_text: str) -> list[str]:
             errors.append(f"JID={e['jid']} DETAIL=PARENT={parent!r} does not match any existing entry JID")
         if parent == e["jid"]:
             errors.append(f"JID={e['jid']} DETAIL=Self-reference: PARENT points to its own JID")
+
+    # --- Single-child invariant (linearity after TASK_REVIEW) ---
+    # After the spec is decomposed into tasks, the pipeline must be a
+    # strict linear chain: each entry can be PARENT of at most one other entry.
+    # Before TASK_REVIEW (the spec phase), USER_INPUT may have multiple
+    # children (multiple specs). Find TASK_REVIEW and restrict the check
+    # to entries that are descendants of TASK_REVIEW (or TASK_REVIEW itself).
+
+    # Find TASK_REVIEW entry
+    task_review_entry = None
+    task_review_jid = None
+    for e in entries:
+        if e.get("type") == "TASK_REVIEW":
+            task_review_entry = e
+            task_review_jid = e["jid"]
+            break
+
+    if task_review_jid:
+        # Find all entries that are descendants of TASK_REVIEW (PARENT chain
+        # goes through TASK_REVIEW before reaching USER_INPUT)
+        post_task_jids: set[str] = set()
+        for e in entries:
+            if e["jid"] == task_review_jid:
+                post_task_jids.add(e["jid"])
+                continue
+            # Walk PARENT chain backwards
+            visited = set()
+            cj = e["jid"]
+            while True:
+                if cj in visited:
+                    break
+                visited.add(cj)
+                cur = entry_map.get(cj)
+                if cur is None:
+                    break
+                if cur.get("type") == "USER_INPUT":
+                    break
+                parent = cur.get("parent", "")
+                if parent == "--" or parent == "":
+                    break
+                if parent == task_review_jid:
+                    post_task_jids.add(e["jid"])
+                    break
+                cj = parent
+        # Also add TASK_REVIEW itself
+        post_task_jids.add(task_review_jid)
+
+        # Now count children only within the post-TASK_REVIEW subtree
+        child_counts: dict[str, list[str]] = {}
+        for e in entries:
+            if e["jid"] not in post_task_jids:
+                continue
+            p = e.get("parent", "")
+            if p == "--" or p == "":
+                continue
+            if p not in child_counts:
+                child_counts[p] = []
+            child_counts[p].append(e["jid"])
+        for parent_jid, children in child_counts.items():
+            if len(children) > 1:
+                errors.append(
+                    f"JID={parent_jid} DETAIL=Single-child invariant violated "
+                    f"(after TASK_REVIEW): {len(children)} entries point to "
+                    f"this JID as PARENT: {children}"
+                )
 
     # --- From every entry, PARENT chain reaches USER_INPUT ---
     for e in entries:
@@ -462,4 +528,71 @@ DETAIL: Root 2
     errors = validate_journal(journal)
     assert any("Multiple USER_INPUT" in e for e in errors), (
         f"Should detect multiple roots, errors: {errors}"
+    )
+
+
+def test_detects_branching():
+    """More than one entry pointing to the same PARENT after TASK_REVIEW is detected."""
+    journal = _make_minimal_journal("""
+=== J-UID-001 ===
+TYPE: USER_INPUT
+SPEC: S-TEST
+STATUS: COMPLETED
+PARENT: --
+ROOT: J-UID-001
+DETAIL: Root
+
+=== J-SPEC-001 ===
+TYPE: SPEC_SPEC
+SPEC: S-TEST
+STATUS: COMPLETED
+PARENT: J-UID-001
+ROOT: J-UID-001
+DETAIL: Spec
+
+=== J-SREV-001 ===
+TYPE: SPEC_REVIEW
+SPEC: S-TEST
+STATUS: PASS
+PARENT: J-SPEC-001
+ROOT: J-UID-001
+DETAIL: Spec review
+
+=== J-DECOMP-001 ===
+TYPE: DECOMPOSE
+SPEC: S-TEST
+STATUS: COMPLETED
+PARENT: J-SREV-001
+ROOT: J-UID-001
+DETAIL: Decomposed
+
+=== J-TREV-001 ===
+TYPE: TASK_REVIEW
+SPEC: S-TEST
+STATUS: PASS
+PARENT: J-DECOMP-001
+ROOT: J-UID-001
+DETAIL: Task review
+
+=== J-RED-A-001 ===
+TYPE: RED
+SPEC: S-TEST
+STATUS: COMPLETED
+PARENT: J-TREV-001
+ROOT: J-UID-001
+TASK: T-S-TEST-001
+DETAIL: First child of task review
+
+=== J-RED-B-001 ===
+TYPE: RED
+SPEC: S-TEST
+STATUS: COMPLETED
+PARENT: J-TREV-001
+ROOT: J-UID-001
+TASK: T-S-TEST-002
+DETAIL: Second child of task review (branching!)
+""")
+    errors = validate_journal(journal)
+    assert any("Single-child invariant" in e for e in errors), (
+        f"Should detect branching after TASK_REVIEW, errors: {errors}"
     )
