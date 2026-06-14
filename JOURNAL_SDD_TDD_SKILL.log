@@ -94,3 +94,11 @@ STATUS: COMPLETED
 PARENT: --
 ROOT: J-20260614-010000-001
 DETAIL: User requires a test tests/test_journal_task_tree.py that validates every task has a traceable PARENT chain to USER_INPUT, no orphans, correct ROOT/TASK fields. Test uses a Tetris SDD scenario as the subject. Full SDD/TDD pipeline with reviewer at every stage.
+
+=== J-20260614-010100-001 ===
+TYPE: SPEC_SPEC
+SPEC: S-JTT-01
+STATUS: COMPLETED
+PARENT: J-20260614-010000-001
+ROOT: J-20260614-010000-001
+DETAIL: SPEC-DRAFT.md created with 5 requirements (R1-R5), 9 acceptance criteria (AC1-AC9), and 4 constraints. Tetris SDD scenario with 4 tasks.
