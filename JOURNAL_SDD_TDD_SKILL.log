@@ -219,3 +219,11 @@ STATUS: COMPLETED
 PARENT: J-20260614-011500-001
 ROOT: J-20260614-010000-001
 DETAIL: Phase 1 meta: created good_journal.log, bad_missing_parent.log, bad_cycle.log, bad_branching.log. Validator reviewed and correct. Moving to Phase 2 — real Tetris SDD run inside test dir.
+
+=== J-20260614-011700-001 ===
+TYPE: DONE
+SPEC: S-JTT-01
+STATUS: COMPLETED
+PARENT: J-20260614-011600-001
+ROOT: J-20260614-010000-001
+DETAIL: DONE. tests/test_journal_task_tree/ contains: (1) validator script, tested on good+bad journals, (2) REAL Tetris SDD run with 27-entry journal, (3) Tetris game implementation (board, pieces, collision, game), (4) 24 Tetris tests + 8 validator tests = 32/32 green. Real journal validates with 0 errors.

@@ -6,3 +6,227 @@ STATUS: COMPLETED
 PARENT: --
 ROOT: J-TETRIS-001
 DETAIL: Implement a classic Tetris game via SDD pipeline. 4 tasks: board, pieces, collision, game loop.
+
+=== J-TETRIS-002 ===
+TYPE: SPEC_SPEC
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-TETRIS-001
+ROOT: J-TETRIS-001
+DETAIL: SPEC-DRAFT.md v2 created with 4 entities: Board (10x20 grid), Tetrominoes (7 pieces with rotation), Collision (fit/land/clear/score), Game Loop (gravity/input/state).
+
+=== J-TETRIS-003 ===
+TYPE: SPEC_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-TETRIS-002
+ROOT: J-TETRIS-001
+DETAIL: SPEC REVIEW PASS - all acceptance criteria clear and testable.
+
+=== J-TETRIS-004 ===
+TYPE: DECOMPOSE
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-TETRIS-003
+ROOT: J-TETRIS-001
+DETAIL: Decomposed into 4 tasks: T1 (Board), T2 (Tetrominoes), T3 (Collision+scoring), T4 (Game loop).
+
+=== J-TETRIS-005 ===
+TYPE: TASK_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-TETRIS-004
+ROOT: J-TETRIS-001
+DETAIL: TASK REVIEW PASS - all tasks map to ACCEPTANCE CRITERIA.
+
+=== J-TETRIS-006 ===
+TYPE: RED
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-TETRIS-005
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-001
+DETAIL: T1 RED: 4 board tests written (init, set/get, is_row_full, clear_row). ImportError - Board not implemented.
+
+=== J-TETRIS-007 ===
+TYPE: RED_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-TETRIS-006
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-001
+DETAIL: T1 RED REVIEW PASS - tests fail for correct reason (missing feature, not test bug).
+
+=== J-TETRIS-008 ===
+TYPE: GREEN
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-TETRIS-007
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-001
+DETAIL: T1 GREEN: Board class implemented with get_cell, set_cell, is_row_full, clear_row.
+
+=== J-TETRIS-009 ===
+TYPE: GREEN_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-TETRIS-008
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-001
+DETAIL: T1 GREEN REVIEW PASS - Board is minimal and correct. All 4 tests pass.
+
+=== J-TETRIS-010 ===
+TYPE: REGRESSION
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-TETRIS-009
+ROOT: J-TETRIS-001
+DETAIL: T1 REGRESSION: all 4 board tests green.
+
+=== J-TETRIS-011 ===
+TYPE: RED
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-TETRIS-010
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-002
+DETAIL: T2 RED: 6 tetromino tests written (all 7 pieces, 4 cells each, rotation). ImportError - pieces not implemented.
+
+=== J-TETRIS-012 ===
+TYPE: RED_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-TETRIS-011
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-002
+DETAIL: T2 RED REVIEW PASS.
+
+=== J-TETRIS-013 ===
+TYPE: GREEN
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-TETRIS-012
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-002
+DETAIL: T2 GREEN: 7 pieces defined with rotation via 90 CW matrix. Spawn position at (4,0).
+
+=== J-TETRIS-014 ===
+TYPE: GREEN_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-TETRIS-013
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-002
+DETAIL: T2 GREEN REVIEW PASS. All 6 piece tests pass.
+
+=== J-TETRIS-015 ===
+TYPE: REGRESSION
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-TETRIS-014
+ROOT: J-TETRIS-001
+DETAIL: T2 REGRESSION: board + pieces = 10 tests green.
+
+=== J-TETRIS-016 ===
+TYPE: RED
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-TETRIS-015
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-003
+DETAIL: T3 RED: 7 collision+scoring tests written. ImportError - collision not implemented.
+
+=== J-TETRIS-017 ===
+TYPE: RED_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-TETRIS-016
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-003
+DETAIL: T3 RED REVIEW PASS.
+
+=== J-TETRIS-018 ===
+TYPE: GREEN
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-TETRIS-017
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-003
+DETAIL: T3 GREEN: fit(), land(), clear_lines(), score() implemented.
+
+=== J-TETRIS-019 ===
+TYPE: GREEN_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-TETRIS-018
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-003
+DETAIL: T3 GREEN REVIEW PASS. All 7 collision tests pass.
+
+=== J-TETRIS-020 ===
+TYPE: REGRESSION
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-TETRIS-019
+ROOT: J-TETRIS-001
+DETAIL: T3 REGRESSION: board + pieces + collision = 17 tests green.
+
+=== J-TETRIS-021 ===
+TYPE: RED
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-TETRIS-020
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-004
+DETAIL: T4 RED: 7 game loop tests written. ImportError - game not implemented.
+
+=== J-TETRIS-022 ===
+TYPE: RED_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-TETRIS-021
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-004
+DETAIL: T4 RED REVIEW PASS.
+
+=== J-TETRIS-023 ===
+TYPE: GREEN
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-TETRIS-022
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-004
+DETAIL: T4 GREEN: Game class with gravity timer, input handling, hard drop, rotation with wall kicks, line clearing, scoring, game over detection.
+
+=== J-TETRIS-024 ===
+TYPE: GREEN_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-TETRIS-023
+ROOT: J-TETRIS-001
+TASK: T-S-TETRIS-01-004
+DETAIL: T4 GREEN REVIEW PASS. All 7 game tests pass.
+
+=== J-TETRIS-025 ===
+TYPE: REGRESSION
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-TETRIS-024
+ROOT: J-TETRIS-001
+DETAIL: T4 REGRESSION: all 24 tests green. Full Tetris implementation complete.
+
+=== J-TETRIS-026 ===
+TYPE: FINAL_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-TETRIS-025
+ROOT: J-TETRIS-001
+DETAIL: FINAL REVIEW PASS. All ACs covered. All tests green. Validator confirms journal structure.
+
+=== J-TETRIS-027 ===
+TYPE: DONE
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-TETRIS-026
+ROOT: J-TETRIS-001
+DETAIL: DONE. Tetris implementation complete. 24 tests across 4 tasks all green. Journal validated by validate_journal.py with 0 errors.
