@@ -427,6 +427,119 @@ Examples:
 4. Recurse until `parent: --` (root spec)
 5. The root spec's USER_INPUT is the journal entry with `TYPE=USER_INPUT` for that SPEC
 
+### How to Trace Any Artifact Back to USER_INPUT — Step by Step
+
+You have three common starting points. Each one leads to the journal, and from the journal you walk the `PARENT` chain or follow the `ROOT` field.
+
+#### Scenario A — You have a Task ID (e.g. `T-S-SDT-01.01-003`)
+
+```
+1. Task ID: T-S-SDT-01.01-003
+       ↓  extract SPEC_ID
+2. Spec: S-SDT-01.01
+       ↓  find spec file, read parent:
+3. parent: S-SDT-01  (or -- if root)
+       ↓  recurse
+4. parent: --  (root spec S-SDT-01)
+       ↓  search journal
+5. grep "TYPE: USER_INPUT" JOURNAL_SDD_TDD_SKILL.log
+   → find entry with SPEC: S-SDT-01
+```
+
+**Concrete commands:**
+```bash
+# From commit message or journal entry, extract Task ID
+TASK_ID="T-S-SDT-01.01-003"
+
+# Step 1-2: Extract spec from task ID
+SPEC_ID=$(echo "$TASK_ID" | sed 's/^T-//; s/-[0-9]\{3\}$//')
+echo "SPEC: $SPEC_ID"
+
+# Step 3-4: Walk parent chain
+CURRENT="$SPEC_ID"
+while true; do
+  PARENT=$(grep "^parent:" "${CURRENT}.md" 2>/dev/null | sed 's/^parent: *//')
+  [ -z "$PARENT" ] && break
+  echo "  parent: $PARENT"
+  CURRENT="$PARENT"
+done
+
+# Step 5: Find USER_INPUT
+grep -A5 "TYPE: USER_INPUT.*SPEC: $CURRENT" JOURNAL_SDD_TDD_SKILL.log
+```
+
+#### Scenario B — You have a journal entry JID (e.g. `J-20260613-234804-002`)
+
+The simplest path:
+
+```
+1. grep "^ROOT: J-20260613-234804-002" JOURNAL_SDD_TDD_SKILL.log
+   → If found, ROOT is the USER_INPUT JID — done.
+
+2. If no ROOT field (legacy entry):
+   Read PARENT iteratively until PARENT: --
+   The entry with PARENT: -- is USER_INPUT.
+```
+
+**Concrete commands:**
+```bash
+JID="J-20260613-234804-002"
+JOURNAL="JOURNAL_SDD_TDD_SKILL.log"
+
+# Try ROOT first (fast path)
+ROOT=$(grep -A1 "^=== $JID ===" "$JOURNAL" | grep "^ROOT:" | sed 's/^ROOT: *//')
+if [ -n "$ROOT" ]; then
+  echo "ROOT (USER_INPUT): $ROOT"
+  grep -A4 "^=== $ROOT ===" "$JOURNAL"
+  exit 0
+fi
+
+# Legacy: walk PARENT chain
+echo "$JID"
+CURRENT="$JID"
+while true; do
+  PARENT=$(grep -A3 "^=== $CURRENT ===" "$JOURNAL" | grep "^PARENT:" | sed 's/^PARENT: *//')
+  [ "$PARENT" = "--" ] && break
+  [ -z "$PARENT" ] && { echo "Chain broken at $CURRENT"; exit 1; }
+  echo "  → $PARENT"
+  CURRENT="$PARENT"
+done
+echo "USER_INPUT found: $CURRENT"
+```
+
+#### Scenario C — You have a commit message
+
+Commit messages follow the convention `"vX.Y.Z — S-SPEC-ID: STAGE — description"`:
+
+```bash
+COMMIT_MSG=$(git log --oneline -1)
+
+# Extract spec ID
+SPEC_ID=$(echo "$COMMIT_MSG" | grep -oP 'S-[A-Z0-9]+-[0-9.]+' | head -1)
+echo "Spec: $SPEC_ID"
+
+# From spec, walk parent chain to root → find USER_INPUT
+# (same as Scenario A steps 3-5)
+```
+
+#### Verification: The PARENT Chain Must Be Unbroken
+
+After finding the candidate USER_INPUT, verify the chain is sound:
+
+```bash
+# Walk PARENT links from DONE until PARENT: --
+# Every intermediate JID must exist in the journal
+CURRENT="<DONE_JID>"
+while true; do
+  PARENT=$(grep -A3 "^=== $CURRENT ===" "$JOURNAL" | grep "^PARENT:" | sed 's/^PARENT: *//')
+  [ "$PARENT" = "--" ] && { echo "Root: $CURRENT"; break; }
+  grep -q "^=== $PARENT ===" "$JOURNAL" || { echo "MISSING: $PARENT"; exit 1; }
+  CURRENT="$PARENT"
+done
+[ "$(grep -A1 "^=== $CURRENT ===" "$JOURNAL" | grep "TYPE: USER_INPUT")" ] \
+  && echo "Chain OK" || echo "ERROR: root is not USER_INPUT"
+```
+
 ### SPEC/TASK Field Usage by TYPE
 
 The following table specifies what value goes in the `SPEC` and `TASK` fields for each journal entry TYPE:
