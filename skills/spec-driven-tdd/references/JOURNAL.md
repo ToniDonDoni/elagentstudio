@@ -159,6 +159,7 @@ Example: If task `T-S-TETRIS-01-001` is decomposed into subtasks:
 ```
 TASK: T-S-TETRIS-01-001.001
 PARENT_TASK_ID: T-S-TETRIS-01-001
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 ```
 
 **PARENT_TASK_ID validation rules (see also §4.7):**
@@ -216,7 +217,7 @@ DEPENDS: J-20260614-100000-010, J-20260614-100000-020, J-20260614-100000-030
 DETAIL: All 3 tasks completed
 ```
 
-### 2.10 DETAIL — Free-form description
+### 2.11 DETAIL — Free-form description
 
 Human-readable note about what happened in this step. Should include key
 decisions, test output summaries, and reviewer verdicts.
@@ -521,6 +522,8 @@ SPEC: S-TETRIS-01
 STATUS: COMPLETED
 PARENT: --
 ROOT: J-20260614-100000-001
+TASK: T-S-TETRIS-01-000
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: Implement Tetris game
 
 === J-20260614-100000-002 ===
@@ -562,6 +565,7 @@ STATUS: COMPLETED
 PARENT: J-20260614-100000-005
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-001
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: T1 RED — board tests fail
 
 === J-20260614-100000-007 ===
@@ -571,6 +575,7 @@ STATUS: PASS
 PARENT: J-20260614-100000-006
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-001
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: T1 RED approved
 
 === J-20260614-100000-008 ===
@@ -580,6 +585,7 @@ STATUS: COMPLETED
 PARENT: J-20260614-100000-007
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-001
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: T1 GREEN — board impl done
 
 === J-20260614-100000-009 ===
@@ -589,6 +595,7 @@ STATUS: PASS
 PARENT: J-20260614-100000-008
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-001
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: T1 GREEN approved
 
 === J-20260614-100000-010 ===
@@ -598,6 +605,7 @@ STATUS: COMPLETED
 PARENT: J-20260614-100000-005
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-002
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: T2 RED — piece tests fail
 
 === J-20260614-100000-011 ===
@@ -607,6 +615,7 @@ STATUS: PASS
 PARENT: J-20260614-100000-010
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-002
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: T2 RED approved
 
 === J-20260614-100000-012 ===
@@ -616,6 +625,7 @@ STATUS: COMPLETED
 PARENT: J-20260614-100000-011
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-002
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: T2 GREEN — piece impl done
 
 === J-20260614-100000-013 ===
@@ -625,6 +635,7 @@ STATUS: PASS
 PARENT: J-20260614-100000-012
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-002
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: T2 GREEN approved
 
 === J-20260614-100000-014 ===
@@ -684,6 +695,8 @@ SPEC: S-TETRIS-01
 STATUS: COMPLETED
 PARENT: --
 ROOT: J-20260614-100000-001
+TASK: T-S-TETRIS-01-000
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: Implement Tetris game
 
 === J-20260614-100000-002 ===
@@ -725,6 +738,7 @@ STATUS: COMPLETED
 PARENT: J-20260614-100000-005
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-001
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: T1 RED
 
 === J-20260614-100000-007 ===
@@ -734,6 +748,7 @@ STATUS: PASS
 PARENT: J-20260614-100000-006
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-001
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: T1 RED approved
 
 === J-20260614-100000-008 ===
@@ -743,6 +758,7 @@ STATUS: COMPLETED
 PARENT: J-20260614-100000-007
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-001
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: T1 GREEN
 
 === J-20260614-100000-009 ===
@@ -752,6 +768,7 @@ STATUS: PASS
 PARENT: J-20260614-100000-008
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-001
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: T1 GREEN approved
 
 === J-20260614-100000-010 ===
@@ -761,6 +778,7 @@ STATUS: COMPLETED
 PARENT: J-20260614-100000-005
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-002
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: T2 RED
 
 === J-20260614-100000-011 ===
@@ -790,6 +808,7 @@ STATUS: COMPLETED
 PARENT: J-20260614-100000-021
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-001
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: A
 
 === J-20260614-100000-021 ===
@@ -799,6 +818,7 @@ STATUS: PASS
 PARENT: J-20260614-100000-020
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-001
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: B
 ```
 
@@ -816,6 +836,7 @@ STATUS: COMPLETED
 PARENT: J-20260614-100000-999
 ROOT: J-20260614-100000-001
 TASK: T-S-TETRIS-01-001
+ROOT_USER_INPUT_ID: T-S-TETRIS-01-000
 DETAIL: Orphan
 ```
 
@@ -926,6 +947,18 @@ function validate_journal(journal_text):
                             f"parent={other.root}, child={entry.root}"
                         )
                         break
+
+        # ROOT_USER_INPUT_ID consistency: all entries with same TASK must have
+        # same ROOT_USER_INPUT_ID
+        if entry.task and entry.root_user_input_id:
+            for other in entries:
+                if other.jid != entry.jid and other.task == entry.task:
+                    if other.root_user_input_id != entry.root_user_input_id:
+                        errors.append(
+                            f"TASK {entry.task} has inconsistent ROOT_USER_INPUT_ID: "
+                            f"{entry.jid}={entry.root_user_input_id} vs "
+                            f"{other.jid}={other.root_user_input_id}"
+                        )
 
     # --- Phase 2: duplicate JIDs ---
     if duplicate_jids(entries): errors.append("Duplicate JIDs found")
@@ -1136,6 +1169,78 @@ function validate_journal(journal_text):
             if d.root != root_jid:
                 errors.append(
                     f"DONE ROOT mismatch: {d.jid} root={d.root} != {root_jid}"
+                )
+
+    # --- Phase 12: Task Tree Validation (10 rules from §4.7) ---
+    # Extract distinct task records from journal entries
+    task_records = {}  # TASK_ID -> {task_id, parent_task_id, root_user_input_id}
+    for entry in entries:
+        if entry.task:
+            task_records[entry.task] = {
+                "task_id": entry.task,
+                "parent_task_id": entry.parent_task_id or "--",
+                "root_user_input_id": entry.root_user_input_id or "",
+            }
+
+    for tid, rec in task_records.items():
+        # Rule 3: Root invariant
+        if rec["parent_task_id"] == "--":
+            if rec["root_user_input_id"] != rec["task_id"]:
+                errors.append(
+                    f"Task tree: root {tid} ROOT_USER_INPUT_ID must equal TASK, "
+                    f"got {rec['root_user_input_id']}"
+                )
+        else:
+            # Rule 4: Non-root references existing parent
+            if rec["parent_task_id"] not in task_records:
+                errors.append(
+                    f"Task tree: {tid} parent_task_id={rec['parent_task_id']} "
+                    f"does not exist"
+                )
+            # Rule 5: ROOT_USER_INPUT_ID consistency with parent
+            parent = task_records.get(rec["parent_task_id"])
+            if parent and parent["root_user_input_id"] != rec["root_user_input_id"]:
+                errors.append(
+                    f"Task tree: {tid} ROOT_USER_INPUT_ID={rec['root_user_input_id']} "
+                    f"does not match parent's {parent['root_user_input_id']}"
+                )
+        # Rule 6: No self-reference
+        if rec["parent_task_id"] == rec["task_id"]:
+            errors.append(f"Task tree: {tid} references itself as parent")
+        # Rule 10: ROOT_USER_INPUT_ID references existing root
+        if rec["root_user_input_id"] and rec["root_user_input_id"] not in task_records:
+            errors.append(
+                f"Task tree: {tid} ROOT_USER_INPUT_ID={rec['root_user_input_id']} "
+                f"references non-existent task"
+            )
+        if rec["root_user_input_id"] and rec["root_user_input_id"] in task_records:
+            root_rec = task_records[rec["root_user_input_id"]]
+            if root_rec["parent_task_id"] != "--":
+                errors.append(
+                    f"Task tree: {tid} ROOT_USER_INPUT_ID={rec['root_user_input_id']} "
+                    f"is not a root task (parent={root_rec['parent_task_id']})"
+                )
+
+    # Rules 7-8: Cycle detection + root reachability
+    for tid in task_records:
+        visited = set()
+        current = tid
+        while current:
+            if current in visited:
+                errors.append(f"Task tree: PARENT_TASK_ID cycle involving {tid}")
+                break
+            visited.add(current)
+            rec = task_records.get(current)
+            if not rec or rec["parent_task_id"] == "--":
+                break
+            current = rec["parent_task_id"]
+        # Rule 9: reached root TASK_ID == ROOT_USER_INPUT_ID
+        if rec and rec["parent_task_id"] == "--":
+            original = task_records.get(tid)
+            if original and original["root_user_input_id"] != rec["task_id"]:
+                errors.append(
+                    f"Task tree: reached root {rec['task_id']} != "
+                    f"{original['root_user_input_id']} for task {tid}"
                 )
 
     return errors
