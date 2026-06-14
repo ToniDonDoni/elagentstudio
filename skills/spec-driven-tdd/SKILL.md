@@ -7,7 +7,7 @@ license: MIT
 metadata:
   hermes:
     tags: [spec-driven, tdd, specification, testing, quality, workflow, code-review]
-    related_skills: [writing-plans, test-driven-development, requesting-code-review, systematic-debugging, subagent-driven-development]
+    related_skills: [writing-plans, test-driven-development, requesting-code-review, systematic-debugging]
 ---
 
 # Spec-Driven TDD
@@ -27,6 +27,13 @@ Every line of production code passes through:
 
 **Core principle:** Reviewer at every stage. A fresh perspective -- every time. No shared memory with the author.
 
+**Delegation boundary:** `delegate_task` is used for review only.
+
+The primary agent MUST create and fix artifacts, run the workflow, update the journal, and move between stages.
+A delegated agent MUST only inspect an already-created, committed artifact and return a review verdict.
+A delegated agent MUST NOT implement the feature, modify files, fix the artifact, run the full pipeline,
+or continue to another workflow stage.
+
 ## Core Idea (read this first)
 
 Three stages. One rigid cycle. Every artifact goes through the same loop:
@@ -42,7 +49,7 @@ Stage 1: SPEC-DRAFT.md -> REVIEW -> PASS -> next stage
 Stage 2: Tests -> REVIEW -> PASS -> next stage
 Stage 3: Code  -> REVIEW -> PASS -> next stage
 
-Every `-> REVIEW ->` means a SEPARATE delegate_task call - a fresh reviewer agent, no shared memory with the author.
+Every `-> REVIEW ->` means a SEPARATE review-only `delegate_task` call — a fresh reviewer agent, no shared memory with the author. The delegated agent returns a verdict and MUST NOT modify the artifact.
 Every `-> COMMIT ->` means review always runs on committed changes (Rule 1: commit before review).
 Every stage produces two types of artifacts - the work output (spec/test/code) and updated JOURNAL_SDD_TDD_SKILL.log file with a new entry with the step result. Both exist in the project tree when the step is done. A step is not done until both are committed.
 
@@ -91,13 +98,12 @@ The cycle is complete when:
 - Building a feature from requirements (ticket, user story, verbal spec)
 - Implementing against a formal spec document (SpecKit, OpenAPI, ADR)
 - Refactoring legacy code with spec coverage (specify behavior -> test -> refactor -> verify)
-- Delegating to subagents: give them spec + TDD instructions for autonomous execution
 
 **Skip for:** throwaway prototypes, single-line changes, or when user explicitly says "no tests needed".
 
 ## Relationship to Other Skills
 
-This skill **orchestrates** three existing Hermes skills:
+This skill may reference three supporting Hermes skills:
 
 | Skill | Role |
 |-------|------|
@@ -105,7 +111,7 @@ This skill **orchestrates** three existing Hermes skills:
 | `test-driven-development` | RED-GREEN-REFACTOR cycle per task |
 | `requesting-code-review` | Independent review after each task |
 
-It does NOT replace them. It sequences them into a pipeline.
+The primary agent executes the pipeline. Delegated agents are used only as independent reviewers.
 
 ## Pipeline
 
@@ -169,14 +175,33 @@ Artifacts include:
 - regression evidence
 - retry/fix artifacts
 
-### Rule 2 -- Review request format
+### Rule 2 -- Review-only delegation
+
+Every `delegate_task` call MUST request review of one already-created, committed artifact.
+
+The delegated reviewer may:
+- inspect the supplied artifact and evidence;
+- compare them with the relevant specification;
+- return `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`;
+- explain the findings.
+
+The delegated reviewer MUST NOT:
+- create or modify implementation, tests, specifications, tasks, or journal entries;
+- fix a failed artifact;
+- execute the complete spec-driven TDD workflow;
+- advance to another stage;
+- delegate implementation work to another agent.
+
+The primary agent remains responsible for all creation, fixes, commits, journal updates,
+test execution, and workflow progression.
 
 Every review request must include:
-- commit hash
-- artifact path
-- spec ID
-- task ID (if applicable)
-- expected review scope
+- commit hash;
+- artifact path;
+- spec ID;
+- task ID, when applicable;
+- expected review scope;
+- an explicit instruction to review only and not modify files.
 
 ### Rule 3 -- Every completed step updates the journal
 
@@ -335,7 +360,7 @@ Extract:
 
 ```python
 delegate_task(
-    goal="Review this specification for completeness and testability.",
+    goal="Review only: assess this committed specification for completeness and testability. Do not modify files or implement changes.",
     context="Spec:\n" + spec_text,
     toolsets=[]
 )
@@ -374,7 +399,7 @@ If task decomposition produces many tasks, request the spec reviewer to also eva
 
 ```python
 delegate_task(
-    goal="Review task decomposition for appropriate granularity.",
+    goal="Review only: assess this committed task decomposition for appropriate granularity. Do not modify files or implement changes.",
     context=f"Spec:\n{spec_text}\n\nTasks:\n{tasks_text}",
     toolsets=[]
 )
@@ -445,7 +470,7 @@ Reviewer checks **both** the test code and the RED output:
 
 ```python
 delegate_task(
-    goal="""Review the test and RED result:
+    goal="""Review only. Do not modify files, fix the test, or advance the workflow. Review the test and RED result:
     1. Does the test correctly cover the acceptance criterion from the spec?
     2. Did it fail for the right reason (missing feature, not a test bug)?
     3. Is it end-to-end (behavioral, not implementation-coupled)?
@@ -496,7 +521,7 @@ Reviewer checks:
 
 ```python
 delegate_task(
-    goal="Review the GREEN implementation. Is it minimal, correct, spec-compliant?",
+    goal="Review only: assess the committed GREEN implementation for minimality, correctness, and spec compliance. Do not modify files or implement fixes.",
     context=f"Spec ref: {spec_ref}\nTest output:\n{terminal_output}\n\nNew code:\n{implementation_code}",
     toolsets=["terminal"]
 )
@@ -601,7 +626,7 @@ spec_jid = jlog("SPEC_SPEC", "S-SDT-01", "COMPLETED", detail="Parsed spec from u
 
 # 3. REVIEW SPEC (Phase 1)
 review = delegate_task(
-    goal="Review this specification for completeness and testability.",
+    goal="Review only: assess this committed specification for completeness and testability. Do not modify files or implement changes.",
     context="Spec:\n" + spec,
     toolsets=[]
 )
@@ -652,50 +677,21 @@ for task in tasks:
 jlog("DONE", "S-SDT-01", "COMPLETED", detail="All tasks completed")
 ```
 
-### Subagent delegation (autonomous worker)
+### Review Delegation
 
-For full automation -- delegate to a subagent while passing the path to JOURNAL_SDD_TDD_SKILL.log:
+Each review MUST use a separate `delegate_task` call with fresh context.
 
-```python
-delegate_task(
-    goal="""Implement the following spec via spec-driven-tdd.
+A review request MUST identify exactly one artifact and one review scope.
+It MUST explicitly say:
 
-    Full pipeline:
-    1. REVIEW SPEC -- verify acceptance criteria are unambiguous
-    2. Decompose into tasks -- each task = one acceptance criterion
-    3. For each task (review at every step):
-       a. WRITE TEST (failing, end-to-end, on spec) -> REVIEW TEST
-       b. RED (verify fail) -> REVIEW RED
-       c. GREEN (minimal impl) -> REVIEW GREEN
-    4. Inter-task regression check (all tests green)
-    5. Done
-
-    IMPORTANT: Journal every step into JOURNAL_PATH.
-    Create entry AFTER completing each step.
-    Use the jlog() helper from the integration example.
-
-    Spec:
-    [INSERT SPEC TEXT]
-
-    Test framework: pytest
-    """,
-    context=f"JOURNAL_PATH={journal_path}. Full pipeline autonomous. Each step -- delegate_task for review.",
-    toolsets=["terminal", "file", "skills"]
-)
+```text
+Review only. Do not modify files, implement fixes, execute later stages,
+or run the complete workflow. Return a verdict and findings.
 ```
 
-### Important for subagent delegation
-
-When delegating to a subagent -- every `delegate_task` for review must be a separate call, not part of one goal. Each time, the reviewer receives fresh context, with no memory of previous steps. That is exactly what gives review its independence.
-
-```python
-# Correct: separate call per review
-review_test = delegate_task(goal="Review test", context=test_context, toolsets=[])
-# ... different context, different agent ...
-
-review_red = delegate_task(goal="Verify RED", context=red_context, toolsets=[])
-# ... fresh context again ...
-```
+If the verdict is `FAIL` or `NEEDS_CLARIFICATION`, the delegated reviewer stops.
+The primary agent applies the fix, commits it, updates the journal, and submits
+the corrected artifact through a new review-only `delegate_task` call.
 
 ## Spec Format Example
 
