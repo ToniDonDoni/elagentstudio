@@ -173,9 +173,15 @@ Create initial journal entry for external input.
 
 Journal entry:
 
-TYPE: USER_INPUT  
-SPEC: S-DEMO-01  
-STATUS: COMPLETED  
+=== J-20260614-100000-001 ===
+TYPE: USER_INPUT
+SPEC: S-DEMO-01
+STATUS: COMPLETED
+PARENT: --
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-000
+PARENT_TASK_ID: --
+ROOT_USER_INPUT_ID: T-DEMO-01-000
 DETAIL: Initial feature request received.
 
 Then commit:
@@ -228,9 +234,20 @@ PASS.
 
 Journal update:
 
-TYPE: SPEC_REVIEW  
-SPEC: S-DEMO-01  
-STATUS: PASS  
+=== J-20260614-100000-002 ===
+TYPE: SPEC_SPEC
+SPEC: S-DEMO-01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-001
+ROOT: J-20260614-100000-001
+DETAIL: Counter API spec draft created.
+
+=== J-20260614-100000-003 ===
+TYPE: SPEC_REVIEW
+SPEC: S-DEMO-01
+STATUS: PASS
+PARENT: J-20260614-100000-002
+ROOT: J-20260614-100000-001
 DETAIL: Spec is testable and decomposable. Reviewed commit <hash>.
 
 Commit journal:
@@ -295,9 +312,20 @@ PASS.
 
 Journal update:
 
-TYPE: TASK_REVIEW  
-SPEC: S-DEMO-01  
-STATUS: PASS  
+=== J-20260614-100000-004 ===
+TYPE: DECOMPOSE
+SPEC: S-DEMO-01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-003
+ROOT: J-20260614-100000-001
+DETAIL: Spec decomposed into 5 tasks (T-DEMO-01.01 through T-DEMO-01.05).
+
+=== J-20260614-100000-005 ===
+TYPE: TASK_REVIEW
+SPEC: S-DEMO-01
+STATUS: PASS
+PARENT: J-20260614-100000-004
+ROOT: J-20260614-100000-001
 DETAIL: TASKS.md maps five tasks to five acceptance criteria. Reviewed commit <hash>.
 
 Commit journal:
@@ -322,9 +350,15 @@ Agent chooses T-DEMO-01.04.
 
 Journal update:
 
-TYPE: AGENT_DECISION  
-SPEC: S-DEMO-01.04  
-STATUS: COMPLETED  
+=== J-20260614-100000-006 ===
+TYPE: AGENT_DECISION
+SPEC: S-DEMO-01.04
+STATUS: COMPLETED
+PARENT: J-20260614-100000-005
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-004
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
 DETAIL: Selected lower-bound behavior task T-DEMO-01.04.
 
 Commit journal:
@@ -373,9 +407,15 @@ Then run the test and confirm FAIL.
 
 Journal update:
 
+=== J-20260614-100000-007 ===
 TYPE: RED
 SPEC: S-DEMO-01.04
 STATUS: COMPLETED
+PARENT: J-20260614-100000-006
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-004
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
 DETAIL: Test written and RED — failure confirms required behavior is missing.
 
 Commit journal:
@@ -402,9 +442,15 @@ PASS.
 
 Journal update:
 
+=== J-20260614-100000-008 ===
 TYPE: RED_REVIEW
 SPEC: S-DEMO-01.04
 STATUS: PASS
+PARENT: J-20260614-100000-007
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-004
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
 DETAIL: RED is valid. Test matches acceptance criterion and failure proves behavior is not implemented. Reviewed commit <hash>.
 
 Commit journal:
@@ -470,9 +516,26 @@ PASS.
 
 Journal update:
 
-TYPE: GREEN_REVIEW  
-SPEC: S-DEMO-01.04  
-STATUS: PASS  
+=== J-20260614-100000-009 ===
+TYPE: GREEN
+SPEC: S-DEMO-01.04
+STATUS: COMPLETED
+PARENT: J-20260614-100000-008
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-004
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Minimal lower-bound implementation complete.
+
+=== J-20260614-100000-010 ===
+TYPE: GREEN_REVIEW
+SPEC: S-DEMO-01.04
+STATUS: PASS
+PARENT: J-20260614-100000-009
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-004
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
 DETAIL: Minimal implementation satisfies lower-bound behavior. Reviewed commit <hash>.
 
 Commit journal:
@@ -500,9 +563,15 @@ No refactor is needed.
 
 Journal update:
 
-TYPE: AGENT_DECISION  
-SPEC: S-DEMO-01.04  
-STATUS: COMPLETED  
+=== J-20260614-100000-011 ===
+TYPE: AGENT_DECISION
+SPEC: S-DEMO-01.04
+STATUS: COMPLETED
+PARENT: J-20260614-100000-010
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-004
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
 DETAIL: Refactor skipped; implementation is already minimal.
 
 Commit journal:
@@ -530,9 +599,21 @@ PASS.
 
 Journal update:
 
-TYPE: REGRESSION  
-SPEC: S-DEMO-01.04  
-STATUS: PASS  
+=== J-20260614-100000-012 ===
+TYPE: TASKS_COMPLETE
+SPEC: S-DEMO-01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-005
+ROOT: J-20260614-100000-001
+DEPENDS: J-20260614-100000-010
+DETAIL: All 5 task branches complete.
+
+=== J-20260614-100000-013 ===
+TYPE: REGRESSION
+SPEC: S-DEMO-01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-012
+ROOT: J-20260614-100000-001
 DETAIL: All existing tests pass after lower-bound implementation.
 
 Commit journal:
@@ -551,9 +632,12 @@ Scope:
 
 Journal update if reviewed:
 
-TYPE: REGRESSION_REVIEW  
-SPEC: S-DEMO-01.04  
-STATUS: PASS  
+=== J-20260614-100000-014 ===
+TYPE: REGRESSION_REVIEW
+SPEC: S-DEMO-01
+STATUS: PASS
+PARENT: J-20260614-100000-013
+ROOT: J-20260614-100000-001
 DETAIL: Regression evidence accepted.
 
 Commit journal:
@@ -574,16 +658,11 @@ Completion criteria for T-DEMO-01.04:
 - refactor decision journaled and committed
 - regression result journaled and committed
 
-Journal update:
+Note:
 
-TYPE: DONE  
-SPEC: S-DEMO-01.04  
-STATUS: COMPLETED  
-DETAIL: Task T-DEMO-01.04 completed with committed artifacts, review gates, and audit trail.
-
-Commit journal:
-
-journal: mark S-DEMO-01.04 complete
+There is no task-level DONE. Task completion is expressed through the pipeline:
+reaching GREEN_REVIEW(PASS) means the task branch is complete.
+All task branches converge at TASKS_COMPLETE before proceeding to REGRESSION.
 
 ## Stage 4 -- Continue Remaining Tasks
 
@@ -617,8 +696,6 @@ Each task follows:
 19. run regression
 20. journal regression
 21. commit journal
-22. mark task done
-23. commit journal
 
 ## Stage 5 -- Final Feature Review
 
@@ -661,9 +738,12 @@ PASS.
 
 Journal update:
 
-TYPE: FINAL_REVIEW  
-SPEC: S-DEMO-01  
-STATUS: PASS  
+=== J-20260614-100000-015 ===
+TYPE: FINAL_REVIEW
+SPEC: S-DEMO-01
+STATUS: PASS
+PARENT: J-20260614-100000-014
+ROOT: J-20260614-100000-001
 DETAIL: Full feature review passed. All spec items implemented through committed TDD workflow.
 
 Commit journal:
@@ -674,9 +754,12 @@ journal: record final feature review for S-DEMO-01
 
 Journal update:
 
-TYPE: DONE  
-SPEC: S-DEMO-01  
-STATUS: COMPLETED  
+=== J-20260614-100000-016 ===
+TYPE: DONE
+SPEC: S-DEMO-01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-015
+ROOT: J-20260614-100000-001
 DETAIL: Counter API completed through commit-based spec-driven TDD pipeline.
 
 Commit journal:
