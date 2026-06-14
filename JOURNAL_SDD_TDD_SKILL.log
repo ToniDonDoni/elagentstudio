@@ -118,3 +118,11 @@ STATUS: COMPLETED
 PARENT: J-20260614-010200-001
 ROOT: J-20260614-010000-001
 DETAIL: SPEC v2 — all 12 issues fixed: spec ID unified to S-JTT-01, C14 (non-USER_INPUT PARENT field), C9 (ROOT consistency), C6 (unique JIDs), C7 (min entry count), C5 sentinel exclusion, C15 chain completeness, task count=4, error format specified, TASK_REVIEW in sequence, constraint 3 clarified.
+
+=== J-20260614-010400-001 ===
+TYPE: SPEC_REVIEW
+SPEC: S-JTT-01
+STATUS: PASS
+PARENT: J-20260614-010300-001
+ROOT: J-20260614-010000-001
+DETAIL: SPEC REVIEW PASS. All 12 v1 issues fixed. Spec is complete, consistent, testable. 4 minor non-blocking recommendations noted.
