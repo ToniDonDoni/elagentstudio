@@ -164,11 +164,23 @@ ROOT: <its own JID>
 Every derived journal entry has:
 
 ```text
-PARENT: <direct parent journal JID>
+PARENT: <exact JID of the direct parent journal entry>
 ROOT: <originating USER_INPUT journal JID>
 ```
 
-`ROOT` is copied unchanged from the parent journal entry.
+`PARENT` MUST be copied exactly from an existing journal entry.
+
+A `PARENT` JID MUST NOT be generated, guessed, incremented, decremented,
+reconstructed from another timestamp, or modified through string operations.
+
+Before a derived entry is appended, its `PARENT` value MUST already exist in
+the journal. If the direct parent cannot be identified unambiguously, the new
+entry MUST NOT be written.
+
+The exact JID created for a journal entry MUST be retained and reused by every
+entry that directly descends from it.
+
+`ROOT` is copied unchanged from the direct parent journal entry.
 
 All journal entries originating from the same `USER_INPUT` share the same `ROOT`.
 
@@ -404,15 +416,17 @@ The journal MUST preserve these rules:
 2. Every `USER_INPUT` has `PARENT: --`.
 3. Every `USER_INPUT` has `ROOT` equal to its own JID.
 4. Every derived journal entry points to an existing direct journal parent.
-5. Every derived journal entry preserves the originating journal `ROOT`.
-6. Every `TASK_ID` identifies one logical task.
-7. Every root task has `PARENT_TASK_ID: --`.
-8. Every root task has `ROOT_USER_INPUT_ID` equal to its own `TASK_ID`.
-9. Every child task points to its direct parent through `PARENT_TASK_ID`.
-10. Every child task copies `ROOT_USER_INPUT_ID` from its parent.
-11. All journal entries for one task use the same task-tree fields.
-12. Sibling tasks share a parent; they are not chained by execution order.
-13. Journal relationships and task relationships remain independent.
+5. Every `PARENT` JID is copied exactly from an existing journal entry.
+6. A `PARENT` JID is never guessed, generated, incremented, decremented, or reconstructed.
+7. Every derived journal entry preserves the originating journal `ROOT`.
+8. Every `TASK_ID` identifies one logical task.
+9. Every root task has `PARENT_TASK_ID: --`.
+10. Every root task has `ROOT_USER_INPUT_ID` equal to its own `TASK_ID`.
+11. Every child task points to its direct parent through `PARENT_TASK_ID`.
+12. Every child task copies `ROOT_USER_INPUT_ID` from its parent.
+13. All journal entries for one task use the same task-tree fields.
+14. Sibling tasks share a parent; they are not chained by execution order.
+15. Journal relationships and task relationships remain independent.
 
 ---
 
