@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "Spec-driven TDD with review at every step. Spec -> REVIEW -> tasks -> TEST -> REVIEW -> RED -> REVIEW -> GREEN -> REVIEW -> REFACTOR -> REVIEW. The test is end-to-end and targets the acceptance criterion from the spec."
-version: 1.2.0
+version: 1.3.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -84,7 +84,7 @@ The cycle is complete when:
 - The goal from the spec is fully solved
 - All code passes all tests
 - Every commit along the chain has a **PASS** verdict from review
-- The journal file `JOURNAL_SDD_TDD_SKILL.log` exists, is updated for every completed step and review result, and contains an unbroken `PARENT` chain from `USER_INPUT` to `DONE`
+- The journal file `JOURNAL_SDD_TDD_SKILL.log` exists, is updated for every completed step and review result. All content rules are defined in [references/JOURNAL.md](references/JOURNAL.md).
 
 ## When to Use
 
@@ -256,92 +256,11 @@ Rationale: traceability, reviewer independence (reviewers may not speak the user
 
 ## Journaling & Audit Trail
 
-Every transition between stages, review results, and returns for rework is journaled to the `JOURNAL_SDD_TDD_SKILL.log` file at the project root.
+The pipeline MUST maintain a journal file `JOURNAL_SDD_TDD_SKILL.log` at the project root,
+updated for every completed step and every review result.
 
-### JID Format
-
-```
-J-{YYYYMMDD}-{HHMMSS}-{NNN}
-```
-
-Example: `J-20260608-204500-001`. Uniqueness when multiple events happen in the same second is provided by the `{NNN}` counter.
-
-### Record Format (serialized)
-
-```
-=== {JID} ===
-TYPE: {TYPE}
-SPEC: {SPEC}
-STATUS: {STATUS}
-PARENT: {PARENT_JID}
-DEPENDS: {DEPENDS_JID}
-DETAIL: {detail text}
-```
-
-Blank line between entries. Fields are strictly in this order. Empty fields are omitted.
-PARENT and DEPENDS = ` -- ` when there is no value. Entry is created post-factum AFTER completing the step.
-
-### Fields
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| JID | yes | Unique entry ID |
-| TYPE | yes | Stage type (enum) |
-| SPEC | yes | Spec ID |
-| STATUS | yes | PASS, FAIL, NEEDS_CLARIFICATION, COMPLETED, CANCELLED |
-| PARENT | yes | JID of the trigger entry (` -- ` for the root) |
-| DEPENDS | no | JID of the previous step in the chain |
-| DETAIL | no | Description of what happened |
-
-### TYPE Enum
-
-| TYPE | When created |
-|------|----------------|
-| USER_INPUT | Recording incoming feature request (Phase 0) |
-| PROJECT_INIT | Project creation |
-| SPEC_SPEC | Capture of the initial spec (creation only) |
-| SPEC_REVIEW | Spec review |
-| DECOMPOSE | Decomposition into tasks |
-| TASK_REVIEW | Task decomposition review (Phase 2) |
-| AGENT_DECISION | Agent selects which task to work on next |
-| RED | Writing + running the test (failure expected) |
-| RED_REVIEW | RED result review |
-| GREEN | Writing the minimal implementation |
-| GREEN_REVIEW | GREEN review |
-| REGRESSION | Regression verification |
-| REGRESSION_REVIEW | Regression review (Phase 4) |
-| FINAL_REVIEW | Final implementation review (Phase 5) |
-| ESCALATION | User escalation when review limit exceeded (Rule 8) |
-| CODEX_REVIEW | Review by Codex CLI |
-| DONE | Completion |
-
-### Lifecycle Rules
-
-1. **One entry per step** -- created after the step is completed.
-2. **STATUS** = outcome: COMPLETED (work), PASS/FAIL/NEEDS_CLARIFICATION (review), CANCELLED (interrupted).
-3. **APPEND only** -- entries are only added to the end of the file.
-4. **Chronological** -- entry order = event order.
-5. **PARENT** = JID of the step that triggered this one (SPEC_REVIEW -> preceding SPEC_SPEC).
-
-### Example
-
-```journal
-=== J-20260608-204500-001 ===
-TYPE: SPEC_SPEC
-SPEC: S-SDT-01
-STATUS: COMPLETED
-PARENT: -- 
-DEPENDS: -- 
-DETAIL: Initial spec draft created with 6 subspecs
-
-=== J-20260608-204500-002 ===
-TYPE: SPEC_REVIEW
-SPEC: S-SDT-01
-STATUS: FAIL
-PARENT: J-20260608-204500-001
-DEPENDS: J-20260608-204500-001
-DETAIL: Spec review FAIL -- acceptance criteria too vague
-```
+All rules governing journal content — entry format, required fields, branching model,
+validation — are defined in [references/JOURNAL.md](references/JOURNAL.md).
 
 ### Spec ID Scheme
 
@@ -352,9 +271,9 @@ S-[A-Z]{2,6}-\d{2}(\.\d{2})*
 ```
 
 Examples:
-- `S-SDT-01` -- root spec (parent: ` -- `)
-- `S-SDT-01.01` -- child spec (parent: `S-SDT-01`)
-- `S-SDT-01.01.01` -- sub-spec (parent: `S-SDT-01.01`)
+- `S-SDT-01` — root spec (parent: ` -- `)
+- `S-SDT-01.01` — child spec (parent: `S-SDT-01`)
+- `S-SDT-01.01.01` — sub-spec (parent: `S-SDT-01.01`)
 
 **Rules:**
 1. Child spec ID = parent spec ID + `.NN`
@@ -644,7 +563,7 @@ All tasks are completed. Final verification:
 - All tests are green
 - Every stage was reviewed
 - No regressions
-- Journal file `JOURNAL_SDD_TDD_SKILL.log` exists, is updated for every completed step and review result, and contains an unbroken `PARENT` chain from `USER_INPUT` to `DONE`
+- Journal file `JOURNAL_SDD_TDD_SKILL.log` exists, is updated for every completed step and review result
 
 ** ->  JOURNAL:** `DONE`, STATUS=COMPLETED, PARENT=JID of the last FINAL_REVIEW.
 
@@ -778,27 +697,6 @@ review_red = delegate_task(goal="Verify RED", context=red_context, toolsets=[])
 # ... fresh context again ...
 ```
 
-### Codex CLI Code Review (additional review)
-
-For external, independent review of the skill or documentation -- use Codex CLI directly:
-
-```bash
-# In the project root with SKILL.md and SPEC-DRAFT.md
-codex exec --skip-git-repo-check --sandbox danger-full-access \
-  "Review the skill SKILL.md against SPEC-DRAFT.md requirements. \
-   Check: journaling section, spec ID hierarchy, traceability, \
-   journal entries in all Phase 3 steps, pitfalls >=12. PASS/FAIL per item."
-```
-
-If the sandbox (bwrap) blocks local files -- pass the content through stdin:
-
-```bash
-cat SKILL.md SPEC-DRAFT.md | codex exec --skip-git-repo-check \
-  --sandbox danger-full-access - "Review..."
-```
-
-> **Note:** Codex CLI does not support `--acp`. Use `codex exec` or `codex review --uncommitted`. For ACP review -- `opencode acp` or `copilot --acp --stdio`.
-
 ## Spec Format Example
 
 > **Full reference:** See [SPEC-EXAMPLE.md](references/SPEC-EXAMPLE.md) for a complete, end-to-end walkthrough of the pipeline (Counter API demo). The examples below are quick inline references.
@@ -859,51 +757,9 @@ Build a counter component:
 - **Spec ID collision** -- use unique hierarchical spec IDs (`S-SDT-01.01`, not just "task1"). Flat IDs break parent-child traceability.
 - **Mixed-language artifacts** -- non-English content in spec files, journal entries, or code breaks traceability and reviewer independence. Keep all artifacts in English. Translate user input before committing.
 - **README self-consistency** -- after modifying the skill's file structure (adding/removing references, templates, or core files), the README's "What's Included" table and result directory tree must be updated to match. The table must list ALL R1 files (including README.md itself -- it is easy to forget self-reference). Stale directory entries (e.g. a `templates/` line in the tree after templates were removed) silently mislead users.
-- **Cross-reference staleness** -- every local `references/` link in SKILL.md must point to an existing file in the installed skill. After adding or removing reference files, verify all SKILL.md references resolve. Unused files (installed but not referenced) and broken links (referenced but not installed) both degrade the skill. Use `scripts/verify-install.py` to automate this check.
-
-## Self-Consistency Checks
-
-After modifying the skill's file structure (references, README, core files), run a clean-install verification to catch cross-reference staleness and README mismatches:
-
-```bash
-# From the repo root
-cp scripts/verify-install.py /tmp/ && python3 /tmp/verify-install.py
-```
-
-The script performs all checks from SPEC-MINIMAL-INSTALL.md (S-SDT-01.03):
-
-| Check | What it verifies |
-|-------|-----------------|
-| AC1 | Installed dir contains exactly the R1 file set (no more, no less) |
-| AC2 | No git repo artifacts leaked (JOURNAL_SDD_TDD_SKILL.log, SPEC-*.md, tests/, etc.) |
-| AC3 | README "What's Included" table and tree match the actual installed layout |
-| AC4 | README install commands (`cp SKILL.md`, `cp references/*`) produce the R1 set |
-| XREF | Every local `references/` link in SKILL.md resolves to an existing installed file |
-| XREF | No non-EXAMPLE files linked in SKILL.md's references (unless intentional) |
-
-To run the verification against a fresh install:
-
-```bash
-# Wipe and clean-install from repo
-rm -rf ~/.hermes/skills/software-development/spec-driven-tdd/
-mkdir -p ~/.hermes/skills/software-development/spec-driven-tdd/references
-cp SKILL.md README.md ~/.hermes/skills/software-development/spec-driven-tdd/
-cp references/* ~/.hermes/skills/software-development/spec-driven-tdd/references/
-
-# Verify
-python3 /tmp/verify-install.py
-```
-
-The script operates on the installed Hermes skill directory, not the repo. This catches cases where files were committed to the repo but never synced, or where old files lingered in the installed dir after removal.
+- **Cross-reference staleness** -- every local `references/` link in SKILL.md must point to an existing file in the installed skill. After adding or removing reference files, verify all SKILL.md references resolve. Unused files (installed but not referenced) and broken links (referenced but not installed) both degrade the skill.
 
 ## References
 
+- [JOURNAL.md](references/JOURNAL.md) -- **Complete journal specification.** Entry format, mandatory fields, validation rules, branching model, examples of correct/incorrect journals. Required reading before writing or validating a journal.
 - [SPEC-EXAMPLE.md](references/SPEC-EXAMPLE.md) -- **Canonical reference artifact.** Full Counter API demo walkthrough showing every stage of the pipeline from user input to DONE. Ships with this skill. Read it to see the complete workflow including commit-before-review, journal-commit loop, SPEC-AMENDMENT mechanism, and review scopes per stage.
-- [SpecKit](https://github.com/github/spec-kit) -- GitHub's spec-driven development tooling. Write `.spec.md` files, generate tests, scaffold code.
-- [Hermes Skills Catalog](https://hermes-agent.nousresearch.com/docs/reference/skills-catalog) -- complete list of available Hermes skills
-- Hermes skills used by this pipeline:
-  - `writing-plans` -- task decomposition
-  - `test-driven-development` -- RED-GREEN cycle
-  - `requesting-code-review` -- independent verification
-  - `systematic-debugging` -- when RED fails unexpectedly
-  - `subagent-driven-development` -- multi-task subagent orchestration
