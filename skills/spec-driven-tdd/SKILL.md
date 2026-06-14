@@ -17,7 +17,7 @@ Transform a user request into working software through a sequence of explicit,
 traceable, committed, and independently reviewed artifacts, with automated
 RED-GREEN testing for every behavior that can be tested automatically.
 
-The workflow has three independent mandatory principles:
+The workflow has four independent mandatory principles:
 
 1. Every artifact created or modified by the primary agent is reviewed by a
    separate delegated reviewer before later work may depend on it.
@@ -25,6 +25,9 @@ The workflow has three independent mandatory principles:
    reviewed RED-GREEN test-driven cycle.
 3. Every completed step, review result, correction, and dependency is recorded
    in the journal so the workflow can be reconstructed, diagnosed, and improved.
+4. The result is not only working software, but also the reviewed, tested, and
+   journaled artifacts that explain how it was produced. They make failures
+   diagnosable and help improve the next iteration.
 
 None of these principles replaces another.
 
@@ -215,6 +218,17 @@ references/JOURNAL.md
 This skill defines when journal events occur.
 
 `references/JOURNAL.md` defines how those events are represented.
+
+## Principle 4 — The Process Is Part of the Result
+
+The required stages, reviews, tests, commits, and journal records are not optional
+bureaucracy.
+
+They provide the evidence needed to understand how the software was produced,
+why something failed, and how the next iteration can be improved.
+
+Working code alone is not a complete result if the process that produced it
+cannot be reconstructed, trusted, and improved.
 
 ---
 
