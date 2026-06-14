@@ -1024,7 +1024,6 @@ Build a counter component:
 - **Skipping review** -- independent reviewer catches things you normalized
 - **Large tasks** -- if a task takes more than 5 minutes, split it further
 - **Reviewer has no spec context** -- always pass the relevant spec section to the reviewer
-- **__pycache__/ and *.pyc in git** -- these are build artifacts, not source. Always add `__pycache__/` and `*.pyc` to `.gitignore` at project init. Run `git rm -r --cached __pycache__` if they were already committed. Committing pycache bloats the repo across Python versions and platforms.
 - **SpecKit compatibility** -- SpecKit `.spec.md` files can be parsed as-is; extract requirements from the "Specification" section
 - **Journal not initialized** -- create JOURNAL_SDD_TDD_SKILL.log at project start. No journal = no traceability.
 - **PARENT chain broken** -- always pass the previous JID to the next journal entry. Without PARENT, traceability across steps is lost.
