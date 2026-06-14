@@ -14,7 +14,8 @@ metadata:
 ## Purpose
 
 Transform a user request into working software through a sequence of explicit,
-traceable, committed, and independently reviewed artifacts.
+traceable, committed, and independently reviewed artifacts, with automated
+RED-GREEN testing for every behavior that can be tested automatically.
 
 The workflow has three independent mandatory principles:
 
@@ -221,40 +222,79 @@ The primary agent is responsible for:
 
 ### Delegated Reviewer
 
-Every `delegate_task` call is review-only.
+delegate_task is used only for independent review.
+
+Delegation is intentionally limited to review so that artifact creation and artifact
+evaluation remain separate responsibilities. The primary agent creates and fixes
+artifacts; the delegated reviewer evaluates them without taking ownership of the
+implementation.
 
 A delegated reviewer may:
 
-- inspect one committed artifact;
-- inspect its reviewed source artifacts;
-- inspect test, RED, GREEN, or regression evidence;
-- identify omissions, contradictions, unsupported assumptions, and defects;
-- return `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`;
-- explain the verdict.
+* inspect the committed artifact under review;
+* inspect its approved source artifacts;
+* inspect test, RED, GREEN, regression, or other supporting evidence;
+* compare the artifact with relevant requirements and architecture decisions;
+* identify omissions, contradictions, unsupported assumptions, defects, and risks;
+* return PASS, FAIL, or NEEDS_CLARIFICATION;
+* explain the verdict and provide actionable findings.
 
 A delegated reviewer MUST NOT:
 
-- modify files;
-- create or fix artifacts;
-- implement features;
-- write tests;
-- update the journal;
-- create the next workflow artifact;
-- continue the pipeline;
-- delegate implementation work.
+* modify files;
+* create or fix artifacts;
+* implement features;
+* write or change tests;
+* update the journal;
+* create the next workflow artifact;
+* continue the pipeline;
+* delegate implementation work.
 
-Each review MUST use a fresh delegated context.
+These restrictions preserve review independence. A reviewer that changes the
+artifact would be evaluating its own solution rather than independently assessing
+the primary agent’s work.
+
+Reviewer Context
+
+A fresh delegated context is preferred for an initial review.
+
+Fresh context reduces anchoring, confirmation bias, and reliance on assumptions
+formed while the artifact was being created.
+
+The reviewer SHOULD receive all required information explicitly rather than rely
+on hidden or shared working context.
+
+A follow-up review after FAIL or NEEDS_CLARIFICATION MAY use the same reviewer
+when continuity is useful for checking whether specific findings were resolved.
+
+Even during a follow-up review, the request MUST include the updated committed
+artifact, previous findings, new evidence, and the current review scope. The
+reviewer must not rely only on remembered context.
+
+The objective is independent judgment supported by complete evidence, not forced
+amnesia.
+
+Review Request
 
 Every review request MUST identify:
 
-- the reviewed commit;
-- the artifact path;
-- the source artifacts;
-- the relevant requirement IDs;
-- the task ID, when applicable;
-- the evidence being reviewed;
-- the exact review scope;
-- the instruction to review only and not modify files.
+* the reviewed commit;
+* the artifact path;
+* the approved source artifacts;
+* the relevant requirement IDs;
+* the relevant architecture references;
+* the task ID, when applicable;
+* the supporting evidence being reviewed;
+* previous findings, when this is a follow-up review;
+* the exact review scope;
+* an explicit instruction to review only and not modify files.
+
+A review request SHOULD contain enough context for the reviewer to reach a verdict
+without access to the primary agent’s private reasoning.
+
+If the verdict is FAIL or NEEDS_CLARIFICATION, the delegated reviewer stops.
+The primary agent applies corrections, commits the updated artifact, updates the
+journal, and submits it for another review.
 
 ---
 
@@ -508,11 +548,34 @@ Record the selected task in the journal.
 
 ### Step 4.2 — Create Test Artifact
 
-Create automated tests that prove the task's required observable behavior.
+Create automated tests that prove the task’s required observable behavior.
+
+The primary test MUST be acceptance-oriented and exercise the behavior at the
+highest practical level available for the task.
+
+Tests SHOULD:
+
+- validate user-visible or externally observable behavior;
+- represent the relevant user story or acceptance criterion;
+- exercise the public interface of the application, service, component, or module;
+- verify the behavior described by reviewed requirements;
+- avoid unnecessary coupling to internal implementation details;
+- avoid mocking internal components when the real behavior can be exercised directly.
+
+A full system end-to-end test is preferred when it is practical and reliable.
+
+When full end-to-end execution is impractical, use the closest stable boundary
+that still proves the required behavior, such as:
+
+- API-level tests;
+- service-level tests;
+- component-level tests through public interfaces;
+- integration tests across the relevant subsystem.
+
+Unit tests MAY supplement the acceptance-oriented test but MUST NOT replace it
+when the requirement describes higher-level application behavior.
 
 Tests MUST be derived from reviewed requirements and task acceptance criteria.
-
-Tests SHOULD avoid unnecessary coupling to internal implementation details.
 
 Commit the test artifact.
 
@@ -542,12 +605,13 @@ Delegate an independent review of:
 
 The reviewer checks:
 
-- whether the tests prove the referenced behavior;
-- whether expectations match `SPEC.md`;
-- whether architecture constraints are respected;
-- whether the tests use observable behavior;
+- whether the tests prove the task's required observable behavior;
+- whether the tests match the task acceptance criteria;
+- whether the tests correctly cover the referenced requirements in `SPEC.md`;
+- whether relevant architecture constraints are respected;
+- whether the tests exercise the highest practical public boundary;
 - whether important edge cases are covered;
-- whether the failure occurred for the correct reason;
+- whether RED failed for the expected missing-behavior reason;
 - whether an incorrect implementation would be detected.
 
 The reviewer returns one verdict for the test artifact and RED evidence.
@@ -632,27 +696,59 @@ Regression MUST NOT begin before all required task branches have converged.
 
 ### Artifact: Regression Evidence
 
-Run the complete required test suite against the final committed implementation.
+Run the complete automated test suite required to verify the final committed implementation.
+
+Regression MUST include:
+
+- all tests created for the current requirements;
+- all previously existing tests for the affected application or component;
+- all relevant integration tests;
+- all relevant end-to-end and acceptance tests;
+- all automated checks for applicable non-functional requirements;
+- tests for shared components that may be affected by the changes.
+
+Do not run only the tests added for the current tasks.
+
+For a repository with multiple independent projects, run the complete required
+suite for every affected project and every shared component that may be impacted.
+
+If any required test or test suite cannot be executed, record:
+
+- which tests were not executed;
+- why they could not be executed;
+- what risk remains;
+- what alternative evidence was collected.
 
 Regression evidence MUST record:
 
-- executed test scope;
-- result summary;
-- failures, if any;
-- environment and configuration relevant to the result;
-- commit under test.
+- the exact commands executed;
+- the exact commit under test;
+- the executed test scope;
+- the total number of passed, failed, skipped, and omitted tests;
+- failure details, if any;
+- relevant environment and configuration;
+- any known limitations in the collected evidence.
+
+Regression is complete only when:
+
+- all required tests pass;
+- no required test was silently omitted;
+- every exception is explicitly documented;
+- the regression evidence corresponds to the final committed state.
 
 ### Review Scope
 
 The delegated reviewer checks:
 
-- whether the required test scope is complete;
-- whether all tests passed;
+- whether the executed test scope is complete for the affected system;
+- whether all newly added and previously existing relevant tests were executed;
+- whether all required tests passed;
+- whether skipped or omitted tests are justified and documented;
 - whether previously completed behavior remains valid;
-- whether the evidence corresponds to the final committed state;
-- whether automatically testable functional and non-functional requirements are covered.
-
-### Gate
+- whether automatically testable functional requirements are covered;
+- whether automatically testable non-functional requirements are covered;
+- whether the evidence corresponds to the exact final committed state;
+- whether the recorded commands, environment, and result summary are sufficient to reproduce the regression run.
 
 Final review MUST NOT begin until regression evidence receives `PASS`.
 
