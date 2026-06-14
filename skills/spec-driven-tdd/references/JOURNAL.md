@@ -114,8 +114,10 @@ for this entry's spec tree.
 
 ### 2.7 TASK — Task identifier (optional)
 
-Required for entries of type: `DECOMPOSE`, `TASK_REVIEW`, `RED`, `RED_REVIEW`,
-`GREEN`, `GREEN_REVIEW`.
+Required for entries of type: `RED`, `RED_REVIEW`, `GREEN`, `GREEN_REVIEW`.
+Optional for entries of type: `DECOMPOSE`, `TASK_REVIEW` (required only when
+decomposing or reviewing a specific task's subtasks; omitted for top-level
+spec decomposition or task-set review).
 
 **Task ID grammar (ABNF):**
 
@@ -375,8 +377,11 @@ TASK_REVIEW
 
 ### 4.6 TASK Fields
 
-1. Entries of type `DECOMPOSE`, `TASK_REVIEW`, `RED`, `RED_REVIEW`, `GREEN`,
-   `GREEN_REVIEW` MUST have a TASK field.
+1. Entries of type `RED`, `RED_REVIEW`, `GREEN`, `GREEN_REVIEW`
+   MUST have a TASK field.
+   Entries of type `DECOMPOSE`, `TASK_REVIEW` MUST have a TASK field
+   if they decompose or review a specific task's subtasks; they MUST NOT
+   have a TASK field for top-level spec decomposition or task-set review.
 2. TASK values MUST match the grammar in §2.7.
 3. If a TASK value is a subtask-id (contains a dot), it MUST have a
    `TASK_PARENT` field.
