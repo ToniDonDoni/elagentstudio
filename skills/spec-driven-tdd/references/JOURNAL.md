@@ -1,5 +1,36 @@
 # JOURNAL.md — SDD Workflow Journal Specification
 
+TODO update to the skill v2
+TODO: Align JOURNAL.md with the new architecture stage.
+- Add TYPE `ARCHITECTURE` for creation or revision of `ARCHITECTURE.md`.
+- Add TYPE `ARCHITECTURE_REVIEW` for architecture review verdicts.
+- Allow `ARCHITECTURE` to use STATUS `COMPLETED`.
+- Allow `ARCHITECTURE_REVIEW` to use `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`.
+- Add both types to the required-fields-by-entry-type table.
+- Update the top-level workflow to:
+  USER_INPUT
+  -> SPEC_SPEC
+  -> SPEC_REVIEW
+  -> ARCHITECTURE
+  -> ARCHITECTURE_REVIEW
+  -> DECOMPOSE
+  -> TASK_REVIEW
+  -> task branches
+  -> TASKS_COMPLETE
+  -> REGRESSION
+  -> REGRESSION_REVIEW
+  -> FINAL_REVIEW
+  -> DONE
+- Add the failure transition:
+  ARCHITECTURE_REVIEW FAIL -> ARCHITECTURE
+- Clarify that `SPEC_SPEC` records creation or revision of editable `SPEC.md`.
+- Clarify that `SPEC_REVIEW` reviews committed `SPEC.md`, not immutable `SPEC-DRAFT.md`.
+- Clarify that `DECOMPOSE` uses reviewed `SPEC.md` and reviewed `ARCHITECTURE.md`.
+- Update the complete journal example to include `ARCHITECTURE` and `ARCHITECTURE_REVIEW`.
+- Do not add new relationship fields. Continue using `JID`, `PARENT`, `ROOT`, `DEPENDS`, and the existing task-tree fields.
+- Store artifact paths, reviewed commit hashes, and review evidence in `DETAIL` unless a separate structured-field change is explicitly approved.
+
+
 This document defines the required format and content of `JOURNAL_SDD_TDD_SKILL.log`.
 
 The journal records:

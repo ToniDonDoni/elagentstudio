@@ -1,5 +1,9 @@
 # Demo Feature Case: Counter API with Commit-Based Spec-Driven TDD
 
+
+TODO update to the skill v2
+
+
 This walkthrough demonstrates the workflow defined in `SKILL.md`.
 
 All journal entries follow `references/JOURNAL.md`.
