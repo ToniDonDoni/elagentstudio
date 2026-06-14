@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "Build software through a traceable artifact pipeline. Every agent-generated artifact is independently reviewed, every automatically testable behavior is implemented through reviewed RED-GREEN TDD, and every workflow event is committed and journaled."
-version: 2.2.0
+version: 2.3.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -378,21 +378,89 @@ amnesia.
 
 #### Review Request
 
+Every review request MUST give the reviewer enough explicit traceability to
+understand what is being reviewed, why it exists, and what evidence would justify
+`PASS`.
+
 Every review request MUST identify:
 
+- the review type;
+- the repository path;
 - the reviewed commit;
-- the artifact path;
-- the approved source artifacts;
-- the relevant requirement IDs;
-- the relevant architecture references;
+- the artifact path or paths under review;
 - the task ID, when applicable;
-- the supporting evidence being reviewed;
+- the exact task title as recorded in `TASKS.md`;
+- the current task-selection or workflow entry in `JOURNAL_SDD_TDD_SKILL.log`;
+- `SPEC.md` as the requirements source;
+- the exact relevant requirement IDs;
+- `ARCHITECTURE.md` as the technical-decision source;
+- the exact relevant architecture sections or decisions;
+- `TASKS.md` as the task and acceptance-criteria source;
+- `JOURNAL_SDD_TDD_SKILL.log` as the workflow-evidence source;
+- the supporting RED, GREEN, regression, or other evidence being reviewed;
 - previous findings, when this is a follow-up review;
 - the exact review scope;
+- the required verdict format: `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`;
 - an explicit instruction to review only and not modify files.
+
+The review request MUST instruct the reviewer to verify traceability across:
+
+```text
+REQUIREMENT
+→ ARCHITECTURE DECISION
+→ TASK
+→ ARTIFACT
+→ EVIDENCE
+```
+
+For a test artifact and RED review, the request MUST additionally instruct the
+reviewer to:
+
+- verify that the primary test exercises the complete user story or externally
+  observable behavior at the highest practical boundary;
+- return `FAIL` when an end-to-end or acceptance-level test is practical but is
+  missing;
+- accept a lower-level substitute only when the reviewed artifacts contain a
+  concrete reason why end-to-end execution is impractical or unreliable;
+- verify that unit tests supplement rather than replace the primary
+  acceptance-oriented test;
+- verify that RED fails because the required behavior is absent, not because of
+  broken setup, imports, fixtures, protocol wiring, or environment;
+- verify that the test would detect an incorrect implementation.
+
+A test review request MUST NOT merely ask whether the tests pass, fail, or look
+reasonable. It must ask whether they prove the referenced requirements through
+the real public behavior of the system.
 
 A review request SHOULD contain enough context for the reviewer to reach a verdict
 without access to the primary agent’s private reasoning.
+
+Canonical test and RED review request structure:
+
+```text
+Review type: RED_REVIEW
+Repository: <repository path>
+Reviewed commit: <commit SHA>
+Task: <TASK_ID> — <exact task title>
+Task source: TASKS.md
+Workflow entry: JOURNAL_SDD_TDD_SKILL.log — <current task entry/JID>
+Requirements source: SPEC.md
+Relevant requirements: <requirement IDs>
+Architecture source: ARCHITECTURE.md
+Relevant architecture: <sections or decisions>
+Artifacts under review: <test paths>
+Evidence under review: <RED evidence paths or command output>
+Previous findings: <none or findings>
+Scope:
+- Review only.
+- Do not modify files.
+- Verify requirement, architecture, task, artifact, and evidence traceability.
+- Require an end-to-end or acceptance-level primary test at the highest
+  practical boundary.
+- Return FAIL if such a test is practical but missing.
+- Return FAIL if RED is caused by anything other than absent required behavior.
+Verdict: PASS, FAIL, or NEEDS_CLARIFICATION, with concise findings.
+```
 
 If the verdict is `FAIL` or `NEEDS_CLARIFICATION`, the delegated reviewer stops.
 The primary agent applies corrections, commits the updated artifact, updates the
@@ -664,7 +732,7 @@ Tests SHOULD:
 - avoid unnecessary coupling to internal implementation details;
 - avoid mocking internal components when the real behavior can be exercised directly.
 
-A full system end-to-end test is preferred when it is practical and reliable.
+A full system end-to-end test MUST be used when it is practical and reliable.
 
 When full end-to-end execution is impractical, use the closest stable boundary
 that still proves the required behavior, such as:
@@ -712,9 +780,17 @@ The reviewer checks:
 - whether the tests correctly cover the referenced requirements in `SPEC.md`;
 - whether relevant architecture constraints are respected;
 - whether the tests exercise the highest practical public boundary;
+- whether the primary test is end-to-end or acceptance-level when that is
+  practical and reliable;
+- whether any lower-level substitute has a concrete documented justification;
+- whether unit tests supplement rather than replace the primary
+  acceptance-oriented test;
 - whether important edge cases are covered;
 - whether RED failed for the expected missing-behavior reason;
 - whether an incorrect implementation would be detected.
+
+The reviewer MUST return `FAIL` when an end-to-end or acceptance-level primary
+test is practical but missing.
 
 The reviewer returns one verdict for the test artifact and RED evidence.
 
