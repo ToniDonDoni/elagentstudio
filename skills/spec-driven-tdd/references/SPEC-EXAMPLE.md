@@ -35,14 +35,38 @@ spec-driven-tdd: record initial user input for S-DEMO-01
 
 ---
 
-## 2. Create the Immutable Specification
+## 2. Capture Immutable Raw User Input
 
-Create `SPEC-DRAFT.md`:
+Create `SPEC-DRAFT.md` by copying the user request exactly as received:
+
+```markdown
+# Raw User Input
+
+Build a simple in-memory counter. It starts at zero, can be decremented,
+never goes below zero, and exposes its current value.
+```
+
+Do not normalize, translate, clarify, or add acceptance criteria.
+
+Commit:
+
+```text
+spec: capture immutable raw input for S-DEMO-01
+```
+
+`SPEC-DRAFT.md` is now immutable. It is not reviewed and must never be edited.
+
+---
+
+## 3. Derive and Review the Working Specification
+
+Create editable `SPEC.md` from `SPEC-DRAFT.md`:
 
 ```markdown
 # Counter API Specification
 
 Spec ID: S-DEMO-01
+Source: SPEC-DRAFT.md
 Parent: --
 
 ## S-DEMO-01.01 — Initial value
@@ -65,10 +89,10 @@ Acceptance criterion:
 Commit:
 
 ```text
-spec: add immutable Counter API draft S-DEMO-01
+spec: derive editable Counter API specification S-DEMO-01
 ```
 
-Record the created specification:
+Record creation of the working specification:
 
 ```text
 === J-20260614-100000-002 ===
@@ -77,16 +101,20 @@ SPEC: S-DEMO-01
 STATUS: COMPLETED
 PARENT: J-20260614-100000-001
 ROOT: J-20260614-100000-001
-DETAIL: Immutable Counter API specification created.
+DETAIL: Editable SPEC.md derived from immutable SPEC-DRAFT.md.
 ```
 
-Review the committed specification.
+Review the committed `SPEC.md`.
+
+`SPEC-DRAFT.md` is not reviewed.
 
 Review scope:
 
+- `SPEC.md` remains faithful to `SPEC-DRAFT.md`;
 - both acceptance criteria are observable;
 - the behavior is unambiguous;
-- each acceptance criterion can be tested independently.
+- each acceptance criterion can be tested independently;
+- no unsupported requirements were introduced.
 
 Record the review:
 
@@ -97,20 +125,30 @@ SPEC: S-DEMO-01
 STATUS: PASS
 PARENT: J-20260614-100000-002
 ROOT: J-20260614-100000-001
-DETAIL: Specification is complete, unambiguous, and testable. Reviewed commit <hash>.
+DETAIL: SPEC.md is faithful to SPEC-DRAFT.md, complete, unambiguous, and testable. Reviewed commit <hash>.
 ```
 
 Commit:
 
 ```text
-journal: record specification review for S-DEMO-01
+journal: record SPEC.md review for S-DEMO-01
 ```
+
+If the review returns `FAIL` or `NEEDS_CLARIFICATION`:
+
+1. keep `SPEC-DRAFT.md` unchanged;
+2. edit `SPEC.md`;
+3. commit the corrected `SPEC.md`;
+4. update and commit the journal;
+5. request a fresh review of `SPEC.md`.
+
+Task decomposition starts only after `SPEC.md` receives `PASS`.
 
 ---
 
-## 3. Decompose the Specification into Tasks
+## 4. Decompose Reviewed SPEC.md into Tasks
 
-Create `TASKS.md`:
+After `SPEC.md` receives `PASS`, create `TASKS.md` from its acceptance criteria:
 
 ```markdown
 # Counter API Tasks
@@ -151,7 +189,7 @@ SPEC: S-DEMO-01
 STATUS: COMPLETED
 PARENT: J-20260614-100000-003
 ROOT: J-20260614-100000-001
-DETAIL: Specification decomposed into T-DEMO-01-001 and T-DEMO-01-002.
+DETAIL: Reviewed SPEC.md decomposed into T-DEMO-01-001 and T-DEMO-01-002.
 ```
 
 Review the committed task decomposition.
@@ -176,7 +214,7 @@ journal: record task decomposition review for S-DEMO-01
 
 ---
 
-## 4. Task T-DEMO-01-001 — Initial Value
+## 5. Task T-DEMO-01-001 — Initial Value
 
 ### 4.1 Select the Task
 
@@ -322,7 +360,7 @@ DETAIL: Implementation is minimal and satisfies S-DEMO-01.01. Reviewed commit <h
 
 ---
 
-## 5. Task T-DEMO-01-002 — Lower Bound
+## 6. Task T-DEMO-01-002 — Lower Bound
 
 ### 5.1 Select the Task
 
@@ -471,7 +509,7 @@ DETAIL: Implementation is minimal and satisfies S-DEMO-01.02. Reviewed commit <h
 
 ---
 
-## 6. Converge the Task Branches
+## 7. Converge the Task Branches
 
 Both sibling task branches are complete:
 
@@ -501,7 +539,7 @@ journal: record completion of Counter API task branches
 
 ---
 
-## 7. Regression
+## 8. Regression
 
 Run all tests:
 
@@ -543,13 +581,13 @@ DETAIL: Regression evidence confirms both acceptance criteria remain satisfied. 
 
 ---
 
-## 8. Final Review
+## 9. Final Review
 
 Review the complete committed feature.
 
 Review scope:
 
-- both acceptance criteria are implemented;
+- both acceptance criteria from reviewed `SPEC.md` are implemented;
 - both task branches have reviewed RED and GREEN stages;
 - all tests pass;
 - journal and commit history are complete;
@@ -575,7 +613,7 @@ journal: record final review for S-DEMO-01
 
 ---
 
-## 9. Completion
+## 10. Completion
 
 Record pipeline completion:
 
@@ -597,12 +635,13 @@ journal: mark S-DEMO-01 complete
 
 ---
 
-## 10. Final Artifacts
+## 11. Final Artifacts
 
 The completed example contains:
 
 ```text
 SPEC-DRAFT.md
+SPEC.md
 TASKS.md
 JOURNAL_SDD_TDD_SKILL.log
 tests/test_counter.py
@@ -646,7 +685,9 @@ class Counter:
 
 ---
 
-## 11. Traceability
+## 12. Traceability
+
+`SPEC-DRAFT.md` preserves the original request. `SPEC.md` defines the reviewed requirements used by the tasks and tests.
 
 | Requirement | Task | Test | Implementation | Terminal task entry |
 |---|---|---|---|---|
