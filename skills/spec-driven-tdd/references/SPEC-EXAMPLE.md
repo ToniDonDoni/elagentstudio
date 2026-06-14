@@ -587,11 +587,11 @@ If refactor is needed:
 - append review result to journal
 - commit journal
 
-## Stage 3.5 -- Regression Check
+## Stage 3.5 -- Per-Task Regression
 
 Action:
 
-Run all tests created so far.
+Run the focused test for T-DEMO-01-004 only.
 
 Expected result:
 
@@ -600,49 +600,19 @@ PASS.
 Journal update:
 
 === J-20260614-100000-012 ===
-TYPE: TASKS_COMPLETE
-SPEC: S-DEMO-01
-STATUS: COMPLETED
-PARENT: J-20260614-100000-005
-ROOT: J-20260614-100000-001
-DEPENDS: J-20260614-100000-010
-DETAIL: All 5 task branches complete.
-
-=== J-20260614-100000-013 ===
 TYPE: REGRESSION
 SPEC: S-DEMO-01
 STATUS: COMPLETED
-PARENT: J-20260614-100000-012
+PARENT: J-20260614-100000-011
 ROOT: J-20260614-100000-001
-DETAIL: All existing tests pass after lower-bound implementation.
+TASK_ID: T-DEMO-01-004
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Per-task regression for T-DEMO-01-004 — single-task test passes.
 
 Commit journal:
 
-journal: record regression result for S-DEMO-01.04
-
-Review request:
-
-Optional but recommended.
-
-Scope:
-
-- Is regression evidence present?
-- Are previous task tests still green?
-- Did the implementation introduce unrelated breakage?
-
-Journal update:
-
-=== J-20260614-100000-014 ===
-TYPE: REGRESSION_REVIEW
-SPEC: S-DEMO-01
-STATUS: PASS
-PARENT: J-20260614-100000-013
-ROOT: J-20260614-100000-001
-DETAIL: Regression evidence accepted.
-
-Commit journal:
-
-journal: record regression review for S-DEMO-01.04
+journal: record per-task regression for T-DEMO-01-004
 
 ## Stage 3.6 -- Task Branch Complete
 
@@ -656,24 +626,22 @@ Completion criteria for T-DEMO-01-004:
 - GREEN reviewed
 - GREEN review journaled and committed
 - refactor decision journaled and committed
-- regression result journaled and committed
+- per-task regression completed and journaled
 
 Note:
 
-There is no task-level DONE. Task completion is expressed through the pipeline:
-reaching GREEN_REVIEW(PASS) means the task branch is complete.
-All task branches converge at TASKS_COMPLETE before proceeding to REGRESSION.
+There is no task-level DONE. Reaching GREEN_REVIEW(PASS) through the cycle
+means the task branch is complete. All task branches converge at
+TASKS_COMPLETE before proceeding to full REGRESSION.
 
 ## Stage 4 -- Implement Remaining Tasks
 
-Each remaining task follows the same RED -> RED_REVIEW -> GREEN -> GREEN_REVIEW
-cycle shown in Stage 3.2-3.3. Only the selection (AGENT_DECISION) and terminal
-(GREEN_REVIEW) entries are shown below; the intermediate steps are identical
-in structure to T-DEMO-01-004.
+Each remaining task follows the same cycle as T-DEMO-01-004:
+AGENT_DECISION → RED → RED_REVIEW → GREEN → GREEN_REVIEW.
+All four task branches are siblings — each starts from the shared
+TASK_REVIEW (J-005).
 
 ### T-DEMO-01-001 -- Initial value
-
-Journal updates:
 
 === J-20260614-100000-013 ===
 TYPE: AGENT_DECISION
@@ -687,21 +655,52 @@ ROOT_USER_INPUT_ID: T-DEMO-01-000
 DETAIL: Selected initial-value task T-DEMO-01-001.
 
 === J-20260614-100000-014 ===
-TYPE: GREEN_REVIEW
+TYPE: RED
 SPEC: S-DEMO-01.01
-STATUS: PASS
-PARENT: J-20260614-100000-012
+STATUS: COMPLETED
+PARENT: J-20260614-100000-013
 ROOT: J-20260614-100000-001
 TASK_ID: T-DEMO-01-001
 PARENT_TASK_ID: T-DEMO-01-000
 ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Initial value implemented and reviewed. T-DEMO-01-001 complete.
+DETAIL: Test written and fails because initial value is not implemented.
+
+=== J-20260614-100000-015 ===
+TYPE: RED_REVIEW
+SPEC: S-DEMO-01.01
+STATUS: PASS
+PARENT: J-20260614-100000-014
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-001
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: RED valid. Test confirms initial value behaviour is absent.
+
+=== J-20260614-100000-016 ===
+TYPE: GREEN
+SPEC: S-DEMO-01.01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-015
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-001
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Initial value implementation complete.
+
+=== J-20260614-100000-017 ===
+TYPE: GREEN_REVIEW
+SPEC: S-DEMO-01.01
+STATUS: PASS
+PARENT: J-20260614-100000-016
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-001
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Initial value test passes. T-DEMO-01-001 complete.
 
 ### T-DEMO-01-002 -- Increment
 
-Journal updates:
-
-=== J-20260614-100000-015 ===
+=== J-20260614-100000-018 ===
 TYPE: AGENT_DECISION
 SPEC: S-DEMO-01.02
 STATUS: COMPLETED
@@ -712,22 +711,53 @@ PARENT_TASK_ID: T-DEMO-01-000
 ROOT_USER_INPUT_ID: T-DEMO-01-000
 DETAIL: Selected increment task T-DEMO-01-002.
 
-=== J-20260614-100000-016 ===
-TYPE: GREEN_REVIEW
+=== J-20260614-100000-019 ===
+TYPE: RED
 SPEC: S-DEMO-01.02
-STATUS: PASS
-PARENT: J-20260614-100000-014
+STATUS: COMPLETED
+PARENT: J-20260614-100000-018
 ROOT: J-20260614-100000-001
 TASK_ID: T-DEMO-01-002
 PARENT_TASK_ID: T-DEMO-01-000
 ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Increment implemented and reviewed. T-DEMO-01-002 complete.
+DETAIL: Increment test written and fails.
+
+=== J-20260614-100000-020 ===
+TYPE: RED_REVIEW
+SPEC: S-DEMO-01.02
+STATUS: PASS
+PARENT: J-20260614-100000-019
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-002
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Increment RED valid.
+
+=== J-20260614-100000-021 ===
+TYPE: GREEN
+SPEC: S-DEMO-01.02
+STATUS: COMPLETED
+PARENT: J-20260614-100000-020
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-002
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Increment implementation complete.
+
+=== J-20260614-100000-022 ===
+TYPE: GREEN_REVIEW
+SPEC: S-DEMO-01.02
+STATUS: PASS
+PARENT: J-20260614-100000-021
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-002
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Increment test passes. T-DEMO-01-002 complete.
 
 ### T-DEMO-01-003 -- Decrement
 
-Journal updates:
-
-=== J-20260614-100000-017 ===
+=== J-20260614-100000-023 ===
 TYPE: AGENT_DECISION
 SPEC: S-DEMO-01.03
 STATUS: COMPLETED
@@ -738,22 +768,53 @@ PARENT_TASK_ID: T-DEMO-01-000
 ROOT_USER_INPUT_ID: T-DEMO-01-000
 DETAIL: Selected decrement task T-DEMO-01-003.
 
-=== J-20260614-100000-018 ===
-TYPE: GREEN_REVIEW
+=== J-20260614-100000-024 ===
+TYPE: RED
 SPEC: S-DEMO-01.03
-STATUS: PASS
-PARENT: J-20260614-100000-016
+STATUS: COMPLETED
+PARENT: J-20260614-100000-023
 ROOT: J-20260614-100000-001
 TASK_ID: T-DEMO-01-003
 PARENT_TASK_ID: T-DEMO-01-000
 ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Decrement implemented and reviewed. T-DEMO-01-003 complete.
+DETAIL: Decrement test written and fails.
+
+=== J-20260614-100000-025 ===
+TYPE: RED_REVIEW
+SPEC: S-DEMO-01.03
+STATUS: PASS
+PARENT: J-20260614-100000-024
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-003
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Decrement RED valid.
+
+=== J-20260614-100000-026 ===
+TYPE: GREEN
+SPEC: S-DEMO-01.03
+STATUS: COMPLETED
+PARENT: J-20260614-100000-025
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-003
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Decrement implementation complete.
+
+=== J-20260614-100000-027 ===
+TYPE: GREEN_REVIEW
+SPEC: S-DEMO-01.03
+STATUS: PASS
+PARENT: J-20260614-100000-026
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-003
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Decrement test passes. T-DEMO-01-003 complete.
 
 ### T-DEMO-01-005 -- Read current value
 
-Journal updates:
-
-=== J-20260614-100000-019 ===
+=== J-20260614-100000-028 ===
 TYPE: AGENT_DECISION
 SPEC: S-DEMO-01.05
 STATUS: COMPLETED
@@ -764,49 +825,95 @@ PARENT_TASK_ID: T-DEMO-01-000
 ROOT_USER_INPUT_ID: T-DEMO-01-000
 DETAIL: Selected read-value task T-DEMO-01-005.
 
-=== J-20260614-100000-020 ===
-TYPE: GREEN_REVIEW
+=== J-20260614-100000-029 ===
+TYPE: RED
 SPEC: S-DEMO-01.05
-STATUS: PASS
-PARENT: J-20260614-100000-018
+STATUS: COMPLETED
+PARENT: J-20260614-100000-028
 ROOT: J-20260614-100000-001
 TASK_ID: T-DEMO-01-005
 PARENT_TASK_ID: T-DEMO-01-000
 ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Read current value implemented and reviewed. T-DEMO-01-005 complete.
+DETAIL: Get-value test written and fails.
+
+=== J-20260614-100000-030 ===
+TYPE: RED_REVIEW
+SPEC: S-DEMO-01.05
+STATUS: PASS
+PARENT: J-20260614-100000-029
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-005
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Get-value RED valid.
+
+=== J-20260614-100000-031 ===
+TYPE: GREEN
+SPEC: S-DEMO-01.05
+STATUS: COMPLETED
+PARENT: J-20260614-100000-030
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-005
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Get-value implementation complete.
+
+=== J-20260614-100000-032 ===
+TYPE: GREEN_REVIEW
+SPEC: S-DEMO-01.05
+STATUS: PASS
+PARENT: J-20260614-100000-031
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-005
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Get-value test passes. T-DEMO-01-005 complete.
 
 ### Convergence -- All Tasks Complete
 
-All five task branches have reached GREEN_REVIEW(PASS). Create the barrier:
+All five task branches have reached GREEN_REVIEW(PASS):
 
-=== J-20260614-100000-021 ===
+| Task | GREEN_REVIEW JID |
+|------|-----------------|
+| T-DEMO-01-004 | J-20260614-100000-010 |
+| T-DEMO-01-001 | J-20260614-100000-017 |
+| T-DEMO-01-002 | J-20260614-100000-022 |
+| T-DEMO-01-003 | J-20260614-100000-027 |
+| T-DEMO-01-005 | J-20260614-100000-032 |
+
+Create the convergence barrier:
+
+=== J-20260614-100000-033 ===
 TYPE: TASKS_COMPLETE
 SPEC: S-DEMO-01
 STATUS: COMPLETED
 PARENT: J-20260614-100000-005
 ROOT: J-20260614-100000-001
-DEPENDS: J-20260614-100000-010, J-20260614-100000-014, J-20260614-100000-016, J-20260614-100000-018, J-20260614-100000-020
+DEPENDS: J-20260614-100000-010, J-20260614-100000-017, J-20260614-100000-022, J-20260614-100000-027, J-20260614-100000-032
 DETAIL: All 5 task branches complete.
 
-=== J-20260614-100000-022 ===
+=== J-20260614-100000-034 ===
 TYPE: REGRESSION
 SPEC: S-DEMO-01
 STATUS: COMPLETED
-PARENT: J-20260614-100000-021
+PARENT: J-20260614-100000-033
 ROOT: J-20260614-100000-001
-DETAIL: Full regression — all 5 task tests pass.
+DETAIL: Full regression -- all 5 task tests pass.
 
-=== J-20260614-100000-023 ===
+=== J-20260614-100000-035 ===
 TYPE: REGRESSION_REVIEW
 SPEC: S-DEMO-01
 STATUS: PASS
-PARENT: J-20260614-100000-022
+PARENT: J-20260614-100000-034
 ROOT: J-20260614-100000-001
 DETAIL: Regression evidence accepted.
 
 Commit journal:
 
-journal: record convergence, regression, and regression review for S-DEMO-01## Stage 5 -- Final Feature Review
+journal: record convergence, regression, and regression review for S-DEMO-01
+
+
+## Stage 5 -- Final Feature Review
 
 Action:
 
@@ -847,11 +954,11 @@ PASS.
 
 Journal update:
 
-=== J-20260614-100000-024 ===
+=== J-20260614-100000-036 ===
 TYPE: FINAL_REVIEW
 SPEC: S-DEMO-01
 STATUS: PASS
-PARENT: J-20260614-100000-023
+PARENT: J-20260614-100000-035
 ROOT: J-20260614-100000-001
 DETAIL: Full feature review passed. All spec items implemented through committed TDD workflow.
 
@@ -863,11 +970,11 @@ journal: record final feature review for S-DEMO-01
 
 Journal update:
 
-=== J-20260614-100000-025 ===
+=== J-20260614-100000-037 ===
 TYPE: DONE
 SPEC: S-DEMO-01
 STATUS: COMPLETED
-PARENT: J-20260614-100000-024
+PARENT: J-20260614-100000-036
 ROOT: J-20260614-100000-001
 DETAIL: Counter API completed through commit-based spec-driven TDD pipeline.
 
