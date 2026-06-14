@@ -211,3 +211,11 @@ STATUS: COMPLETED
 PARENT: J-20260614-011400-001
 ROOT: J-20260614-010000-001
 DETAIL: DONE. Test directory tests/test_journal_task_tree/ with SKILL.md (copy), TASK.md (Tetris scenario), test_journal_task_tree.py (8 tests, generator, parser, validator), validate_journal.py (standalone script), JOURNAL_SDD_TDD_SKILL.log (27-entry Tetris SDD journal). 8/8 tests pass. Journal validates with 0 errors. Standalone script detects real bugs in existing journals. CODEX_REVIEW removed from SKILL.md TYPE enum.
+
+=== J-20260614-011600-001 ===
+TYPE: SPEC_SPEC
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-20260614-011500-001
+ROOT: J-20260614-010000-001
+DETAIL: Phase 1 meta: created good_journal.log, bad_missing_parent.log, bad_cycle.log, bad_branching.log. Validator reviewed and correct. Moving to Phase 2 — real Tetris SDD run inside test dir.

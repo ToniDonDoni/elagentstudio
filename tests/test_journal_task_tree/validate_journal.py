@@ -56,8 +56,9 @@ def main() -> int:
         print("ERROR: Empty journal input", file=sys.stderr)
         return 1
 
+    entry_count = sum(1 for line in journal_text.split("\n") if line.strip().startswith("==="))
     print(f"Validating journal ({len(journal_text)} chars, "
-          f"{journal_text.count('===')} entries)...")
+          f"{entry_count} entries)...")
 
     errors = validate_journal(journal_text)
 
