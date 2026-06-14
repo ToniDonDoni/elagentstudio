@@ -254,3 +254,27 @@ PARENT: J-20260614-023921-002
 ROOT: J-20260614-010000-001
 TASK: T-S-JTT-01-001
 DETAIL: Re-review PASS — issue 2.1 fully resolved. All 9 issues now verified correct. GREEN_REVIEW passed.
+
+=== J-20260614-030000-001 ===
+TYPE: USER_INPUT
+SPEC: S-TASK-TREE-02
+STATUS: COMPLETED
+PARENT: --
+ROOT: J-20260614-030000-001
+DETAIL: Task Tree Specification (review_issues_3.txt) received. Requires task tree to use TASK_ID, PARENT_TASK_ID, ROOT_USER_INPUT_ID with clean separation from journal event ordering.
+
+=== J-20260614-030000-002 ===
+TYPE: SPEC_SPEC
+SPEC: S-TASK-TREE-02
+STATUS: COMPLETED
+PARENT: J-20260614-030000-001
+ROOT: J-20260614-030000-001
+DETAIL: Spec review completed. 9 implementation tasks identified. Root TASK_ID creation decision pending: USER_INPUT gets optional TASK field.
+
+=== J-20260614-030000-003 ===
+TYPE: SPEC_REVIEW
+SPEC: S-TASK-TREE-02
+STATUS: PASS
+PARENT: J-20260614-030000-002
+ROOT: J-20260614-030000-001
+DETAIL: Spec review PASS. Spec complete and unambiguous. 9 tasks to implement.

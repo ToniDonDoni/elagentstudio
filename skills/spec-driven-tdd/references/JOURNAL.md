@@ -25,12 +25,13 @@ PARENT: {PARENT_JID | --}
 ROOT: {ROOT_JID}
 DEPENDS: {DEPENDS_JID}           (optional)
 TASK: {TASK_ID}                  (required for task-level entries)
-TASK_PARENT: {TASK_PARENT_ID}    (required for subtask entries)
+PARENT_TASK_ID: {PARENT_TASK_ID}    (required for subtask entries)
+ROOT_USER_INPUT_ID: {ROOT_USER_INPUT_ID}  (required when TASK is present)
 DETAIL: {free-form description}
 ```
 
 Blank lines separate entries. Fields MUST appear in the order shown above.
-Optional fields (DEPENDS, TASK, TASK_PARENT) are omitted when not applicable.
+Optional fields (DEPENDS, TASK, PARENT_TASK_ID, ROOT_USER_INPUT_ID) are omitted when not applicable.
 
 ### 2.1 JID — Journal Entry ID
 
@@ -150,27 +151,48 @@ Examples:
 | `T-S-TETRIS-01.01-001` | `S-TETRIS-01.01` | `001` | No (sub-spec, not subtask) |
 | `T-S-TETRIS-01.01-001.002.003` | `S-TETRIS-01.01` | `001.002.003` | Yes (sub-subtask) |
 
-### 2.8 TASK_PARENT — Parent task (optional)
+### 2.8 PARENT_TASK_ID — Parent task (optional)
 
 Required for subtask entries. Points to the TASK ID of the parent task.
 
 Example: If task `T-S-TETRIS-01-001` is decomposed into subtasks:
 ```
 TASK: T-S-TETRIS-01-001.001
-TASK_PARENT: T-S-TETRIS-01-001
+PARENT_TASK_ID: T-S-TETRIS-01-001
 ```
 
-**TASK_PARENT validation rules (see also §4.7):**
-1. TASK_PARENT MUST reference a TASK ID that exists on another entry in the journal
-2. A task MUST NOT reference itself as TASK_PARENT
+**PARENT_TASK_ID validation rules (see also §4.7):**
+1. PARENT_TASK_ID MUST reference a TASK ID that exists on another entry in the journal
+2. A task MUST NOT reference itself as PARENT_TASK_ID
 3. The task-parent graph MUST NOT contain cycles
 4. Parent task and child task MUST belong to the same ROOT
-5. All entries with the same TASK value MUST have the same TASK_PARENT value
+5. All entries with the same TASK value MUST have the same PARENT_TASK_ID value
 6. Within one ROOT, a TASK ID identifies exactly one logical task and
-   MUST always have the same SPEC and TASK_PARENT across all entries.
+   MUST always have the same SPEC and PARENT_TASK_ID across all entries.
    Multiple journal entries MAY reference the same TASK ID.
 
-### 2.9 DEPENDS — Dependency barrier (optional)
+### 2.9 ROOT_USER_INPUT_ID — Root task identifier (required when TASK present)
+
+The TASK_ID of the root task representing the originating user input.
+
+**Rules:**
+- For root tasks (tasks whose PARENT_TASK_ID is `--`):
+  `ROOT_USER_INPUT_ID` MUST equal the entry's own `TASK`.
+- For child tasks: `ROOT_USER_INPUT_ID` MUST match the root task's `TASK`,
+  inherited from the parent task.
+- All entries within the same task tree MUST have the same `ROOT_USER_INPUT_ID`.
+- `ROOT_USER_INPUT_ID` is required on any entry that has a `TASK` field.
+- The root task's `TASK` is typically created on the `USER_INPUT` entry
+  (which carries an optional `TASK` field establishing the root task ID).
+
+**Invariant:**
+```
+root_task.TASK == root_entry.ROOT_USER_INPUT_ID
+root_task.PARENT_TASK_ID == "--"
+root_task.ROOT_USER_INPUT_ID == root_task.TASK
+```
+
+### 2.10 DEPENDS — Dependency barrier (optional)
 
 Used to express convergence when a single PARENT is insufficient.
 
@@ -203,24 +225,24 @@ decisions, test output summaries, and reviewer verdicts.
 
 ## 3. Mandatory Fields per Entry Type
 
-| TYPE | SPEC | STATUS | PARENT | ROOT | TASK | TASK_PARENT | DEPENDS |
-|------|------|--------|--------|------|------|-------------|---------|
-| USER_INPUT | required | required | `--` | self JID | — | — | — |
-| SPEC_SPEC | required | required | required | required | — | — | — |
-| SPEC_REVIEW | required | required | required | required | — | — | — |
-| DECOMPOSE | required | required | required | required | optional | — | — |
-| TASK_REVIEW | required | required | required | required | optional | — | — |
-| AGENT_DECISION | required | required | required | required | optional | — | — |
-| RED | required | required | required | required | required | optional | — |
-| RED_REVIEW | required | required | required | required | required | optional | — |
-| GREEN | required | required | required | required | required | optional | — |
-| GREEN_REVIEW | required | required | required | required | required | optional | — |
-| TASKS_COMPLETE | required | required | required | required | — | — | required |
-| REGRESSION | required | required | required | required | — | — | optional |
-| REGRESSION_REVIEW | required | required | required | required | — | — | — |
-| FINAL_REVIEW | required | required | required | required | — | — | — |
-| ESCALATION | required | required | required | required | optional | — | — |
-| DONE | required | required | required | required | — | — | — |
+| TYPE | SPEC | STATUS | PARENT | ROOT | TASK | PARENT_TASK_ID | ROOT_USER_INPUT_ID | DEPENDS |
+|------|------|--------|--------|------|------|-------------|-------------------|---------|
+| USER_INPUT | required | required | `--` | self JID | optional* | — | optional* | — |
+| SPEC_SPEC | required | required | required | required | — | — | — | — |
+| SPEC_REVIEW | required | required | required | required | — | — | — | — |
+| DECOMPOSE | required | required | required | required | optional | — | — | — |
+| TASK_REVIEW | required | required | required | required | optional | — | — | — |
+| AGENT_DECISION | required | required | required | required | optional | — | — | — |
+| RED | required | required | required | required | required | optional | required | — |
+| RED_REVIEW | required | required | required | required | required | optional | required | — |
+| GREEN | required | required | required | required | required | optional | required | — |
+| GREEN_REVIEW | required | required | required | required | required | optional | required | — |
+| TASKS_COMPLETE | required | required | required | required | — | — | — | required |
+| REGRESSION | required | required | required | required | — | — | — | optional |
+| REGRESSION_REVIEW | required | required | required | required | — | — | — | — |
+| FINAL_REVIEW | required | required | required | required | — | — | — | — |
+| ESCALATION | required | required | required | required | optional | — | — | — |
+| DONE | required | required | required | required | — | — | — | — |
 
 Notes:
 - `TASK` on DECOMPOSE is required when decomposing an existing task into
@@ -228,9 +250,12 @@ Notes:
   top-level spec decomposition.
 - `TASK` on TASK_REVIEW is required when reviewing decomposition of a
   specific task. Omitted for top-level task set review.
-- `TASK_PARENT` on any entry with a subtask TASK (containing a dot after
+- `PARENT_TASK_ID` on any entry with a subtask TASK (containing a dot after
   the task number) is required, regardless of TYPE. This ensures all entries
-  for the same subtask have consistent TASK_PARENT.
+  for the same subtask have consistent PARENT_TASK_ID.
+- `ROOT_USER_INPUT_ID` on RED/RED_REVIEW/GREEN/GREEN_REVIEW is required.
+  On USER_INPUT it is required only when TASK is present (establishing the
+  root task ID). Omitted for entries without TASK.
 - `DEPENDS` on TASKS_COMPLETE lists the final JID of each task branch.
 - `DEPENDS` on REGRESSION MAY list the TASKS_COMPLETE entry and/or individual
   task-final JIDs when there is no explicit TASKS_COMPLETE barrier.
@@ -402,22 +427,50 @@ TASK_REVIEW
    Entries of type `DECOMPOSE`, `TASK_REVIEW` MUST have a TASK field
    if they decompose or review a specific task's subtasks; they MUST NOT
    have a TASK field for top-level spec decomposition or task-set review.
+   `USER_INPUT` MAY have a TASK field to establish the root task ID.
 2. TASK values MUST match the grammar in §2.7.
 3. If a TASK value is a subtask-id (contains a dot), it MUST have a
-   `TASK_PARENT` field.
-4. All entries with the same TASK value MUST have the same TASK_PARENT value
-   (or all lack TASK_PARENT for top-level tasks).
+   `PARENT_TASK_ID` field.
+4. All entries with the same TASK value MUST have the same PARENT_TASK_ID value
+   (or all lack PARENT_TASK_ID for top-level tasks).
+5. All entries with the same TASK value MUST have the same ROOT_USER_INPUT_ID
+   value.
+6. PARENT_TASK_ID and ROOT_USER_INPUT_ID on any entry with a subtask TASK
+   are required, regardless of TYPE.
 
-### 4.7 Task-Parent Graph Validation
+### 4.7 Task Tree Validation
 
-1. `TASK_PARENT` MUST reference a TASK ID that appears in at least one entry
-   in the journal
-2. No entry MAY have `TASK_PARENT` equal to its own `TASK` value
-3. The relation defined by `TASK_PARENT` MUST NOT contain cycles
-4. Parent task and child task entries MUST belong to the same `ROOT`
-5. Within one ROOT, a TASK ID identifies exactly one logical task and
-   MUST always have the same SPEC and TASK_PARENT across all entries.
-   Multiple journal entries MAY reference the same TASK ID.
+The task tree is extracted from journal entries and validated independently
+of journal event ordering. The tree is defined solely through three fields:
+`TASK`, `PARENT_TASK_ID`, `ROOT_USER_INPUT_ID`.
+
+**Extraction:** Collect all distinct TASK values from journal entries.
+Each distinct TASK forms one task tree record. `PARENT_TASK_ID` and
+`ROOT_USER_INPUT_ID` for that record are taken from any journal entry
+bearing that TASK (all must agree — enforced by §4.6 rules 4–5).
+
+**Validation rules (per task tree record):**
+
+1. **Every TASK is unique** (across distinct task records).
+   Multiple journal entries may share the same TASK (§2.8 rule 6),
+   but they represent the same logical task.
+2. **Root tasks** (tasks with `PARENT_TASK_ID: --`) MUST have
+   `ROOT_USER_INPUT_ID` equal to their own `TASK`.
+3. **Root invariant:** `root.PARENT_TASK_ID == "--"` and
+   `root.ROOT_USER_INPUT_ID == root.TASK`.
+4. **Every non-root task** MUST reference an existing parent task via
+   `PARENT_TASK_ID`.
+5. **ROOT_USER_INPUT_ID consistency:** Every child MUST have the same
+   `ROOT_USER_INPUT_ID` as its parent.
+6. **No self-reference:** No task MAY reference itself as `PARENT_TASK_ID`.
+7. **No cycles:** The parent graph (`PARENT_TASK_ID` relations) MUST NOT
+   contain cycles.
+8. **Root reachability:** Following `PARENT_TASK_ID` from any task MUST
+   eventually reach a root task (`PARENT_TASK_ID: "--"`).
+9. **ROOT_USER_INPUT_ID invariant:** The reached root's `TASK` MUST equal
+   the task's `ROOT_USER_INPUT_ID`.
+10. **ROOT_USER_INPUT_ID existence:** Every `ROOT_USER_INPUT_ID` MUST
+    reference an existing root task in the tree.
 
 ### 4.8 Per-Tree Completion Validation
 
@@ -833,12 +886,12 @@ function validate_journal(journal_text):
             if missing(entry, "task"): errors.append(f"TYPE {entry.type} requires TASK")
             elif not valid_task_id(entry.task): errors.append(f"Invalid TASK: {entry.task}")
 
-        # TASK_PARENT validation
+        # PARENT_TASK_ID validation
         if entry.task_parent:
             if entry.task_parent == entry.task:
-                errors.append("TASK_PARENT must not be self")
+                errors.append("PARENT_TASK_ID must not be self")
             if entry.task_parent not in all_task_ids(entries):
-                errors.append(f"TASK_PARENT references non-existent task: {entry.task_parent}")
+                errors.append(f"PARENT_TASK_ID references non-existent task: {entry.task_parent}")
 
         # SPEC consistency: a TASK ID must always have same SPEC
         if entry.task and entry.spec:
@@ -850,8 +903,8 @@ function validate_journal(journal_text):
                             f"{entry.jid}.spec={entry.spec} vs {other.jid}.spec={other.spec}"
                         )
 
-        # TASK_PARENT consistency: all entries with same TASK must have
-        # same TASK_PARENT
+        # PARENT_TASK_ID consistency: all entries with same TASK must have
+        # same PARENT_TASK_ID
         if entry.task:
             for other in entries:
                 if other.jid != entry.jid and other.task == entry.task:
@@ -859,17 +912,17 @@ function validate_journal(journal_text):
                     tp_b = other.task_parent or ""
                     if tp_a != tp_b:
                         errors.append(
-                            f"TASK {entry.task} has inconsistent TASK_PARENT: "
+                            f"TASK {entry.task} has inconsistent PARENT_TASK_ID: "
                             f"{entry.jid}={tp_a} vs {other.jid}={tp_b}"
                         )
 
-        # TASK_PARENT ROOT consistency: parent and child must share ROOT
+        # PARENT_TASK_ID ROOT consistency: parent and child must share ROOT
         if entry.task_parent:
             for other in entries:
                 if other.task == entry.task_parent:
                     if other.root != entry.root:
                         errors.append(
-                            f"TASK_PARENT {entry.task_parent} ROOT mismatch: "
+                            f"PARENT_TASK_ID {entry.task_parent} ROOT mismatch: "
                             f"parent={other.root}, child={entry.root}"
                         )
                         break
@@ -1039,7 +1092,7 @@ function validate_journal(journal_text):
                     f"has no GREEN_REVIEW(PASS)"
                 )
 
-    # --- Phase 10: TASK_PARENT cycles ---
+    # --- Phase 10: PARENT_TASK_ID cycles ---
     for entry in entries:
         if entry.task_parent:
             visited = set()
@@ -1047,7 +1100,7 @@ function validate_journal(journal_text):
             while current:
                 if current in visited:
                     errors.append(
-                        f"TASK_PARENT cycle involving {entry.task}"
+                        f"PARENT_TASK_ID cycle involving {entry.task}"
                     )
                     break
                 visited.add(current)
