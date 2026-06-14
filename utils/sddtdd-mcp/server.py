@@ -1,0 +1,296 @@
+"""sddtdd-mcp — Minimal MCP review proxy for Hermes Agent.
+
+Single tool: review. Captures Git state, delegates to LLM via MCP sampling,
+records everything in an append-only JSON Lines access log.
+"""
+import json
+import os
+import subprocess
+import time
+import uuid
+from datetime import datetime, timezone
+
+import mcp.server as mcp_server
+import mcp.types as types
+from mcp.server.models import InitializationOptions
+from mcp.server.stdio import stdio_server
+
+
+# ---------------------------------------------------------------------------
+# Errors
+# ---------------------------------------------------------------------------
+
+class GitError(Exception):
+    """Raised when a git command fails."""
+
+
+# ---------------------------------------------------------------------------
+# GitCapturer — read repo metadata via git CLI
+# ---------------------------------------------------------------------------
+
+class GitCapturer:
+    """Capture repository branch, HEAD SHA, and dirty state."""
+
+    def __init__(self, repo_path: str):
+        self._repo = repo_path
+
+    def _git(self, *args: str) -> str:
+        try:
+            result = subprocess.run(
+                ["git", "-C", self._repo, *args],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode != 0:
+                raise GitError(
+                    f"git {' '.join(args)} failed: {result.stderr.strip()}"
+                )
+            return result.stdout.strip()
+        except FileNotFoundError as exc:
+            raise GitError("git not found") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise GitError(f"git {' '.join(args)} timed out") from exc
+
+    def branch(self) -> str:
+        return self._git("rev-parse", "--abbrev-ref", "HEAD")
+
+    def head_sha(self) -> str:
+        return self._git("rev-parse", "HEAD")
+
+    def is_dirty(self) -> bool:
+        output = self._git("status", "--porcelain")
+        return bool(output.strip())
+
+
+# ---------------------------------------------------------------------------
+# LogWriter — thread-safe append-only JSON Lines writer
+# ---------------------------------------------------------------------------
+
+class LogWriter:
+    """Append-only JSON Lines access log."""
+
+    def __init__(self, log_path: str):
+        self._path = log_path
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        self._file = open(log_path, "a", buffering=1)
+
+    def append(self, event: dict) -> None:
+        """Append one JSON line. Thread-safe via GIL + line-buffer."""
+        line = json.dumps(event, ensure_ascii=False, default=str)
+        self._file.write(line + "\n")
+        self._file.flush()
+
+    def close(self) -> None:
+        self._file.close()
+
+
+def _get_log_path(repo_path: str) -> str:
+    """Return log path: env var override or default under .git/sddtdd/."""
+    env = os.environ.get("SDDTDD_LOG_PATH")
+    if env:
+        return env
+    return os.path.join(repo_path, ".git", "sddtdd", "review-access.jsonl")
+
+
+# ---------------------------------------------------------------------------
+# MCP Server
+# ---------------------------------------------------------------------------
+
+app = mcp_server.Server("sddtdd-mcp")
+
+
+@app.list_tools()
+async def list_tools() -> list[types.Tool]:
+    return [
+        types.Tool(
+            name="review",
+            description="Review committed repository state through an independent LLM reviewer",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo_path": {
+                        "type": "string",
+                        "description": "Absolute path to the Git repository",
+                    },
+                    "review_type": {
+                        "type": "string",
+                        "description": "Free-form review label (e.g. 'RED review', 'architecture review')",
+                    },
+                    "task_id": {
+                        "type": "string",
+                        "description": "Optional free-form task identifier",
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "Complete review instruction for the LLM reviewer",
+                    },
+                },
+                "required": ["repo_path", "review_type", "prompt"],
+            },
+        )
+    ]
+
+
+@app.call_tool()
+async def call_tool(
+    name: str,
+    arguments: dict,
+) -> list[types.TextContent]:
+    if name != "review":
+        raise ValueError(f"Unknown tool: {name}")
+
+    repo_path = arguments["repo_path"]
+    review_type = arguments["review_type"]
+    prompt = arguments["prompt"]
+    task_id = arguments.get("task_id")
+
+    request_id = uuid.uuid4().hex
+    timestamp_before = datetime.now(timezone.utc).isoformat()
+    t_before = time.monotonic()
+
+    log = None
+    try:
+        # 1-2: Capture Git state before + open log
+        git = GitCapturer(repo_path)
+        branch = git.branch()
+        head_before = git.head_sha()
+        dirty = git.is_dirty()
+
+        log_path = _get_log_path(repo_path)
+        log = LogWriter(log_path)
+
+        # 3: Write review_started event
+        started_event = {
+            "event": "review_started",
+            "request_id": request_id,
+            "timestamp_utc": timestamp_before,
+            "repo_path": repo_path,
+            "branch": branch,
+            "head_sha": head_before,
+            "working_tree_dirty": dirty,
+            "review_type": review_type,
+            "task_id": task_id,
+            "prompt": prompt,
+        }
+        log.append(started_event)
+
+        # 4: Perform review via MCP sampling
+        ctx = app.request_context
+        sampling_result = await ctx.session.create_message(
+            messages=[
+                types.SamplingMessage(
+                    role="user",
+                    content=types.TextContent(
+                        type="text",
+                        text=prompt,
+                    ),
+                )
+            ],
+            max_tokens=4096,
+        )
+
+        verdict = sampling_result.role.name if hasattr(sampling_result.role, 'name') else str(sampling_result.role)
+        response_text = ""
+        content = sampling_result.content
+        if hasattr(content, 'text'):
+            response_text += content.text
+
+        # Extract verdict from response if it starts with a known keyword
+        verdict = "NEEDS_CLARIFICATION"
+        stripped = response_text.strip().upper()
+        if stripped.startswith("PASS"):
+            verdict = "PASS"
+        elif stripped.startswith("FAIL"):
+            verdict = "FAIL"
+        elif stripped.startswith("NEEDS_CLARIFICATION"):
+            verdict = "NEEDS_CLARIFICATION"
+
+        # 5: Capture Git state after
+        head_after = git.head_sha()
+
+        # 6: Stale detection
+        stale = head_before != head_after
+        status = "STALE" if stale else "COMPLETED"
+
+        # 7: Compute duration
+        duration_ms = int((time.monotonic() - t_before) * 1000)
+
+        # 8: Write review_completed event
+        timestamp_after = datetime.now(timezone.utc).isoformat()
+        completed_event = {
+            "event": "review_completed",
+            "request_id": request_id,
+            "timestamp_utc": timestamp_after,
+            "repo_path": repo_path,
+            "review_type": review_type,
+            "task_id": task_id,
+            "head_sha_before": head_before,
+            "head_sha_after": head_after,
+            "status": status,
+            "verdict": verdict,
+            "response": response_text,
+            "stale": stale,
+            "duration_ms": duration_ms,
+        }
+        log.append(completed_event)
+
+        result = {
+            "request_id": request_id,
+            "status": status,
+            "verdict": verdict,
+            "response": response_text,
+            "stale": stale,
+        }
+
+    except GitError as exc:
+        result = _error_result(request_id, f"Git error: {exc}")
+        if log:
+            log.append(_error_event(request_id, repo_path, review_type, task_id, result["response"]))
+    except Exception as exc:
+        result = _error_result(request_id, str(exc))
+        if log:
+            log.append(_error_event(request_id, repo_path, review_type, task_id, result["response"]))
+
+    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+
+def _error_result(request_id: str, message: str) -> dict:
+    return {
+        "request_id": request_id,
+        "status": "ERROR",
+        "verdict": None,
+        "response": message,
+        "stale": False,
+    }
+
+
+def _error_event(request_id: str, repo_path: str, review_type: str, task_id: str | None, message: str) -> dict:
+    return {
+        "event": "review_completed",
+        "request_id": request_id,
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "repo_path": repo_path,
+        "review_type": review_type,
+        "task_id": task_id,
+        "status": "ERROR",
+        "verdict": None,
+        "response": message,
+        "stale": False,
+    }
+
+
+async def main():
+    async with stdio_server() as (read_stream, write_stream):
+        await app.run(
+            read_stream,
+            write_stream,
+            InitializationOptions(
+                server_name="sddtdd-mcp",
+                server_version="1.0.0",
+                capabilities=types.ServerCapabilities(),
+            ),
+        )
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
