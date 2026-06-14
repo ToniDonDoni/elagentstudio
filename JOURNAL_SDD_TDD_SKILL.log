@@ -150,3 +150,12 @@ STATUS: COMPLETED
 PARENT: J-20260614-010600-001
 ROOT: J-20260614-010000-001
 DETAIL: TASK v2 - 8 hierarchical tasks (S-JTT-01.01 to S-JTT-01.08): generator, parser, structural checks (C1-C4), chain integrity (C5-C7), ROOT checks (C8-C10), TASK/SPEC checks (C11-C13), completeness (C14-C15), main test + synthetic errors.
+
+=== J-20260614-010800-001 ===
+TYPE: RED
+SPEC: S-JTT-01
+STATUS: COMPLETED
+PARENT: J-20260614-010700-001
+ROOT: J-20260614-010000-001
+TASK: T-S-JTT-01-001
+DETAIL: T1 RED: 4 tests for generator written. All fail with NotImplementedError. RED confirmed.
