@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "Build software through a traceable artifact pipeline. Every agent-generated artifact is independently reviewed, every automatically testable behavior is implemented through reviewed RED-GREEN TDD, and every workflow event is committed and journaled."
-version: 2.3.0
+version: 2.4.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -20,7 +20,7 @@ RED-GREEN testing for every behavior that can be tested automatically.
 The workflow has four independent mandatory principles:
 
 1. Every artifact created or modified by the primary agent is reviewed by a
-   separate delegated reviewer before later work may depend on it.
+   separate independent reviewer before later work may depend on it.
 2. Every behavior that can be verified automatically is implemented through a
    reviewed RED-GREEN test-driven cycle.
 3. Every completed step, review result, correction, and dependency is recorded
@@ -108,12 +108,12 @@ CREATE OR MODIFY ARTIFACT
                        → delegated follow-up review
 ```
 
-A delegated reviewer response is the source of a verdict, not the completed
+A independent reviewer response is the source of a verdict, not the completed
 review event.
 
 A review exists in the workflow only when:
 
-- the delegated reviewer has returned `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`;
+- the independent reviewer has returned `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`;
 - the verdict has been recorded as the corresponding review entry in
   `JOURNAL_SDD_TDD_SKILL.log`;
 - the journal update has been committed.
@@ -180,8 +180,8 @@ REVIEWED REQUIREMENT AND TASK
 Implementation MUST NOT begin until the test artifact and RED evidence have a
 committed `RED_REVIEW` journal entry with `STATUS: PASS`.
 
-Receiving `PASS` from `delegate_task` without recording and committing the
-`RED_REVIEW` entry does not satisfy this condition.
+Receiving `PASS` from `mcp_sddtdd_review_review` without recording and committing
+the `RED_REVIEW` entry does not satisfy this condition.
 
 A test that passes before implementation is not valid RED.
 
@@ -233,7 +233,7 @@ The journal records:
 
 Every completed workflow step and every review result MUST be recorded.
 
-A delegated review result MUST be recorded and committed immediately after it is
+A MCP review result MUST be recorded and committed immediately after it is
 received, before attention shifts to correction, implementation, or the next stage.
 
 Every journal update MUST be committed immediately after it is written.
@@ -322,16 +322,53 @@ The primary agent is responsible for:
 - recording deliberate deviations and accepted risks;
 - producing the final implementation.
 
-### Delegated Reviewer
+### Independent Reviewer via MCP
 
-`delegate_task` is used only for independent review.
+The `mcp_sddtdd_review_review` tool is used for every independent review.
 
-Delegation is intentionally limited to review so that artifact creation and artifact
-evaluation remain separate responsibilities. The primary agent creates and fixes
-artifacts; the delegated reviewer evaluates them without taking ownership of the
-implementation.
+The primary agent calls the tool with:
 
-A delegated reviewer may:
+- `repo_path` — absolute path to the Git repository;
+- `review_type` — free-form review label, such as `SPEC review`, `RED review`,
+  `GREEN review`, or `FINAL review`;
+- `task_id` — task ID from `TASKS.md`, when applicable;
+- `prompt` — the complete review instruction defined in the Review Request section.
+
+The MCP server captures Git state, invokes an independent reviewer through MCP
+sampling, writes `review_started` and `review_completed` events to:
+
+```text
+<repo>/.git/sddtdd/review-access.jsonl
+```
+
+and returns:
+
+```text
+request_id
+status
+verdict
+response
+stale
+```
+
+The primary agent MUST NOT write or modify the MCP access log.
+
+A review result may be used only when:
+
+```text
+status = COMPLETED
+verdict = PASS | FAIL | NEEDS_CLARIFICATION
+stale = false
+```
+
+`ERROR` and `STALE` are not review verdicts and MUST NOT authorize later work.
+
+Independent review is intentionally limited to evaluation so that artifact creation
+and artifact evaluation remain separate responsibilities. The primary agent creates
+and fixes artifacts; the independent reviewer evaluates them without taking ownership
+of the implementation.
+
+An independent reviewer may:
 
 - inspect the committed artifact under review;
 - inspect its approved source artifacts;
@@ -341,7 +378,7 @@ A delegated reviewer may:
 - return `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`;
 - explain the verdict and provide actionable findings.
 
-A delegated reviewer MUST NOT:
+An independent reviewer MUST NOT:
 
 - modify files;
 - create or fix artifacts;
@@ -358,7 +395,7 @@ the primary agent’s work.
 
 #### Reviewer Context
 
-A fresh delegated context is preferred for an initial review.
+A fresh reviewer sampling context is preferred for an initial review.
 
 Fresh context reduces anchoring, confirmation bias, and reliance on assumptions
 formed while the artifact was being created.
@@ -378,19 +415,32 @@ amnesia.
 
 #### Review Request
 
-Every review request MUST give the reviewer enough explicit traceability to
-understand what is being reviewed, why it exists, and what evidence would justify
-`PASS`.
+Every formal review MUST be requested through:
 
-Every review request MUST identify:
+```text
+mcp_sddtdd_review_review
+```
 
-- the review type;
-- the repository path;
-- the reviewed commit;
+The MCP call MUST provide:
+
+```text
+repo_path: <absolute repository path>
+review_type: <free-form review label>
+task_id: <TASK_ID or null when not applicable>
+prompt: <complete review instruction>
+```
+
+The `prompt` MUST give the reviewer enough explicit traceability to understand
+what is being reviewed, why it exists, and what evidence would justify `PASS`.
+
+Every review prompt MUST identify:
+
+- the reviewed commit expected by the primary agent;
 - the artifact path or paths under review;
-- the task ID, when applicable;
+- the exact task ID, when applicable;
 - the exact task title as recorded in `TASKS.md`;
-- the current task-selection or workflow entry in `JOURNAL_SDD_TDD_SKILL.log`;
+- the current task-selection or workflow entry in
+  `JOURNAL_SDD_TDD_SKILL.log`;
 - `SPEC.md` as the requirements source;
 - the exact relevant requirement IDs;
 - `ARCHITECTURE.md` as the technical-decision source;
@@ -403,7 +453,7 @@ Every review request MUST identify:
 - the required verdict format: `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`;
 - an explicit instruction to review only and not modify files.
 
-The review request MUST instruct the reviewer to verify traceability across:
+The review prompt MUST instruct the reviewer to verify traceability across:
 
 ```text
 REQUIREMENT
@@ -413,7 +463,7 @@ REQUIREMENT
 → EVIDENCE
 ```
 
-For a test artifact and RED review, the request MUST additionally instruct the
+For a test artifact and RED review, the prompt MUST additionally instruct the
 reviewer to:
 
 - verify that the primary test exercises the complete user story or externally
@@ -428,18 +478,22 @@ reviewer to:
   broken setup, imports, fixtures, protocol wiring, or environment;
 - verify that the test would detect an incorrect implementation.
 
-A test review request MUST NOT merely ask whether the tests pass, fail, or look
+A test review prompt MUST NOT merely ask whether the tests pass, fail, or look
 reasonable. It must ask whether they prove the referenced requirements through
 the real public behavior of the system.
 
-A review request SHOULD contain enough context for the reviewer to reach a verdict
-without access to the primary agent’s private reasoning.
-
-Canonical test and RED review request structure:
+Canonical MCP call for test and RED review:
 
 ```text
-Review type: RED_REVIEW
-Repository: <repository path>
+tool: mcp_sddtdd_review_review
+
+repo_path: <absolute repository path>
+review_type: RED review
+task_id: <TASK_ID>
+
+prompt:
+Review only. Do not modify files.
+
 Reviewed commit: <commit SHA>
 Task: <TASK_ID> — <exact task title>
 Task source: TASKS.md
@@ -451,20 +505,29 @@ Relevant architecture: <sections or decisions>
 Artifacts under review: <test paths>
 Evidence under review: <RED evidence paths or command output>
 Previous findings: <none or findings>
-Scope:
-- Review only.
-- Do not modify files.
-- Verify requirement, architecture, task, artifact, and evidence traceability.
-- Require an end-to-end or acceptance-level primary test at the highest
-  practical boundary.
-- Return FAIL if such a test is practical but missing.
-- Return FAIL if RED is caused by anything other than absent required behavior.
-Verdict: PASS, FAIL, or NEEDS_CLARIFICATION, with concise findings.
+
+Verify requirement, architecture, task, artifact, and evidence traceability.
+Require an end-to-end or acceptance-level primary test at the highest practical
+boundary.
+Return FAIL if such a test is practical but missing.
+Return FAIL if RED is caused by anything other than absent required behavior.
+
+Return exactly one verdict: PASS, FAIL, or NEEDS_CLARIFICATION, followed by
+concise findings.
 ```
 
-If the verdict is `FAIL` or `NEEDS_CLARIFICATION`, the delegated reviewer stops.
+After the MCP tool returns:
+
+- if `status` is `ERROR`, stop and resolve the tool or reviewer failure;
+- if `status` is `STALE` or `stale` is `true`, do not use the verdict; commit the
+  intended review state if needed and request a new review;
+- if `status` is `COMPLETED`, record the returned verdict and response in the
+  corresponding journal review entry;
+- commit the journal update before correction work or later workflow work begins.
+
+If the verdict is `FAIL` or `NEEDS_CLARIFICATION`, the independent reviewer stops.
 The primary agent applies corrections, commits the updated artifact, updates the
-journal, and submits it for another review.
+journal, and requests another MCP review.
 
 ---
 
@@ -567,7 +630,7 @@ NFR-001
 
 ### Review Scope
 
-The delegated reviewer checks:
+The independent reviewer checks:
 
 - fidelity to `SPEC-DRAFT.md` and recorded clarifications;
 - completeness;
@@ -625,7 +688,7 @@ justify it.
 
 ### Review Scope
 
-The delegated reviewer checks:
+The independent reviewer checks:
 
 - support for all relevant functional requirements;
 - treatment of non-functional requirements;
@@ -682,7 +745,7 @@ sequentially.
 
 ### Review Scope
 
-The delegated reviewer checks:
+The independent reviewer checks:
 
 - coverage of all functional requirements;
 - coverage of automatically testable non-functional requirements;
@@ -766,7 +829,7 @@ RED evidence MUST identify:
 
 ### Step 4.4 — Review Test and RED
 
-Delegate an independent review of:
+Call `mcp_sddtdd_review_review` to request an independent review of:
 
 - the test artifact;
 - the referenced requirements;
@@ -794,7 +857,7 @@ test is practical but missing.
 
 The reviewer returns one verdict for the test artifact and RED evidence.
 
-The delegated response is not yet the completed workflow event. The primary agent
+The MCP review response is not yet the completed workflow event. The primary agent
 records the verdict as `RED_REVIEW`, commits the journal update, and uses that
 review entry as the parent of the next workflow entry.
 
@@ -836,7 +899,7 @@ Capture GREEN evidence showing:
 
 ### Step 4.7 — Review Implementation and GREEN
 
-Delegate an independent review of:
+Call `mcp_sddtdd_review_review` to request an independent review of:
 
 - the implementation artifact;
 - reviewed requirements;
@@ -857,7 +920,7 @@ The reviewer checks:
 - maintainability appropriate to the task;
 - absence of regressions in the reviewed scope.
 
-The delegated response is not yet the completed workflow event. The primary agent
+The MCP review response is not yet the completed workflow event. The primary agent
 records the verdict as `GREEN_REVIEW`, commits the journal update, and uses that
 review entry as the terminal entry of the task branch.
 
@@ -928,7 +991,7 @@ Regression is complete only when:
 
 ### Review Scope
 
-The delegated reviewer checks:
+The independent reviewer checks:
 
 - whether the executed test scope is complete for the affected system;
 - whether all newly added and previously existing relevant tests were executed;
@@ -1019,7 +1082,7 @@ Every reviewable artifact MUST be committed before review.
 
 A reviewer inspects a committed state, never a dirty working tree.
 
-After every delegated review response:
+After every MCP review response:
 
 - treat the response as verdict source data, not as a completed workflow event;
 - append the corresponding review entry to the journal;
@@ -1094,7 +1157,7 @@ The workflow is complete only when:
 4. Do not begin task decomposition before `ARCHITECTURE.md` receives `PASS`.
 5. Do not begin implementation before test and RED review receive `PASS`.
 6. Do not treat a passing test without prior valid RED as TDD evidence.
-7. Do not let delegated reviewers modify artifacts.
+7. Do not let independent reviewers modify artifacts.
 8. Do not let review replace RED-GREEN.
 9. Do not let RED-GREEN replace independent review.
 10. Do not omit journal events for completed steps, reviews, fixes, or escalation.
@@ -1103,7 +1166,7 @@ The workflow is complete only when:
 13. Do not create artifacts that cannot be traced to reviewed inputs.
 14. Do not represent forced continuation as an ordinary review `PASS`.
 15. Record every deliberate deviation as a committed `AGENT_DECISION` before continuing.
-16. Do not treat a delegated reviewer response as a completed review until the corresponding review entry is journaled and committed.
+16. Do not treat an MCP review response as a completed review until the corresponding review entry is journaled and committed.
 
 ---
 
