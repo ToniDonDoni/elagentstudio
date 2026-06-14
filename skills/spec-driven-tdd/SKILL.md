@@ -262,6 +262,33 @@ updated for every completed step and every review result.
 All rules governing journal content — entry format, required fields, branching model,
 validation — are defined in [references/JOURNAL.md](references/JOURNAL.md).
 
+### Spec ID Scheme
+
+Spec IDs follow a hierarchical format for parent-child relationships:
+
+```
+S-[A-Z]{2,6}-\d{2}(\.\d{2})*
+```
+
+Examples:
+- `S-SDT-01` — root spec (parent: ` -- `)
+- `S-SDT-01.01` — child spec (parent: `S-SDT-01`)
+- `S-SDT-01.01.01` — sub-spec (parent: `S-SDT-01.01`)
+
+**Rules:**
+1. Child spec ID = parent spec ID + `.NN`
+2. The spec body must contain a `parent:` field (lowercase)
+3. Find children: `grep "^parent: S-SDT-01" *.md`
+
+### Traceability
+
+| Direction | Mechanism |
+|-------------|----------|
+| Spec -> Journal entries | `grep "S-SDT-01.01" JOURNAL_SDD_TDD_SKILL.log` |
+| Journal -> Spec | SPEC field in the entry -> find the spec file by ID |
+| Child -> Parent | In the child spec, `parent:` -> find the parent spec |
+| Parent -> Children | `grep "parent: S-SDT-01" *.md` |
+
 ## Phase 0 -- User Input Recording
 
 Before any spec work, record the incoming feature request in the journal.
