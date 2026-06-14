@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "Build software through a traceable artifact pipeline. Every agent-generated artifact is independently reviewed, every automatically testable behavior is implemented through reviewed RED-GREEN TDD, and every workflow event is committed and journaled."
-version: 2.1.0
+version: 2.2.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -95,6 +95,9 @@ The review cycle is:
 CREATE OR MODIFY ARTIFACT
 → COMMIT ARTIFACT
 → DELEGATE REVIEW
+→ RECEIVE VERDICT
+→ APPEND REVIEW ENTRY TO JOURNAL
+→ COMMIT JOURNAL
 → PASS: artifact becomes an approved input
 → FAIL: primary agent fixes the artifact
         → COMMIT
@@ -105,13 +108,24 @@ CREATE OR MODIFY ARTIFACT
                        → delegated follow-up review
 ```
 
-A later stage MUST NOT use an artifact that has not received `PASS`.
+A delegated reviewer response is the source of a verdict, not the completed
+review event.
 
-Every review verdict — `PASS`, `FAIL`, or `NEEDS_CLARIFICATION` — MUST be appended
-to `JOURNAL_SDD_TDD_SKILL.log` and the journal update MUST be committed before the
-workflow continues.
+A review exists in the workflow only when:
 
-A review is not complete until its verdict is both journaled and committed.
+- the delegated reviewer has returned `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`;
+- the verdict has been recorded as the corresponding review entry in
+  `JOURNAL_SDD_TDD_SKILL.log`;
+- the journal update has been committed.
+
+Until all three conditions hold, the artifact remains unreviewed for workflow
+purposes.
+
+A later stage MUST NOT use an artifact that has not received a completed,
+journaled, and committed `PASS`.
+
+The next workflow entry MUST use the committed review entry JID as its direct
+`PARENT`, not the reviewed artifact entry or the transient delegated response.
 
 After `PASS`, the next stage may begin only after the review journal commit exists.
 
@@ -149,18 +163,25 @@ REVIEWED REQUIREMENT AND TASK
 → COMMIT TEST
 → RUN TEST
 → VALID RED
-→ REVIEW TEST AND RED EVIDENCE
-→ PASS
+→ DELEGATE TEST AND RED REVIEW
+→ RECEIVE PASS
+→ APPEND RED_REVIEW PASS
+→ COMMIT JOURNAL
 → CREATE MINIMUM IMPLEMENTATION
 → COMMIT IMPLEMENTATION
 → RUN TESTS
 → GREEN
-→ REVIEW IMPLEMENTATION AND GREEN EVIDENCE
-→ PASS
+→ DELEGATE IMPLEMENTATION AND GREEN REVIEW
+→ RECEIVE PASS
+→ APPEND GREEN_REVIEW PASS
+→ COMMIT JOURNAL
 ```
 
-Implementation MUST NOT begin until the test artifact and RED evidence receive
-independent review with `PASS`.
+Implementation MUST NOT begin until the test artifact and RED evidence have a
+committed `RED_REVIEW` journal entry with `STATUS: PASS`.
+
+Receiving `PASS` from `delegate_task` without recording and committing the
+`RED_REVIEW` entry does not satisfy this condition.
 
 A test that passes before implementation is not valid RED.
 
@@ -211,6 +232,9 @@ The journal records:
 - final review and completion.
 
 Every completed workflow step and every review result MUST be recorded.
+
+A delegated review result MUST be recorded and committed immediately after it is
+received, before attention shifts to correction, implementation, or the next stage.
 
 Every journal update MUST be committed immediately after it is written.
 
@@ -694,10 +718,16 @@ The reviewer checks:
 
 The reviewer returns one verdict for the test artifact and RED evidence.
 
-Implementation MUST NOT begin until this review receives `PASS`.
+The delegated response is not yet the completed workflow event. The primary agent
+records the verdict as `RED_REVIEW`, commits the journal update, and uses that
+review entry as the parent of the next workflow entry.
 
-On `FAIL`, the primary agent fixes the tests or test setup, reruns RED, commits
-the correction, updates the journal, and requests a fresh review.
+Implementation may begin only when a committed `RED_REVIEW` entry has
+`STATUS: PASS`.
+
+On `FAIL`, the primary agent records and commits `RED_REVIEW: FAIL` before fixing
+the tests or test setup, rerunning RED, committing the correction, and requesting
+a follow-up review.
 
 ### Step 4.5 — Create Minimum Implementation
 
@@ -751,10 +781,16 @@ The reviewer checks:
 - maintainability appropriate to the task;
 - absence of regressions in the reviewed scope.
 
-The task is complete only when implementation and GREEN evidence receive `PASS`.
+The delegated response is not yet the completed workflow event. The primary agent
+records the verdict as `GREEN_REVIEW`, commits the journal update, and uses that
+review entry as the terminal entry of the task branch.
 
-On `FAIL`, the primary agent fixes the implementation, commits the correction,
-reruns tests, updates the journal, and requests a fresh review.
+The task is complete only when a committed `GREEN_REVIEW` entry has
+`STATUS: PASS`.
+
+On `FAIL`, the primary agent records and commits `GREEN_REVIEW: FAIL` before
+fixing the implementation, committing the correction, rerunning tests, and
+requesting a follow-up review.
 
 ---
 
@@ -907,10 +943,12 @@ Every reviewable artifact MUST be committed before review.
 
 A reviewer inspects a committed state, never a dirty working tree.
 
-After every review:
+After every delegated review response:
 
-- record the verdict in the journal;
+- treat the response as verdict source data, not as a completed workflow event;
+- append the corresponding review entry to the journal;
 - commit the journal update immediately;
+- use the committed review entry JID as the direct `PARENT` of the next workflow entry;
 - do not proceed to the next stage before that journal commit exists;
 - on `FAIL` or `NEEDS_CLARIFICATION`, do not begin corrections before that journal commit exists.
 
@@ -989,6 +1027,7 @@ The workflow is complete only when:
 13. Do not create artifacts that cannot be traced to reviewed inputs.
 14. Do not represent forced continuation as an ordinary review `PASS`.
 15. Record every deliberate deviation as a committed `AGENT_DECISION` before continuing.
+16. Do not treat a delegated reviewer response as a completed review until the corresponding review entry is journaled and committed.
 
 ---
 
