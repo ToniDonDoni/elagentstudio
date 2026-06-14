@@ -126,3 +126,11 @@ STATUS: PASS
 PARENT: J-20260614-010300-001
 ROOT: J-20260614-010000-001
 DETAIL: SPEC REVIEW PASS. All 12 v1 issues fixed. Spec is complete, consistent, testable. 4 minor non-blocking recommendations noted.
+
+=== J-20260614-010500-001 ===
+TYPE: DECOMPOSE
+SPEC: S-JTT-01
+STATUS: COMPLETED
+PARENT: J-20260614-010400-001
+ROOT: J-20260614-010000-001
+DETAIL: Decomposed into 4 tasks: T1 (journal generator), T2 (parser), T3 (validation engine), T4 (test functions + synthetic error cases).
