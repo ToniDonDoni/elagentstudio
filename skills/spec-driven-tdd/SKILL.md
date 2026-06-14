@@ -259,308 +259,32 @@ Rationale: traceability, reviewer independence (reviewers may not speak the user
 
 ## Journaling & Audit Trail
 
-Every transition between stages, review results, and returns for rework is journaled to the `JOURNAL_SDD_TDD_SKILL.log` file at the project root.
+The journal MUST comply with all rules defined in
+[references/JOURNAL.md](references/JOURNAL.md). This section summarises
+the key requirements; the reference is authoritative.
 
-### JID Format
+### Quick Reference
 
-```
-J-{YYYYMMDD}-{HHMMSS}-{NNN}
-```
+- **File:** `JOURNAL_SDD_TDD_SKILL.log` at project root
+- **Format:** `=== {JID} ===` with `KEY: VALUE` fields
+- **JID:** `J-YYYYMMDD-HHMMSS-NNN`
+- **PARENT:** Every non-USER_INPUT entry has a parent JID. USER_INPUT has `PARENT: --`
+- **ROOT:** Mandatory for every entry. Points to the originating USER_INPUT
+- **TASK:** Required on RED, GREEN, RED_REVIEW, GREEN_REVIEW entries
+- **TASK_PARENT:** Required on subtask entries, points to parent task ID
+- **Branching:** Allowed at USER_INPUT, DECOMPOSE, TASK_REVIEW
+- **Linearity:** Required within each task lifecycle (RED → RED_REVIEW → GREEN → GREEN_REVIEW)
 
-Example: `J-20260608-204500-001`. Uniqueness when multiple events happen in the same second is provided by the `{NNN}` counter.
+### Target State
 
-### Record Format (serialized)
+Before writing DONE: the journal MUST have an unbroken PARENT chain from
+every entry to its originating USER_INPUT. ROOT on each entry MUST match
+the reached USER_INPUT. All structural rules (no cycles, no orphans,
+valid branching) MUST pass.
 
-```
-=== {JID} ===
-TYPE: {TYPE}
-SPEC: {SPEC}
-STATUS: {STATUS}
-PARENT: {PARENT_JID}
-ROOT: {ROOT_JID}        (optional — JID of root USER_INPUT for this spec tree)
-DEPENDS: {DEPENDS_JID}   (optional — JID of previous step in the chain)
-TASK: {TASK_ID}          (optional — Task ID for per-task entries)
-DETAIL: {detail text}
-```
-
-Blank line between entries. Fields are strictly in this order. Empty optional fields are omitted.
-`PARENT` = ` -- ` and `ROOT` = ` -- ` for root USER_INPUT. Entry is created post-factum AFTER completing the step.
-
-### Fields
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| JID | yes | Unique entry ID |
-| TYPE | yes | Stage type (enum) |
-| SPEC | yes | Spec ID — always a Spec ID, not a Task ID |
-| STATUS | yes | PASS, FAIL, NEEDS_CLARIFICATION, COMPLETED, CANCELLED |
-| PARENT | yes | JID of the trigger entry (` -- ` for root USER_INPUT) |
-| ROOT | no | JID of the originating USER_INPUT entry for this spec tree |
-| DEPENDS | no | JID of the previous step in the chain |
-| TASK | no | Task ID (`T-{SPEC_ID}-{NNN}`) for per-task entries (RED, GREEN, RED_REVIEW, GREEN_REVIEW) |
-| DETAIL | no | Description of what happened |
-
-### TYPE Enum
-
-| TYPE | When created |
-|------|----------------|
-| USER_INPUT | Recording incoming feature request (Phase 0) |
-| PROJECT_INIT | Project creation |
-| SPEC_SPEC | Capture of the initial spec (creation only) |
-| SPEC_REVIEW | Spec review |
-| DECOMPOSE | Decomposition into tasks |
-| TASK_REVIEW | Task decomposition review (Phase 2) |
-| AGENT_DECISION | Agent selects which task to work on next |
-| RED | Writing + running the test (failure expected) |
-| RED_REVIEW | RED result review |
-| GREEN | Writing the minimal implementation |
-| GREEN_REVIEW | GREEN review |
-| REGRESSION | Regression verification |
-| REGRESSION_REVIEW | Regression review (Phase 4) |
-| FINAL_REVIEW | Final implementation review (Phase 5) |
-| ESCALATION | User escalation when review limit exceeded (Rule 8) |
-| DONE | Completion |
-
-### Lifecycle Rules
-
-1. **One entry per step** -- created after the step is completed.
-2. **STATUS** = outcome: COMPLETED (work), PASS/FAIL/NEEDS_CLARIFICATION (review), CANCELLED (interrupted).
-3. **APPEND only** -- entries are only added to the end of the file.
-4. **Chronological** -- entry order = event order.
-5. **PARENT** = JID of the step that triggered this one (SPEC_REVIEW -> preceding SPEC_SPEC). ROOT is the JID of the originating USER_INPUT entry for the spec tree; it is copied from the USER_INPUT entry to all derived entries. TASK is the Task ID for per-task entries.
-6. **PARENT chain validation** — Before writing a DONE entry, verify the complete unbroken PARENT chain by iteratively following PARENT links from DONE until `PARENT: --` is found. The entry with `PARENT: --` MUST have TYPE=USER_INPUT. If the chain breaks (referenced JID does not exist) or the root is not USER_INPUT, the DONE entry MUST NOT be written until the chain is fixed.
-
-### Example
-
-```journal
-=== J-20260608-204500-001 ===
-TYPE: USER_INPUT
-SPEC: S-SDT-01
-STATUS: COMPLETED
-PARENT: --
-ROOT: J-20260608-204500-001
-DETAIL: Initial feature request received.
-
-=== J-20260608-204500-002 ===
-TYPE: SPEC_SPEC
-SPEC: S-SDT-01
-STATUS: COMPLETED
-PARENT: J-20260608-204500-001
-ROOT: J-20260608-204500-001
-DETAIL: Initial spec draft created with 6 subspecs
-
-=== J-20260608-204500-003 ===
-TYPE: SPEC_REVIEW
-SPEC: S-SDT-01
-STATUS: FAIL
-PARENT: J-20260608-204500-002
-ROOT: J-20260608-204500-001
-DETAIL: Spec review FAIL -- acceptance criteria too vague
-
-=== J-20260608-204500-004 ===
-TYPE: RED
-SPEC: S-SDT-01.01
-STATUS: COMPLETED
-PARENT: J-20260608-204500-003
-ROOT: J-20260608-204500-001
-TASK: T-S-SDT-01.01-001
-DETAIL: Test written for TodoItem model. RED: ImportError expected.
-```
-
-### Spec ID Scheme
-
-Spec IDs follow a hierarchical format for parent-child relationships:
-
-```
-S-[A-Z]{2,6}-\d{2}(\.\d{2})*
-```
-
-Examples:
-- `S-SDT-01` -- root spec (parent: ` -- `)
-- `S-SDT-01.01` -- child spec (parent: `S-SDT-01`)
-- `S-SDT-01.01.01` -- sub-spec (parent: `S-SDT-01.01`)
-
-**Rules:**
-1. Child spec ID = parent spec ID + `.NN`
-2. The spec body must contain a `parent:` field (lowercase)
-3. Find children: `grep "^parent: S-SDT-01" *.md`
-
-### Traceability
-
-| Direction | Mechanism |
-|-------------|----------|
-| Spec -> Journal entries | `grep "S-SDT-01.01" JOURNAL_SDD_TDD_SKILL.log` |
-| Journal -> Spec | SPEC field in the entry -> find the spec file by ID |
-| Child -> Parent | In the child spec, `parent:` -> find the parent spec |
-| Parent -> Children | `grep "parent: S-SDT-01" *.md` |
-| Task -> Spec | Extract SPEC_ID from TASK ID (`T-{SPEC_ID}-{NNN}`) -> find spec |
-| Entry -> Root User Input | `grep "^ROOT: <JID>" JOURNAL_SDD_TDD_SKILL.log` shows all entries from that input |
-
-### Task ID Scheme
-
-Task IDs follow a hierarchical format that encodes the parent spec relationship:
-
-```
-T-{SPEC_ID}-{NNN}
-```
-
-Where:
-- `{SPEC_ID}` is the Spec ID the task belongs to (e.g. `S-SDT-01`)
-- `{NNN}` is a zero-padded 3-digit sequence number (001, 002, ...)
-
-Examples:
-- `T-S-SDT-01-001` — Task 1 of root spec S-SDT-01
-- `T-S-SDT-01.01-001` — Task 1 of child spec S-SDT-01.01
-- `T-S-SDT-01.01-002` — Task 2 of child spec S-SDT-01.01
-
-**Rules:**
-1. Task ID = `T-` + parent spec ID + `-` + zero-padded sequence number
-2. Sequence numbers restart per spec ID (`S-SDT-01-001`, `S-SDT-01.01-001` — both have `-001`)
-3. Every per-task journal entry (RED, GREEN, RED_REVIEW, GREEN_REVIEW) carries the Task ID in the `TASK` field
-4. The `SPEC` field in per-task entries still holds the Spec ID (not the Task ID)
-
-**Traceability from a Task ID:**
-1. Extract `{SPEC_ID}` from the Task ID: `T-{SPEC_ID}-{NNN}`
-2. Find the spec file by `{SPEC_ID}` (e.g. `S-SDT-01.01`)
-3. From the spec's `parent:` field, find the parent spec
-4. Recurse until `parent: --` (root spec)
-5. The root spec's USER_INPUT is the journal entry with `TYPE=USER_INPUT` for that SPEC
-
-### How to Trace Any Artifact Back to USER_INPUT — Step by Step
-
-You have three common starting points. Each one leads to the journal, and from the journal you walk the `PARENT` chain or follow the `ROOT` field.
-
-#### Scenario A — You have a Task ID (e.g. `T-S-SDT-01.01-003`)
-
-```
-1. Task ID: T-S-SDT-01.01-003
-       ↓  extract SPEC_ID
-2. Spec: S-SDT-01.01
-       ↓  find spec file, read parent:
-3. parent: S-SDT-01  (or -- if root)
-       ↓  recurse
-4. parent: --  (root spec S-SDT-01)
-       ↓  search journal
-5. grep "TYPE: USER_INPUT" JOURNAL_SDD_TDD_SKILL.log
-   → find entry with SPEC: S-SDT-01
-```
-
-**Concrete commands:**
-```bash
-# From commit message or journal entry, extract Task ID
-TASK_ID="T-S-SDT-01.01-003"
-
-# Step 1-2: Extract spec from task ID
-SPEC_ID=$(echo "$TASK_ID" | sed 's/^T-//; s/-[0-9]\{3\}$//')
-echo "SPEC: $SPEC_ID"
-
-# Step 3-4: Walk parent chain
-CURRENT="$SPEC_ID"
-while true; do
-  PARENT=$(grep "^parent:" "${CURRENT}.md" 2>/dev/null | sed 's/^parent: *//')
-  [ -z "$PARENT" ] && break
-  echo "  parent: $PARENT"
-  CURRENT="$PARENT"
-done
-
-# Step 5: Find USER_INPUT
-grep -A5 "TYPE: USER_INPUT.*SPEC: $CURRENT" JOURNAL_SDD_TDD_SKILL.log
-```
-
-#### Scenario B — You have a journal entry JID (e.g. `J-20260613-234804-002`)
-
-The simplest path:
-
-```
-1. grep "^ROOT: J-20260613-234804-002" JOURNAL_SDD_TDD_SKILL.log
-   → If found, ROOT is the USER_INPUT JID — done.
-
-2. If no ROOT field (legacy entry):
-   Read PARENT iteratively until PARENT: --
-   The entry with PARENT: -- is USER_INPUT.
-```
-
-**Concrete commands:**
-```bash
-JID="J-20260613-234804-002"
-JOURNAL="JOURNAL_SDD_TDD_SKILL.log"
-
-# Try ROOT first (fast path)
-ROOT=$(grep -A1 "^=== $JID ===" "$JOURNAL" | grep "^ROOT:" | sed 's/^ROOT: *//')
-if [ -n "$ROOT" ]; then
-  echo "ROOT (USER_INPUT): $ROOT"
-  grep -A4 "^=== $ROOT ===" "$JOURNAL"
-  exit 0
-fi
-
-# Legacy: walk PARENT chain
-echo "$JID"
-CURRENT="$JID"
-while true; do
-  PARENT=$(grep -A3 "^=== $CURRENT ===" "$JOURNAL" | grep "^PARENT:" | sed 's/^PARENT: *//')
-  [ "$PARENT" = "--" ] && break
-  [ -z "$PARENT" ] && { echo "Chain broken at $CURRENT"; exit 1; }
-  echo "  → $PARENT"
-  CURRENT="$PARENT"
-done
-echo "USER_INPUT found: $CURRENT"
-```
-
-#### Scenario C — You have a commit message
-
-Commit messages follow the convention `"vX.Y.Z — S-SPEC-ID: STAGE — description"`:
-
-```bash
-COMMIT_MSG=$(git log --oneline -1)
-
-# Extract spec ID
-SPEC_ID=$(echo "$COMMIT_MSG" | grep -oP 'S-[A-Z0-9]+-[0-9.]+' | head -1)
-echo "Spec: $SPEC_ID"
-
-# From spec, walk parent chain to root → find USER_INPUT
-# (same as Scenario A steps 3-5)
-```
-
-#### Verification: The PARENT Chain Must Be Unbroken
-
-After finding the candidate USER_INPUT, verify the chain is sound:
-
-```bash
-# Walk PARENT links from DONE until PARENT: --
-# Every intermediate JID must exist in the journal
-CURRENT="<DONE_JID>"
-while true; do
-  PARENT=$(grep -A3 "^=== $CURRENT ===" "$JOURNAL" | grep "^PARENT:" | sed 's/^PARENT: *//')
-  [ "$PARENT" = "--" ] && { echo "Root: $CURRENT"; break; }
-  grep -q "^=== $PARENT ===" "$JOURNAL" || { echo "MISSING: $PARENT"; exit 1; }
-  CURRENT="$PARENT"
-done
-[ "$(grep -A1 "^=== $CURRENT ===" "$JOURNAL" | grep "TYPE: USER_INPUT")" ] \
-  && echo "Chain OK" || echo "ERROR: root is not USER_INPUT"
-```
-
-### SPEC/TASK Field Usage by TYPE
-
-The following table specifies what value goes in the `SPEC` and `TASK` fields for each journal entry TYPE:
-
-| TYPE | SPEC value | TASK value |
-|------|-----------|------------|
-| USER_INPUT | Assigned spec ID | — (absent) |
-| PROJECT_INIT | Project spec ID | — |
-| SPEC_SPEC | The spec ID being created | — |
-| SPEC_REVIEW | The spec ID being reviewed | — |
-| DECOMPOSE | The spec ID being decomposed | — |
-| TASK_REVIEW | The spec ID | — (or absent) |
-| AGENT_DECISION | The spec ID | Task ID if selecting a specific task |
-| RED | The parent spec ID | Task ID |
-| RED_REVIEW | The parent spec ID | Task ID |
-| GREEN | The parent spec ID | Task ID |
-| GREEN_REVIEW | The parent spec ID | Task ID |
-| REGRESSION | The spec ID | — |
-| REGRESSION_REVIEW | The spec ID | — |
-| FINAL_REVIEW | The spec ID | — |
-| ESCALATION | The spec ID | Task ID if applicable |
-| DONE | The spec ID | — |
+See [references/JOURNAL.md](references/JOURNAL.md) for the complete
+specification: field definitions, per-type requirements, validation rules,
+examples of correct and incorrect journals, and the validation algorithm.
 
 ## Phase 0 -- User Input Recording
 
@@ -1070,7 +794,8 @@ The script operates on the installed Hermes skill directory, not the repo. This 
 
 ## References
 
-- [SPEC-EXAMPLE.md](references/SPEC-EXAMPLE.md) -- **Canonical reference artifact.** Full Counter API demo walkthrough showing every stage of the pipeline from user input to DONE. Ships with this skill. Read it to see the complete workflow including commit-before-review, journal-commit loop, SPEC-AMENDMENT mechanism, and review scopes per stage.
+- [JOURNAL.md](references/JOURNAL.md) -- **Complete journal specification.** Entry format, mandatory fields, validation rules, branching model, examples of correct/incorrect journals. Required reading before writing or validating a journal.
+- [spec-review-criteria.md](references/spec-review-criteria.md)
 - [SpecKit](https://github.com/github/spec-kit) -- GitHub's spec-driven development tooling. Write `.spec.md` files, generate tests, scaffold code.
 - [Hermes Skills Catalog](https://hermes-agent.nousresearch.com/docs/reference/skills-catalog) -- complete list of available Hermes skills
 - Hermes skills used by this pipeline:
