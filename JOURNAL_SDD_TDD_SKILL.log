@@ -1,0 +1,56 @@
+
+=== J-20260613-235000-001 ===
+TYPE: USER_INPUT
+SPEC: S-TASK-TREE-01
+STATUS: COMPLETED
+PARENT: --
+ROOT: J-20260613-235000-001
+DETAIL: User requires task naming that traces every task back to its USER_INPUT via unbroken PARENT chain, ROOT field, and hierarchical task IDs.
+
+=== J-20260613-235000-002 ===
+TYPE: SPEC_SPEC
+SPEC: S-TASK-TREE-01
+STATUS: COMPLETED
+PARENT: J-20260613-235000-001
+ROOT: J-20260613-235000-001
+DETAIL: SPEC-TASK-TREE-01.md created with 5 requirements (R1-R5) and 6 acceptance criteria (AC1-AC6).
+
+=== J-20260614-000447-001 ===
+TYPE: SPEC_REVIEW
+SPEC: S-TASK-TREE-01
+STATUS: FAIL
+PARENT: J-20260613-235000-002
+ROOT: J-20260613-235000-001
+DETAIL: SPEC REVIEW FAIL. 5 issues: (1) SPEC field semantic conflict with Task IDs, (2) SPEC field not defined for all TYPEs, (3) '3 hops' insufficient validation, (4) ROOT field ordering undefined, (5) PARENT chain diagram misses review entries.
+
+=== J-20260614-000518-001 ===
+TYPE: SPEC_SPEC
+SPEC: S-TASK-TREE-01
+STATUS: COMPLETED
+PARENT: J-20260614-000518-001
+ROOT: J-20260613-235000-001
+DETAIL: SPEC v2 — all 5 fixes applied: (1) TASK field added, SPEC stays Spec ID always, (2) per-TYPE table, (3) complete chain validation, (4) ROOT/TASK field ordering in record format, (5) full chain diagram with review entries.
+
+=== J-20260614-000613-001 ===
+TYPE: SPEC_REVIEW
+SPEC: S-TASK-TREE-01
+STATUS: PASS
+PARENT: J-20260614-000613-001
+ROOT: J-20260613-235000-001
+DETAIL: SPEC REVIEW PASS. All 6 checks pass. v2 spec adopted.
+
+=== J-20260614-000613-002 ===
+TYPE: DECOMPOSE
+SPEC: S-TASK-TREE-01
+STATUS: COMPLETED
+PARENT: J-20260614-000613-001
+ROOT: J-20260613-235000-001
+DETAIL: 3 tasks: T1 (Task ID scheme + TASK field + per-TYPE table), T2 (ROOT field + Record Format + Target State), T3 (PARENT chain rules + journal examples).
+
+=== J-20260614-000613-003 ===
+TYPE: TASK_REVIEW
+SPEC: S-TASK-TREE-01
+STATUS: PASS
+PARENT: J-20260614-000613-002
+ROOT: J-20260613-235000-001
+DETAIL: 3 tasks covering all 7 ACs.
