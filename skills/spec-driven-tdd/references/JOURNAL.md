@@ -179,6 +179,15 @@ decisions, test output summaries, and reviewer verdicts.
 
 The journal forms a **forest of trees**, not a single linear chain.
 
+```ascii
+USER_INPUT                         (root, PARENT: --, ROOT=self)
+  └─ SPEC_SPEC → SPEC_REVIEW
+       └─ DECOMPOSE → TASK_REVIEW
+            ├─ TASK-001 → RED → RED_REVIEW → GREEN → GREEN_REVIEW → REGRESSION
+            ├─ TASK-002 → RED → RED_REVIEW → GREEN → GREEN_REVIEW → REGRESSION
+            └─ TASK-003 → ... → REGRESSION → FINAL_REVIEW → DONE
+```
+
 Branching (a node having multiple children) is PERMITTED at:
 - `USER_INPUT` — may have multiple spec pipelines
 - `DECOMPOSE` — may have multiple child entries leading to TASK_REVIEW
@@ -190,6 +199,12 @@ Linearity (max one child per node) is REQUIRED within each task lifecycle:
 RED → RED_REVIEW → GREEN → GREEN_REVIEW
 ```
 No entry in this chain MAY have more than one child pointing to it.
+
+**Key branching rules:**
+
+1. **Multiple USER_INPUTs** are allowed (one per feature request). Each is a separate tree root with `PARENT: --` and `ROOT` = its own JID.
+2. **Tasks are siblings, not a chain.** RED(T1) and RED(T2) both have `PARENT=JID_of_TASK_REVIEW`. RED(T2) does NOT have `PARENT=JID_of_REGRESSION(T1)`. Chaining tasks creates false causal relationships and violates the definition of PARENT as "the triggering entry."
+3. **ROOT must match the reached USER_INPUT** — for any entry, tracing PARENT backwards must reach a USER_INPUT whose JID equals the entry's ROOT field.
 
 ### 4.4 TASK Fields
 
