@@ -203,3 +203,11 @@ STATUS: PASS
 PARENT: J-20260614-011200-001
 ROOT: J-20260614-010000-001
 DETAIL: REGRESSION: all 8 tests green. Generator, parser, validation, all 6 synthetic error tests pass. Standalone validate_journal.py functional.
+
+=== J-20260614-011500-001 ===
+TYPE: DONE
+SPEC: S-JTT-01
+STATUS: COMPLETED
+PARENT: J-20260614-011400-001
+ROOT: J-20260614-010000-001
+DETAIL: DONE. Test directory tests/test_journal_task_tree/ with SKILL.md (copy), TASK.md (Tetris scenario), test_journal_task_tree.py (8 tests, generator, parser, validator), validate_journal.py (standalone script), JOURNAL_SDD_TDD_SKILL.log (27-entry Tetris SDD journal). 8/8 tests pass. Journal validates with 0 errors. Standalone script detects real bugs in existing journals. CODEX_REVIEW removed from SKILL.md TYPE enum.
