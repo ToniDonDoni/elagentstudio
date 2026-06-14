@@ -91,6 +91,17 @@ CREATE OR MODIFY ARTIFACT
 
 A later stage MUST NOT use an artifact that has not received `PASS`.
 
+Every review verdict — `PASS`, `FAIL`, or `NEEDS_CLARIFICATION` — MUST be appended
+to `JOURNAL_SDD_TDD_SKILL.log` and the journal update MUST be committed before the
+workflow continues.
+
+A review is not complete until its verdict is both journaled and committed.
+
+After `PASS`, the next stage may begin only after the review journal commit exists.
+
+After `FAIL` or `NEEDS_CLARIFICATION`, correction work may begin only after the
+review verdict has been journaled and committed.
+
 Review comments never modify artifacts automatically.
 
 Only the primary agent applies corrections.
@@ -184,7 +195,11 @@ The journal records:
 
 Every completed workflow step and every review result MUST be recorded.
 
-Every journal update MUST be committed.
+Every journal update MUST be committed immediately after it is written.
+
+This includes review verdicts for `PASS`, `FAIL`, and `NEEDS_CLARIFICATION`.
+The workflow MUST NOT proceed, and correction work MUST NOT begin, until the
+corresponding journal update is committed.
 
 The journal MUST preserve exact relationships between entries and tasks.
 
@@ -222,7 +237,7 @@ The primary agent is responsible for:
 
 ### Delegated Reviewer
 
-delegate_task is used only for independent review.
+`delegate_task` is used only for independent review.
 
 Delegation is intentionally limited to review so that artifact creation and artifact
 evaluation remain separate responsibilities. The primary agent creates and fixes
@@ -231,30 +246,30 @@ implementation.
 
 A delegated reviewer may:
 
-* inspect the committed artifact under review;
-* inspect its approved source artifacts;
-* inspect test, RED, GREEN, regression, or other supporting evidence;
-* compare the artifact with relevant requirements and architecture decisions;
-* identify omissions, contradictions, unsupported assumptions, defects, and risks;
-* return PASS, FAIL, or NEEDS_CLARIFICATION;
-* explain the verdict and provide actionable findings.
+- inspect the committed artifact under review;
+- inspect its approved source artifacts;
+- inspect test, RED, GREEN, regression, or other supporting evidence;
+- compare the artifact with relevant requirements and architecture decisions;
+- identify omissions, contradictions, unsupported assumptions, defects, and risks;
+- return `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`;
+- explain the verdict and provide actionable findings.
 
 A delegated reviewer MUST NOT:
 
-* modify files;
-* create or fix artifacts;
-* implement features;
-* write or change tests;
-* update the journal;
-* create the next workflow artifact;
-* continue the pipeline;
-* delegate implementation work.
+- modify files;
+- create or fix artifacts;
+- implement features;
+- write or change tests;
+- update the journal;
+- create the next workflow artifact;
+- continue the pipeline;
+- delegate implementation work.
 
 These restrictions preserve review independence. A reviewer that changes the
 artifact would be evaluating its own solution rather than independently assessing
 the primary agent’s work.
 
-Reviewer Context
+#### Reviewer Context
 
 A fresh delegated context is preferred for an initial review.
 
@@ -264,7 +279,7 @@ formed while the artifact was being created.
 The reviewer SHOULD receive all required information explicitly rather than rely
 on hidden or shared working context.
 
-A follow-up review after FAIL or NEEDS_CLARIFICATION MAY use the same reviewer
+A follow-up review after `FAIL` or `NEEDS_CLARIFICATION` MAY use the same reviewer
 when continuity is useful for checking whether specific findings were resolved.
 
 Even during a follow-up review, the request MUST include the updated committed
@@ -274,25 +289,25 @@ reviewer must not rely only on remembered context.
 The objective is independent judgment supported by complete evidence, not forced
 amnesia.
 
-Review Request
+#### Review Request
 
 Every review request MUST identify:
 
-* the reviewed commit;
-* the artifact path;
-* the approved source artifacts;
-* the relevant requirement IDs;
-* the relevant architecture references;
-* the task ID, when applicable;
-* the supporting evidence being reviewed;
-* previous findings, when this is a follow-up review;
-* the exact review scope;
-* an explicit instruction to review only and not modify files.
+- the reviewed commit;
+- the artifact path;
+- the approved source artifacts;
+- the relevant requirement IDs;
+- the relevant architecture references;
+- the task ID, when applicable;
+- the supporting evidence being reviewed;
+- previous findings, when this is a follow-up review;
+- the exact review scope;
+- an explicit instruction to review only and not modify files.
 
 A review request SHOULD contain enough context for the reviewer to reach a verdict
 without access to the primary agent’s private reasoning.
 
-If the verdict is FAIL or NEEDS_CLARIFICATION, the delegated reviewer stops.
+If the verdict is `FAIL` or `NEEDS_CLARIFICATION`, the delegated reviewer stops.
 The primary agent applies corrections, commits the updated artifact, updates the
 journal, and submits it for another review.
 
@@ -831,7 +846,9 @@ A reviewer inspects a committed state, never a dirty working tree.
 After every review:
 
 - record the verdict in the journal;
-- commit the journal update.
+- commit the journal update immediately;
+- do not proceed to the next stage before that journal commit exists;
+- on `FAIL` or `NEEDS_CLARIFICATION`, do not begin corrections before that journal commit exists.
 
 After `FAIL`:
 
