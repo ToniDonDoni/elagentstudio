@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "Build software through a traceable artifact pipeline. Every agent-generated artifact is independently reviewed, every automatically testable behavior is implemented through reviewed RED-GREEN TDD, and every workflow event is committed and journaled."
-version: 2.0.0
+version: 2.1.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -36,6 +36,19 @@ A general review does not replace RED-GREEN.
 Passing tests do not replace independent review.
 
 The journal does not replace artifacts, reviews, or test evidence.
+
+---
+
+## Scope and Completion
+
+The workflow applies to the explicitly approved scope of the current delivery.
+
+- `IN_SCOPE` requirements and `REQUIRED` tasks must be completed before `DONE`.
+- `DEFERRED` and `OUT_OF_SCOPE` items must be recorded but do not block the current delivery.
+- `TASKS_COMPLETE` waits only for required task branches in the current scope.
+- `DONE` means the approved current scope is complete, not that every possible future feature is finished.
+- Non-automatable requirements must define their review method and required evidence in advance.
+- The default review limit is 21 attempts per artifact unless the project explicitly defines another limit.
 
 ---
 
@@ -85,11 +98,11 @@ CREATE OR MODIFY ARTIFACT
 → PASS: artifact becomes an approved input
 → FAIL: primary agent fixes the artifact
         → COMMIT
-        → fresh delegated review
+        → delegated follow-up review
 → NEEDS_CLARIFICATION: primary agent obtains clarification
                        → updates the artifact
                        → COMMIT
-                       → fresh delegated review
+                       → delegated follow-up review
 ```
 
 A later stage MUST NOT use an artifact that has not received `PASS`.
@@ -194,6 +207,7 @@ The journal records:
 - convergence of task branches;
 - regression results;
 - escalation and clarification;
+- deliberate deviations and accepted risks;
 - final review and completion.
 
 Every completed workflow step and every review result MUST be recorded.
@@ -230,6 +244,40 @@ why something failed, and how the next iteration can be improved.
 Working code alone is not a complete result if the process that produced it
 cannot be reconstructed, trusted, and improved.
 
+## Deviation Risks
+
+The workflow describes the evidence required for a trustworthy result. Skipping or
+changing a stage does not remove its purpose; it accepts the corresponding risk.
+
+Typical consequences:
+
+- skipping specification review risks implementing misunderstood or unsupported requirements;
+- skipping architecture review risks inconsistent, excessive, or unworkable technical decisions;
+- skipping task review risks missing work, duplicated work, and broken traceability;
+- skipping RED means the behavior was not proven absent before implementation, so the tests may not detect defects and the resulting code may not work;
+- skipping RED review risks accepting tests that prove the wrong behavior or fail for the wrong reason;
+- skipping GREEN review risks accepting code that only satisfies tests superficially, violates architecture, or introduces unrelated defects;
+- skipping regression risks breaking previously working behavior;
+- skipping final review risks declaring completion while requirements, evidence, or artifacts remain incomplete;
+- skipping or delaying journal entries makes the workflow impossible to reconstruct reliably, hides where the process failed, and prevents later diagnosis and improvement.
+
+Any deliberate deviation MUST be recorded before the workflow continues as an
+`AGENT_DECISION` journal entry.
+
+This includes deciding not to create or review an artifact, not to run a required
+test, or not to perform any other required stage.
+
+The entry MUST briefly state:
+
+- what was skipped or changed;
+- why the normal stage was not performed;
+- what evidence is missing;
+- what risk is accepted;
+- what alternative evidence or mitigation is used.
+
+The `AGENT_DECISION` entry makes the deviation visible; it does not convert the
+missing stage into `PASS` or make the workflow fully compliant.
+
 ---
 
 ## Roles
@@ -247,6 +295,7 @@ The primary agent is responsible for:
 - updating and committing the journal;
 - applying fixes after review failure;
 - selecting the next stage;
+- recording deliberate deviations and accepted risks;
 - producing the final implementation.
 
 ### Delegated Reviewer
@@ -802,6 +851,7 @@ The reviewer checks:
 - no required artifact is missing;
 - traceability is complete;
 - journal relationships are complete;
+- every deliberate deviation is recorded as an `AGENT_DECISION` with its accepted risk and mitigation;
 - the working tree contains no uncommitted solution artifacts.
 
 `DONE` may be recorded only after `FINAL_REVIEW` receives `PASS`.
@@ -916,6 +966,7 @@ The workflow is complete only when:
 - all required tests pass;
 - traceability is complete;
 - the journal is complete and internally connected;
+- every deliberate deviation is explicitly recorded and remains visible as missing evidence rather than an ordinary `PASS`;
 - all required artifacts are committed;
 - the working tree contains no uncommitted solution artifacts.
 
@@ -937,6 +988,7 @@ The workflow is complete only when:
 12. Do not declare completion without regression and final review.
 13. Do not create artifacts that cannot be traced to reviewed inputs.
 14. Do not represent forced continuation as an ordinary review `PASS`.
+15. Record every deliberate deviation as a committed `AGENT_DECISION` before continuing.
 
 ---
 
@@ -945,15 +997,3 @@ The workflow is complete only when:
 - [JOURNAL.md](references/JOURNAL.md) — journal entry format, task relationships, parent/root rules, and required invariants.
 - [SPEC-EXAMPLE.md](references/SPEC-EXAMPLE.md) — canonical walkthrough of the complete reviewed artifact and RED-GREEN workflow.
 
-
-TODO
-## Scope and Completion
-
-The workflow applies to the explicitly approved scope of the current delivery.
-
-- `IN_SCOPE` requirements and `REQUIRED` tasks must be completed before `DONE`.
-- `DEFERRED` and `OUT_OF_SCOPE` items must be recorded but do not block the current delivery.
-- `TASKS_COMPLETE` waits only for required task branches in the current scope.
-- `DONE` means the approved current scope is complete, not that every possible future feature is finished.
-- Non-automatable requirements must define their review method and required evidence in advance.
-- The default review limit is 21 attempts per artifact unless the project explicitly defines another limit.
