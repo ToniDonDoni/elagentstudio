@@ -134,3 +134,11 @@ STATUS: COMPLETED
 PARENT: J-20260614-010400-001
 ROOT: J-20260614-010000-001
 DETAIL: Decomposed into 4 tasks: T1 (journal generator), T2 (parser), T3 (validation engine), T4 (test functions + synthetic error cases).
+
+=== J-20260614-010600-001 ===
+TYPE: TASK_REVIEW
+SPEC: S-JTT-01
+STATUS: FAIL
+PARENT: J-20260614-010500-001
+ROOT: J-20260614-010000-001
+DETAIL: TASK REVIEW FAIL. 3 issues: (1) flat task IDs, should be hierarchical (S-JTT-01.NN), (2) Task 3 bundles 15 checks (too large), (3) Task 4 bundles 9 test scenarios (too large), (4) R2 orphaned in Task 1.
