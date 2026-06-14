@@ -944,3 +944,16 @@ The workflow is complete only when:
 
 - [JOURNAL.md](references/JOURNAL.md) — journal entry format, task relationships, parent/root rules, and required invariants.
 - [SPEC-EXAMPLE.md](references/SPEC-EXAMPLE.md) — canonical walkthrough of the complete reviewed artifact and RED-GREEN workflow.
+
+
+TODO
+## Scope and Completion
+
+The workflow applies to the explicitly approved scope of the current delivery.
+
+- `IN_SCOPE` requirements and `REQUIRED` tasks must be completed before `DONE`.
+- `DEFERRED` and `OUT_OF_SCOPE` items must be recorded but do not block the current delivery.
+- `TASKS_COMPLETE` waits only for required task branches in the current scope.
+- `DONE` means the approved current scope is complete, not that every possible future feature is finished.
+- Non-automatable requirements must define their review method and required evidence in advance.
+- The default review limit is 21 attempts per artifact unless the project explicitly defines another limit.
