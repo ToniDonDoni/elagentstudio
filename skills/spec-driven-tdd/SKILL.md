@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "Build software through a traceable artifact pipeline. Every agent-generated artifact is independently reviewed, every automatically testable behavior is implemented through reviewed RED-GREEN TDD, and every workflow event is committed and journaled."
-version: 2.4.0
+version: 2.4.1
 author: Hermes Agent
 license: MIT
 metadata:
@@ -94,21 +94,21 @@ The review cycle is:
 ```text
 CREATE OR MODIFY ARTIFACT
 → COMMIT ARTIFACT
-→ DELEGATE REVIEW
+→ REQUEST REVIEW THROUGH MCP
 → RECEIVE VERDICT
 → APPEND REVIEW ENTRY TO JOURNAL
 → COMMIT JOURNAL
 → PASS: artifact becomes an approved input
 → FAIL: primary agent fixes the artifact
         → COMMIT
-        → delegated follow-up review
+        → MCP follow-up review
 → NEEDS_CLARIFICATION: primary agent obtains clarification
                        → updates the artifact
                        → COMMIT
-                       → delegated follow-up review
+                       → MCP follow-up review
 ```
 
-A independent reviewer response is the source of a verdict, not the completed
+An independent reviewer response is the source of a verdict, not the completed
 review event.
 
 A review exists in the workflow only when:
@@ -125,7 +125,7 @@ A later stage MUST NOT use an artifact that has not received a completed,
 journaled, and committed `PASS`.
 
 The next workflow entry MUST use the committed review entry JID as its direct
-`PARENT`, not the reviewed artifact entry or the transient delegated response.
+`PARENT`, not the reviewed artifact entry or the transient MCP review response.
 
 After `PASS`, the next stage may begin only after the review journal commit exists.
 
@@ -163,7 +163,7 @@ REVIEWED REQUIREMENT AND TASK
 → COMMIT TEST
 → RUN TEST
 → VALID RED
-→ DELEGATE TEST AND RED REVIEW
+→ REQUEST TEST AND RED REVIEW THROUGH MCP
 → RECEIVE PASS
 → APPEND RED_REVIEW PASS
 → COMMIT JOURNAL
@@ -171,7 +171,7 @@ REVIEWED REQUIREMENT AND TASK
 → COMMIT IMPLEMENTATION
 → RUN TESTS
 → GREEN
-→ DELEGATE IMPLEMENTATION AND GREEN REVIEW
+→ REQUEST IMPLEMENTATION AND GREEN REVIEW THROUGH MCP
 → RECEIVE PASS
 → APPEND GREEN_REVIEW PASS
 → COMMIT JOURNAL
@@ -233,7 +233,7 @@ The journal records:
 
 Every completed workflow step and every review result MUST be recorded.
 
-A MCP review result MUST be recorded and committed immediately after it is
+An MCP review result MUST be recorded and committed immediately after it is
 received, before attention shifts to correction, implementation, or the next stage.
 
 Every journal update MUST be committed immediately after it is written.
@@ -334,14 +334,25 @@ The primary agent calls the tool with:
 - `task_id` — task ID from `TASKS.md`, when applicable;
 - `prompt` — the complete review instruction defined in the Review Request section.
 
-The MCP server captures Git state, invokes an independent reviewer through MCP
-sampling, writes `review_started` and `review_completed` events to:
+The MCP server captures the authoritative Git state before review.
+
+The MCP server MUST:
+
+- resolve the canonical repository path;
+- reject the review with `status = ERROR` when the working tree is dirty;
+- capture the actual committed `HEAD` SHA;
+- load every file listed in the review package from that captured commit, not
+  from mutable working-tree content;
+- include the captured SHA and committed file contents in the sampling request;
+- capture `HEAD` again after sampling;
+- mark the result `STALE` when `HEAD` changed during review;
+- write `review_started` and `review_completed` events to:
 
 ```text
 <repo>/.git/sddtdd/review-access.jsonl
 ```
 
-and returns:
+The MCP server returns:
 
 ```text
 request_id
@@ -387,7 +398,7 @@ An independent reviewer MUST NOT:
 - update the journal;
 - create the next workflow artifact;
 - continue the pipeline;
-- delegate implementation work.
+- initiate implementation work.
 
 These restrictions preserve review independence. A reviewer that changes the
 artifact would be evaluating its own solution rather than independently assessing
@@ -427,15 +438,20 @@ The MCP call MUST provide:
 repo_path: <absolute repository path>
 review_type: <free-form review label>
 task_id: <TASK_ID or null when not applicable>
-prompt: <complete review instruction>
+prompt: <complete review instruction and review package>
 ```
 
-The `prompt` MUST give the reviewer enough explicit traceability to understand
-what is being reviewed, why it exists, and what evidence would justify `PASS`.
+Before calling the MCP tool, the primary agent MUST ensure that:
+
+- every reviewed artifact and evidence file is committed;
+- the working tree is clean;
+- the current `HEAD` is the state intended for review.
+
+The `prompt` MUST contain a machine-readable review package so the MCP server can
+load the exact committed contents from its captured `HEAD`.
 
 Every review prompt MUST identify:
 
-- the reviewed commit expected by the primary agent;
 - the artifact path or paths under review;
 - the exact task ID, when applicable;
 - the exact task title as recorded in `TASKS.md`;
@@ -452,6 +468,25 @@ Every review prompt MUST identify:
 - the exact review scope;
 - the required verdict format: `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`;
 - an explicit instruction to review only and not modify files.
+
+Every review prompt MUST include this file list:
+
+```text
+Files to load from reviewed commit:
+- SPEC.md
+- ARCHITECTURE.md
+- TASKS.md
+- JOURNAL_SDD_TDD_SKILL.log
+- <artifact path>
+- <evidence path>
+```
+
+Only files relevant to the current review SHOULD be added beyond the four
+traceability sources.
+
+The MCP server, not the primary agent, is authoritative for the reviewed commit.
+It captures the actual `HEAD` SHA and loads the listed files from that commit
+before invoking the reviewer.
 
 The review prompt MUST instruct the reviewer to verify traceability across:
 
@@ -494,7 +529,6 @@ task_id: <TASK_ID>
 prompt:
 Review only. Do not modify files.
 
-Reviewed commit: <commit SHA>
 Task: <TASK_ID> — <exact task title>
 Task source: TASKS.md
 Workflow entry: JOURNAL_SDD_TDD_SKILL.log — <current task entry/JID>
@@ -503,8 +537,16 @@ Relevant requirements: <requirement IDs>
 Architecture source: ARCHITECTURE.md
 Relevant architecture: <sections or decisions>
 Artifacts under review: <test paths>
-Evidence under review: <RED evidence paths or command output>
+Evidence under review: <RED evidence paths>
 Previous findings: <none or findings>
+
+Files to load from reviewed commit:
+- SPEC.md
+- ARCHITECTURE.md
+- TASKS.md
+- JOURNAL_SDD_TDD_SKILL.log
+- <test path>
+- <RED evidence path>
 
 Verify requirement, architecture, task, artifact, and evidence traceability.
 Require an end-to-end or acceptance-level primary test at the highest practical
@@ -518,9 +560,10 @@ concise findings.
 
 After the MCP tool returns:
 
-- if `status` is `ERROR`, stop and resolve the tool or reviewer failure;
-- if `status` is `STALE` or `stale` is `true`, do not use the verdict; commit the
-  intended review state if needed and request a new review;
+- if `status` is `ERROR`, stop and resolve the repository, tool, or reviewer
+  failure;
+- if `status` is `STALE` or `stale` is `true`, discard the verdict and request a
+  new review of the current clean committed `HEAD`;
 - if `status` is `COMPLETED`, record the returned verdict and response in the
   corresponding journal review entry;
 - commit the journal update before correction work or later workflow work begins.
@@ -1078,9 +1121,13 @@ A requirement that cannot be tested automatically MUST still trace to:
 
 ## Commit Rules
 
-Every reviewable artifact MUST be committed before review.
+Every reviewable artifact and every evidence file named in a review request
+MUST be committed before review.
 
-A reviewer inspects a committed state, never a dirty working tree.
+The working tree MUST be clean before `mcp_sddtdd_review_review` is called.
+
+The reviewer inspects only files loaded by the MCP server from its captured
+committed `HEAD`, never mutable working-tree content.
 
 After every MCP review response:
 
