@@ -65,7 +65,9 @@ def main() -> int:
     if not errors:
         print("\nOK — All checks passed.")
         print("  ✓ Every entry traces to USER_INPUT (traceability)")
-        print("  ✓ No branching after TASK_REVIEW (linearity)")
+        print("  ✓ ROOT matches reached USER_INPUT (forest consistency)")
+        print("  ✓ Branching allowed only at USER_INPUT / DECOMPOSE / TASK_REVIEW")
+        print("  ✓ Linearity within task branches")
         return 0
 
     print(f"\nFAIL — {len(errors)} validation error(s):\n")
