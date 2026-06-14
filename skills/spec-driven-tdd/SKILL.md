@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "Spec-driven TDD with review at every step. Spec -> REVIEW -> tasks -> TEST -> REVIEW -> RED -> REVIEW -> GREEN -> REVIEW -> REFACTOR -> REVIEW. The test is end-to-end and targets the acceptance criterion from the spec."
-version: 1.3.0
+version: 1.4.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -16,7 +16,7 @@ metadata:
 
 Take a specification (formal or informal) and produce production-ready code through a pipeline with review at every step:
 
-**parse spec -> REVIEW SPEC -> decompose into tasks -> for each task: WRITE TEST -> REVIEW TEST -> RED -> REVIEW RED -> GREEN -> REVIEW GREEN -> next task**
+**capture raw input in SPEC-DRAFT.md -> derive SPEC.md -> REVIEW SPEC.md until PASS -> decompose into tasks -> RED -> REVIEW RED -> GREEN -> REVIEW GREEN -> next task**
 
 Every line of production code passes through:
 1. Spec -> reviewed
@@ -34,6 +34,39 @@ A delegated agent MUST only inspect an already-created, committed artifact and r
 A delegated agent MUST NOT implement the feature, modify files, fix the artifact, run the full pipeline,
 or continue to another workflow stage.
 
+## Specification Artifacts
+
+The workflow uses two specification artifacts with different responsibilities.
+
+### `SPEC-DRAFT.md` — immutable raw user input
+
+`SPEC-DRAFT.md` is the exact user input as received.
+
+It MUST:
+- preserve the original wording and language;
+- be created before interpretation or normalization;
+- be committed once;
+- never be edited, reviewed, corrected, translated, normalized, or replaced.
+
+Later clarifications or requirement changes are recorded in the journal and
+incorporated into `SPEC.md`. They do not rewrite `SPEC-DRAFT.md`.
+
+### `SPEC.md` — editable working specification
+
+`SPEC.md` is derived from `SPEC-DRAFT.md`.
+
+It MUST:
+- convert raw input into structured requirements and acceptance criteria;
+- remain traceable to `SPEC-DRAFT.md`;
+- identify ambiguities, constraints, entities, and observable behavior;
+- be committed before every review;
+- be reviewed by a separate review-only agent;
+- be edited by the primary agent after `FAIL` or `NEEDS_CLARIFICATION`;
+- repeat the commit and review cycle until the verdict is `PASS`.
+
+Only reviewed `SPEC.md` is used for task decomposition, test design,
+implementation, regression checks, and final acceptance.
+
 ## Core Idea (read this first)
 
 Three stages. One rigid cycle. Every artifact goes through the same loop:
@@ -45,7 +78,15 @@ Three stages. One rigid cycle. Every artifact goes through the same loop:
                      |-- FAIL -> FIX artifact -> COMMIT fix
                                -> REVIEW again (same loop)
 
-Stage 1: SPEC-DRAFT.md -> REVIEW -> PASS -> next stage
+Input capture: user input -> `SPEC-DRAFT.md` -> COMMIT -> never edit or review
+
+Stage 1: derive `SPEC.md` from `SPEC-DRAFT.md`
+         -> COMMIT -> REVIEW
+         -> PASS: decompose into tasks
+         -> FAIL / NEEDS_CLARIFICATION:
+              primary agent edits `SPEC.md`
+              -> COMMIT -> fresh REVIEW
+
 Stage 2: Tests -> REVIEW -> PASS -> next stage
 Stage 3: Code  -> REVIEW -> PASS -> next stage
 
@@ -63,7 +104,8 @@ Commit after every completed stage and journal every stage result — this is no
 ```
 git log --oneline --reverse
 
-abc1234 SPEC COMPLETED                                    # spec/ + journal
+abc0001 SPEC-DRAFT CAPTURED                              # raw user input + journal
+abc1234 SPEC COMPLETED                                    # SPEC.md + journal
 def5678 SPEC REVIEW PASSED                                # journal only
 7890123 RED COMPLETED                                    # tests/ + test output + journal
 3456789 RED REVIEW FAILED                                 # journal only
@@ -88,7 +130,9 @@ Three purposes:
 ### Target State
 
 The cycle is complete when:
-- The goal from the spec is fully solved
+- `SPEC-DRAFT.md` still contains the original user input unchanged
+- `SPEC.md` has a PASS review verdict
+- The goal from reviewed `SPEC.md` is fully solved
 - All code passes all tests
 - Every commit along the chain has a **PASS** verdict from review
 - The journal file `JOURNAL_SDD_TDD_SKILL.log` exists, is updated for every completed step and review result. All content rules are defined in [references/JOURNAL.md](references/JOURNAL.md).
@@ -118,14 +162,21 @@ The primary agent executes the pipeline. Delegated agents are used only as indep
 **Reviewer at every step.** Every artifact undergoes independent verification before the next stage begins.
 
 ```
-SPEC
+USER INPUT
   │
-  ├── REVIEW SPEC
-  │     ├── PASS -> decompose into tasks
-  │     └── FAIL -> ask user -> re-review
+  ├── capture exactly in SPEC-DRAFT.md
+  │     └── immutable after commit; not reviewed
+  │
+  ├── derive editable SPEC.md
+  │     └── REVIEW SPEC.md
+  │           ├── PASS -> decompose into tasks
+  │           └── FAIL / NEEDS_CLARIFICATION
+  │                 -> primary agent edits SPEC.md
+  │                 -> commit
+  │                 -> fresh review
   │
   ▼
-TASK N (from spec decomposition)
+TASK N (decomposed from reviewed SPEC.md)
   │
   ├── 1. RED (write test + run, expect failure)
   ├── 2. REVIEW RED -> PASS?
@@ -156,7 +207,7 @@ In the pipeline above, each completed stage still requires a committed journal f
 
 4. **RED must fail.** If the test passes during RED, you are testing existing behavior. The test must be fixed.
 
-5. **Spec Draft -- immutable input.** SPEC-DRAFT.md (or TASK-DRAFT.md) is written once and never edited again. All discussion, clarifications, and reviewer comments go only into JOURNAL_SDD_TDD_SKILL.log. If the spec is incomplete -- ask the user rather than editing the spec yourself. This preserves traceability: you can always find the original statement and track which decisions led to what.
+5. **Draft and working spec are different artifacts.** `SPEC-DRAFT.md` preserves raw user input and is never edited or reviewed. `SPEC.md` is derived from it, reviewed, corrected, and re-reviewed until PASS. Clarifications update `SPEC.md`, never `SPEC-DRAFT.md`.
 
 ## Global Rules
 
@@ -165,7 +216,9 @@ In the pipeline above, each completed stage still requires a committed journal f
 Every artifact must be committed before it can be reviewed. Reviews always inspect a commit, never a dirty working tree.
 
 Artifacts include:
-- spec files
+- `SPEC-DRAFT.md` (initial immutable capture)
+- `SPEC.md` and its reviewed corrections
+- other spec files
 - task files
 - test files
 - implementation files
@@ -221,27 +274,43 @@ If review fails, do not amend history. Default behavior:
 - append review result to journal
 - commit journal update
 
-### Rule 6 -- No silent mutation of immutable input
+### Rule 6 -- Preserve raw user input
 
-SPEC-DRAFT.md is immutable after initial commit. If the user clarifies or changes requirements, write it to JOURNAL_SDD_TDD_SKILL.log and create a derived spec amendment artifact (SPEC-AMENDMENT-001.md) if needed. Original input stays preserved.
+`SPEC-DRAFT.md` is a permanent snapshot of the original request.
 
-### Rule 7 -- SPEC-AMENDMENT mechanism
+The primary agent MUST:
+- create it before deriving requirements;
+- preserve the original wording and language;
+- commit it once;
+- never modify it after the first commit.
 
-When spec review fails or the user provides clarification after SPEC-DRAFT.md is committed:
-1. Create SPEC-AMENDMENT-001.md with the amendment details, OR update a non-immutable derived spec artifact (e.g. a child spec or derived document)
-2. Link it to the original spec ID
-3. Commit the amendment
-4. Review the amendment
-5. Journal the result
+User clarifications and later requirement changes MUST be recorded in the journal
+and incorporated into `SPEC.md`. They MUST NOT rewrite historical raw input.
 
-Amendment format:
-```markdown
-# SPEC-AMENDMENT-001
-**Spec:** S-SDT-01
-**Date:** YYYY-MM-DD
-**Reason:** Clarification / Revision / Rejection
-**Change:** Description of what changed and why
+### Rule 7 -- Review and revise SPEC.md
+
+`SPEC.md` is the editable working specification derived from `SPEC-DRAFT.md`.
+
+The primary agent creates and edits `SPEC.md`.
+A delegated agent reviews only the committed `SPEC.md`.
+
+The required cycle is:
+
+```text
+create or edit SPEC.md
+-> commit SPEC.md and journal update
+-> review-only delegate_task
+-> PASS: proceed to task decomposition
+-> FAIL or NEEDS_CLARIFICATION:
+     primary agent edits SPEC.md
+     -> commit
+     -> fresh review-only delegate_task
 ```
+
+Task decomposition MUST NOT begin until `SPEC.md` receives `PASS`.
+
+Ordinary review corrections and clarifications are made directly in `SPEC.md`.
+Commit history and the journal preserve the evolution of the working specification.
 
 ### Rule 8 -- Maximum review iterations per artifact
 
@@ -249,35 +318,34 @@ Each artifact has a review counter that resets when moving to the next artifact.
 
 Maximum **21 review attempts** per artifact total (including all PASS, FAIL, NEEDS_CLARIFICATION, and CANCELLED outcomes combined). After the 21st attempt:
 - If the review has not passed -- the process escalates to the user
-- The user decides: force-pass (review bypassed, proceeds to next stage), cancel (abort the artifact), revise the spec/amendment, or split/redefine the artifact
+- The user decides: force-pass (review bypassed, proceeds to next stage), cancel (abort the artifact), revise `SPEC.md`, or split/redefine the artifact
 - Escalation is recorded in JOURNAL_SDD_TDD_SKILL.log with TYPE=ESCALATION
 - On force-pass: proceed to the next stage as if PASS, but note in DETAIL that review was force-passed
 - On cancel: entry TYPE=CANCELLED, abort this artifact, move to next or stop
-- On revise: entry TYPE=SPEC_REVIEW STATUS=FAIL with detail "escalated for revision"
+- On revise: update `SPEC.md`, commit it, and start a new review attempt
 - On split: create new artifact, new counter starts at 1
 
 Counter resets when work starts on a new artifact (next spec, next task, next test, etc.). Each artifact starts its own counter at 1.
 
-### Rule 9 -- English-only artifacts
+### Rule 9 -- Artifact language
 
-All artifacts in the project must be written in English. This includes:
-- spec files (SPEC-DRAFT.md, SPEC-EXAMPLE.md, etc.)
-- task files (TASKS.md)
-- tests and implementation code
-- JOURNAL_SDD_TDD_SKILL.log entries
-- SKILL.md, README.md, and any other documentation
-- commit messages
-- review requests and responses
-- inline comments in code
+`SPEC-DRAFT.md` preserves raw user input exactly and MAY use any language.
 
-Non-English content is only allowed in:
-- **User input** -- recorded as-is in Phase 0 (then translated before committing)
-- **Intentionally bilingual reference documents** -- e.g. translation glossaries that map between languages (SPEC-ENGLISH.md-style translation references)
-- **Historical/excluded artifacts** -- files explicitly excluded from active development (e.g. SKILL.current.md)
+All derived active artifacts MUST be written in English, including:
+- `SPEC.md`;
+- task files;
+- tests and implementation code;
+- journal entries except verbatim quoted user input;
+- documentation;
+- commit messages;
+- review requests and responses;
+- inline comments in code.
 
-If the user provides a spec or clarification in another language, translate it before committing or record it as a USER_INPUT entry and create an English artifact.
+If the user input is not English, keep it unchanged in `SPEC-DRAFT.md` and create
+the English working specification in `SPEC.md`.
 
-Rationale: traceability, reviewer independence (reviewers may not speak the user's language), and tooling compatibility (grep, linters, CI checks).
+Rationale: the raw input remains historically accurate, while derived artifacts
+remain accessible to reviewers and tooling.
 
 ## Journaling & Audit Trail
 
@@ -314,63 +382,93 @@ Examples:
 | Child -> Parent | In the child spec, `parent:` -> find the parent spec |
 | Parent -> Children | `grep "parent: S-SDT-01" *.md` |
 
-## Phase 0 -- User Input Recording
+## Phase 0 -- Capture Raw User Input
 
-Before any spec work, record the incoming feature request in the journal.
+Before interpretation or specification work:
 
-The user provides the initial request (text description, bullet points, user story, or formal spec).
+1. Create `SPEC-DRAFT.md`.
+2. Copy the user input into it exactly as received.
+3. Do not normalize wording, translate it, resolve ambiguities, or add inferred requirements.
+4. Create the `USER_INPUT` journal entry according to `references/JOURNAL.md`.
+5. Commit `SPEC-DRAFT.md` and the journal update.
 
-**Action:** Create a journal entry with TYPE=USER_INPUT.
+Example:
 
-```journal
-TYPE: USER_INPUT
-SPEC: <assigned spec ID>
-STATUS: COMPLETED
-PARENT: -- 
-DETAIL: Initial feature request received.
+```markdown
+# Raw User Input
+
+Build a todo list API with CRUD endpoints.
 ```
 
-**Commit:** `spec-driven-tdd: record initial user input for <spec ID>`
+Commit:
 
-No feature review yet. This only records incoming context.
+```text
+spec-driven-tdd: capture raw user input for <spec ID>
+```
 
-** ->  JOURNAL:** `USER_INPUT`, STATUS=COMPLETED, PARENT= -- .
+`SPEC-DRAFT.md` is now immutable. It is not reviewed.
 
-Then commit the journal update.
+## Phase 1 -- Derive, Review, and Correct SPEC.md
 
-## Phase 1 -- Spec Parsing + Review
+Create `SPEC.md` from `SPEC-DRAFT.md`.
 
-Accept spec in any format:
-- Text description ("build a todo list API with CRUD endpoints")
-- Bullet-point requirements
-- Formal spec (SpecKit `.spec.md`, OpenAPI YAML, ADR)
-- User story ("As a user, I want to...")
+`SPEC.md` is the normalized working specification. It may add structure, but it
+MUST NOT invent requirements unsupported by the raw input or recorded clarification.
 
-Extract:
-- **Entities** -- what data structures exist
-- **Behaviors** -- what operations are permitted
-- **Constraints** -- validation rules, edge cases
-- **Acceptance criteria** -- how to verify it's done
+`SPEC.md` should contain:
+- a reference to `SPEC-DRAFT.md`;
+- entities;
+- behaviors;
+- constraints;
+- acceptance criteria;
+- open questions;
+- resolved clarifications.
 
-** ->  REVIEW SPEC.** An independent reviewer checks:
-- Are all acceptance criteria unambiguous?
-- Are there any contradictions in the spec?
-- Can a test be written from the spec?
-- Are any edge cases missing?
+Commit `SPEC.md` and record the completed specification step in the journal.
+
+Then request an independent review of the committed `SPEC.md`.
+
+The reviewer checks:
+- Are all acceptance criteria unambiguous and observable?
+- Does `SPEC.md` remain faithful to `SPEC-DRAFT.md` and recorded clarifications?
+- Are there contradictions?
+- Can tests be written from the acceptance criteria?
+- Are constraints and edge cases sufficient?
+- Are unsupported assumptions present?
 
 ```python
 delegate_task(
-    goal="Review only: assess this committed specification for completeness and testability. Do not modify files or implement changes.",
-    context="Spec:\n" + spec_text,
+    goal="Review only: assess the committed SPEC.md for fidelity, completeness, consistency, and testability. Do not modify files or implement changes.",
+    context="Artifact: SPEC.md
+Source: SPEC-DRAFT.md
+Commit: <hash>
+
+" + spec_text,
     toolsets=[]
 )
 ```
 
-PASS -> decompose. FAIL -> clarify with the user + record in JOURNAL_SDD_TDD_SKILL.log -> re-review.
+If the verdict is `PASS`, proceed to task decomposition.
 
-## Phase 2 -- Task Decomposition + Review (from the spec)
+If the verdict is `FAIL`:
+1. the delegated reviewer stops;
+2. the primary agent edits `SPEC.md`;
+3. commit the corrected `SPEC.md`;
+4. update and commit the journal;
+5. request a fresh review of `SPEC.md`.
 
-Use `writing-plans` skill to break spec into tasks. Each task = one acceptance criterion from the spec.
+If the verdict is `NEEDS_CLARIFICATION`:
+1. ask the user;
+2. preserve the clarification in the journal;
+3. update `SPEC.md`;
+4. commit it;
+5. request a fresh review.
+
+Never modify `SPEC-DRAFT.md`.
+
+## Phase 2 -- Task Decomposition + Review (from reviewed SPEC.md)
+
+Use reviewed `SPEC.md` to break the work into tasks. Each task maps to one acceptance criterion from `SPEC.md`.
 
 ```markdown
 ### Task 1: TodoItem model -- id, title, completed_at fields
@@ -572,7 +670,7 @@ Uncommitted solution artifacts = pipeline incomplete. Do not proceed to FINAL_RE
 Run a final independent review of the complete implementation.
 
 **Review scope:**
-- Are all acceptance criteria from the original spec covered by tests?
+- Are all acceptance criteria from reviewed `SPEC.md` covered by tests?
 - Are all tests green?
 - Is there a complete audit trail in JOURNAL_SDD_TDD_SKILL.log?
 - Are there any regressions or uncovered edge cases?
@@ -620,14 +718,20 @@ def jlog(type_, spec, status, parent=" -- ", depends="", detail=""):
         f.write(entry)
     return jid
 
-# 2. Parse spec
-spec = """..."""
-spec_jid = jlog("SPEC_SPEC", "S-SDT-01", "COMPLETED", detail="Parsed spec from user input")
+# 2. Capture immutable raw input, then derive editable SPEC.md
+raw_user_input = """..."""
+working_spec = derive_spec(raw_user_input)
+spec_jid = jlog(
+    "SPEC_SPEC",
+    "S-SDT-01",
+    "COMPLETED",
+    detail="Created editable SPEC.md from immutable SPEC-DRAFT.md",
+)
 
 # 3. REVIEW SPEC (Phase 1)
 review = delegate_task(
     goal="Review only: assess this committed specification for completeness and testability. Do not modify files or implement changes.",
-    context="Spec:\n" + spec,
+    context="Artifact: SPEC.md\nSource: SPEC-DRAFT.md\n\n" + working_spec,
     toolsets=[]
 )
 review_jid = jlog("SPEC_REVIEW", "S-SDT-01", "PASS", parent=spec_jid, detail="Spec review passed")
@@ -693,11 +797,11 @@ If the verdict is `FAIL` or `NEEDS_CLARIFICATION`, the delegated reviewer stops.
 The primary agent applies the fix, commits it, updates the journal, and submits
 the corrected artifact through a new review-only `delegate_task` call.
 
-## Spec Format Example
+## SPEC.md Format Example
 
 > **Full reference:** See [SPEC-EXAMPLE.md](references/SPEC-EXAMPLE.md) for a complete, end-to-end walkthrough of the pipeline (Counter API demo). The examples below are quick inline references.
 
-### Structured spec (recommended)
+### Structured `SPEC.md` (recommended)
 
 ```markdown
 # Todo API -- Specification
@@ -725,7 +829,7 @@ the corrected artifact through a new review-only `delegate_task` call.
 - Errors: `KeyError` if id not found
 ```
 
-### Free-form spec (still works)
+### Raw input accepted in `SPEC-DRAFT.md`
 
 ```
 Build a counter component:
@@ -738,24 +842,24 @@ Build a counter component:
 
 ## Pitfalls
 
-- **Spec too vague** -- escalate to user for clarification before writing code
-- **Existing-codebase spec trap** -- spec-driven-tdd assumes greenfield, but the user may say "go to repo X and update the spec." Before writing SPEC-DRAFT.md: (1) read the existing code to understand what's already implemented, (2) create the spec from requirements BUT mark each AC's implementation status (Already works / Partial / Missing), (3) distinguish net-new features from behavior that only needs a bugfix pass. The existing code is NOT the spec -- the spec describes what SHOULD happen, but the AC table helps the reviewer and implementer know what's starting from scratch vs. what's already there.
-- **Ambiguous user terminology** -- when a user uses an unclear term ("юрист" = lawyer in this session), don't guess. Flag it in the spec as an open question (§Open Questions), ask the user with concrete multiple-choice options, and create a SPEC-AMENDMENT once clarified. Never silently interpret ambiguous requirements.
+- **Spec too vague** -- ask the user, record the clarification, update `SPEC.md`, commit, and re-review. Never edit `SPEC-DRAFT.md`.
+- **Existing-codebase spec trap** -- first capture the raw request in `SPEC-DRAFT.md`. Then inspect the codebase while deriving `SPEC.md`. In `SPEC.md`, mark each acceptance criterion as Already works, Partial, or Missing. Existing code is evidence, not the specification.
+- **Ambiguous user terminology** -- preserve the original wording in `SPEC-DRAFT.md`, add an open question to `SPEC.md`, ask the user, record the answer, update `SPEC.md`, and re-review it. Never silently interpret ambiguous requirements.
 - **Tests too coupled to implementation** -- test behavior, not internals
 - **Skipping RED verification** -- if you didn't see it fail, you're testing existing behavior
 - **Skipping review** -- independent reviewer catches things you normalized
 - **Large tasks** -- if a task takes more than 5 minutes, split it further
-- **Reviewer has no spec context** -- always pass the relevant spec section to the reviewer
+- **Reviewer has no spec context** -- always pass the relevant `SPEC.md` section to the reviewer
 - **SpecKit compatibility** -- SpecKit `.spec.md` files can be parsed as-is; extract requirements from the "Specification" section
 - **Journal not initialized** -- create JOURNAL_SDD_TDD_SKILL.log at project start. No journal = no traceability.
 - **PARENT chain broken** -- always pass the previous JID to the next journal entry. Without PARENT, traceability across steps is lost.
 - **Journal entries not post-factum** -- write entries AFTER completing the step, not before. STATUS must reflect the actual outcome.
 - **Spec ID collision** -- use unique hierarchical spec IDs (`S-SDT-01.01`, not just "task1"). Flat IDs break parent-child traceability.
-- **Mixed-language artifacts** -- non-English content in spec files, journal entries, or code breaks traceability and reviewer independence. Keep all artifacts in English. Translate user input before committing.
+- **Mixed-language artifacts** -- preserve raw input in its original language in `SPEC-DRAFT.md`; write `SPEC.md` and all other derived active artifacts in English.
 - **README self-consistency** -- after modifying the skill's file structure (adding/removing references, templates, or core files), the README's "What's Included" table and result directory tree must be updated to match. The table must list ALL R1 files (including README.md itself -- it is easy to forget self-reference). Stale directory entries (e.g. a `templates/` line in the tree after templates were removed) silently mislead users.
 - **Cross-reference staleness** -- every local `references/` link in SKILL.md must point to an existing file in the installed skill. After adding or removing reference files, verify all SKILL.md references resolve. Unused files (installed but not referenced) and broken links (referenced but not installed) both degrade the skill.
 
 ## References
 
 - [JOURNAL.md](references/JOURNAL.md) -- **Complete journal specification.** Entry format, mandatory fields, validation rules, branching model, examples of correct/incorrect journals. Required reading before writing or validating a journal.
-- [SPEC-EXAMPLE.md](references/SPEC-EXAMPLE.md) -- **Canonical reference artifact.** Full Counter API demo walkthrough showing every stage of the pipeline from user input to DONE. Ships with this skill. Read it to see the complete workflow including commit-before-review, journal-commit loop, SPEC-AMENDMENT mechanism, and review scopes per stage.
+- [SPEC-EXAMPLE.md](references/SPEC-EXAMPLE.md) -- **Canonical reference artifact.** Full Counter API demo walkthrough showing every stage of the pipeline from user input to DONE. Ships with this skill. Read it to see the complete workflow including immutable input capture, editable `SPEC.md`, commit-before-review, the journal loop, and review scopes per stage.
