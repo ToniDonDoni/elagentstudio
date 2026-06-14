@@ -1,0 +1,519 @@
+JOURNAL.md — SDD Workflow Journal Specification
+
+This document defines the required format and content of JOURNAL_SDD_TDD_SKILL.log.
+
+The journal records:
+
+1. workflow events;
+2. relationships between journal entries;
+3. relationships between tasks;
+4. the originating user input for every derived task and journal entry.
+
+⸻
+
+1. File Location
+
+The journal file MUST be named:
+
+JOURNAL_SDD_TDD_SKILL.log
+
+It MUST be stored at the project root.
+
+⸻
+
+2. Journal Entry Format
+
+Each journal entry MUST use the following field order:
+
+=== {JID} ===
+TYPE: {TYPE}
+SPEC: {SPEC_ID}
+STATUS: {STATUS}
+PARENT: {PARENT_JID | --}
+ROOT: {ROOT_JID}
+DEPENDS: {JID[, JID...]}                 (optional)
+TASK_ID: {TASK_ID}                       (optional)
+PARENT_TASK_ID: {TASK_ID | --}           (required when TASK_ID is present)
+ROOT_USER_INPUT_ID: {TASK_ID}            (required when TASK_ID is present)
+DETAIL: {description}
+
+Blank lines separate entries.
+
+Optional fields MUST be omitted when they are not applicable.
+
+⸻
+
+3. Journal Entry Fields
+
+3.1 JID
+
+Every journal entry MUST have a unique journal entry identifier.
+
+Format:
+
+J-YYYYMMDD-HHMMSS-NNN
+
+Example:
+
+J-20260614-204500-001
+
+⸻
+
+3.2 TYPE — Entry Type
+
+TYPE	When created
+USER_INPUT	Recording an incoming user request
+PROJECT_INIT	Project initialization
+SPEC_SPEC	Initial specification or specification amendment created
+SPEC_REVIEW	Specification review result
+DECOMPOSE	Specification decomposed into tasks, or task decomposed into child tasks
+TASK_REVIEW	Task decomposition review result
+AGENT_DECISION	Agent records a workflow decision
+RED	Test written and executed; failure expected
+RED_REVIEW	RED stage review result
+GREEN	Minimal implementation created
+GREEN_REVIEW	GREEN stage review result
+TASKS_COMPLETE	All active task branches for a specification are complete
+REGRESSION	Regression test run
+REGRESSION_REVIEW	Regression review result
+FINAL_REVIEW	Final implementation review result
+ESCALATION	Review limit exceeded or user decision required
+DONE	Pipeline completed
+
+⸻
+
+3.3 STATUS — Entry Status
+
+STATUS	Meaning	Typical entry types
+COMPLETED	Work step completed	USER_INPUT, PROJECT_INIT, SPEC_SPEC, DECOMPOSE, AGENT_DECISION, RED, GREEN, TASKS_COMPLETE, REGRESSION, DONE
+PASS	Review passed	SPEC_REVIEW, TASK_REVIEW, RED_REVIEW, GREEN_REVIEW, REGRESSION_REVIEW, FINAL_REVIEW
+FAIL	Review failed	Review entries
+NEEDS_CLARIFICATION	More information is required	Review entries
+FIXED	A failed RED or GREEN artifact was corrected	RED, GREEN
+ESCALATED	Review process escalated to the user	Review entries
+CANCELLED	The entry or branch was cancelled	Any applicable type
+
+DONE MUST use:
+
+STATUS: COMPLETED
+
+A review stage with FAIL or NEEDS_CLARIFICATION MUST NOT be treated as approved.
+
+⸻
+
+3.4 SPEC
+
+Every entry MUST identify the relevant specification.
+
+Recommended format:
+
+S-[A-Z]{2,6}-NN
+
+Child specifications MAY extend the parent identifier:
+
+S-TETRIS-01
+S-TETRIS-01.01
+S-TETRIS-01.01.01
+
+⸻
+
+3.5 DETAIL
+
+DETAIL contains a human-readable description of the event.
+
+It SHOULD include:
+
+* what was created or changed;
+* test or review result;
+* important reviewer findings;
+* reason for failure, cancellation, or escalation;
+* relevant evidence or summary.
+
+⸻
+
+4. Journal Entry Relationships
+
+Journal entry relationships are represented by:
+
+PARENT
+ROOT
+
+These fields describe journal events, not task hierarchy.
+
+4.1 USER_INPUT Journal Root
+
+A USER_INPUT journal entry has:
+
+PARENT: --
+ROOT: <its own JID>
+
+Example:
+
+=== J-20260614-100000-001 ===
+TYPE: USER_INPUT
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: --
+ROOT: J-20260614-100000-001
+DETAIL: Implement a Tetris game.
+
+4.2 Derived Journal Entry
+
+Every derived journal entry has:
+
+PARENT: <direct parent journal JID>
+ROOT: <originating USER_INPUT journal JID>
+
+ROOT is copied unchanged from the parent journal entry.
+
+All journal entries originating from the same USER_INPUT share the same ROOT.
+
+4.3 Multiple User Inputs
+
+One journal file MAY contain multiple USER_INPUT roots.
+
+Each USER_INPUT starts an independent journal tree.
+
+⸻
+
+5. Task Tree Fields
+
+Task hierarchy is represented only by:
+
+TASK_ID
+PARENT_TASK_ID
+ROOT_USER_INPUT_ID
+
+These fields describe task structure.
+
+They MUST NOT be used to represent:
+
+* journal event order;
+* review order;
+* execution order;
+* commit order;
+* workflow dependencies.
+
+⸻
+
+6. Root Task
+
+Every USER_INPUT MUST establish a root task.
+
+The root task fields are:
+
+TASK_ID: <new unique task ID>
+PARENT_TASK_ID: --
+ROOT_USER_INPUT_ID: <same TASK_ID>
+
+Example:
+
+TASK_ID: T-000001
+PARENT_TASK_ID: --
+ROOT_USER_INPUT_ID: T-000001
+
+Required root invariant:
+
+PARENT_TASK_ID == --
+ROOT_USER_INPUT_ID == TASK_ID
+
+⸻
+
+7. Child Task
+
+When a task is created from an existing task:
+
+1. generate a new unique TASK_ID;
+2. set PARENT_TASK_ID to the direct parent’s TASK_ID;
+3. copy ROOT_USER_INPUT_ID from the parent unchanged.
+
+Example parent:
+
+TASK_ID: T-000010
+PARENT_TASK_ID: T-000001
+ROOT_USER_INPUT_ID: T-000001
+
+Example child:
+
+TASK_ID: T-000011
+PARENT_TASK_ID: T-000010
+ROOT_USER_INPUT_ID: T-000001
+
+The child MUST NOT copy the parent’s PARENT_TASK_ID.
+
+It stores the parent’s own TASK_ID.
+
+⸻
+
+8. Task-Related Journal Entries
+
+Every journal entry that describes work on a task MUST contain:
+
+TASK_ID
+PARENT_TASK_ID
+ROOT_USER_INPUT_ID
+
+All entries referring to the same logical task MUST use identical values for these fields.
+
+Example:
+
+=== J-20260614-100000-006 ===
+TYPE: RED
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-005
+ROOT: J-20260614-100000-001
+TASK_ID: T-000002
+PARENT_TASK_ID: T-000001
+ROOT_USER_INPUT_ID: T-000001
+DETAIL: Board tests were written and failed because the board was not implemented.
+
+⸻
+
+9. Required Fields by Entry Type
+
+TYPE	TASK_ID	PARENT_TASK_ID	ROOT_USER_INPUT_ID
+USER_INPUT	required	required (--)	required
+PROJECT_INIT	optional	required when TASK_ID exists	required when TASK_ID exists
+SPEC_SPEC	optional	required when TASK_ID exists	required when TASK_ID exists
+SPEC_REVIEW	optional	required when TASK_ID exists	required when TASK_ID exists
+DECOMPOSE	optional	required when TASK_ID exists	required when TASK_ID exists
+TASK_REVIEW	optional	required when TASK_ID exists	required when TASK_ID exists
+AGENT_DECISION	optional	required when TASK_ID exists	required when TASK_ID exists
+RED	required	required	required
+RED_REVIEW	required	required	required
+GREEN	required	required	required
+GREEN_REVIEW	required	required	required
+TASKS_COMPLETE	optional	required when TASK_ID exists	required when TASK_ID exists
+REGRESSION	optional	required when TASK_ID exists	required when TASK_ID exists
+REGRESSION_REVIEW	optional	required when TASK_ID exists	required when TASK_ID exists
+FINAL_REVIEW	optional	required when TASK_ID exists	required when TASK_ID exists
+ESCALATION	optional	required when TASK_ID exists	required when TASK_ID exists
+DONE	optional	required when TASK_ID exists	required when TASK_ID exists
+
+Rule:
+
+If TASK_ID is present, PARENT_TASK_ID and ROOT_USER_INPUT_ID are mandatory.
+
+⸻
+
+10. Workflow Transitions
+
+The normal top-level workflow is:
+
+USER_INPUT
+→ SPEC_SPEC
+→ SPEC_REVIEW
+→ DECOMPOSE
+→ TASK_REVIEW
+→ task branches
+→ TASKS_COMPLETE
+→ REGRESSION
+→ REGRESSION_REVIEW
+→ FINAL_REVIEW
+→ DONE
+
+A task branch normally follows:
+
+RED
+→ RED_REVIEW
+→ GREEN
+→ GREEN_REVIEW
+
+A failed review returns to the corresponding work stage:
+
+SPEC_REVIEW FAIL → SPEC_SPEC
+TASK_REVIEW FAIL → DECOMPOSE
+RED_REVIEW FAIL → RED
+GREEN_REVIEW FAIL → GREEN
+REGRESSION_REVIEW FAIL → REGRESSION or affected task
+FINAL_REVIEW FAIL → affected task or REGRESSION
+
+An escalation is recorded when the configured review limit is exceeded:
+
+review entry
+→ ESCALATION
+
+A cancelled entry or task branch does not continue.
+
+⸻
+
+11. Task Branching
+
+Tasks created from the same parent are siblings.
+
+Example:
+
+T-000001
+├── T-000002
+├── T-000003
+└── T-000004
+
+Records:
+
+TASK_ID: T-000001
+PARENT_TASK_ID: --
+ROOT_USER_INPUT_ID: T-000001
+TASK_ID: T-000002
+PARENT_TASK_ID: T-000001
+ROOT_USER_INPUT_ID: T-000001
+TASK_ID: T-000003
+PARENT_TASK_ID: T-000001
+ROOT_USER_INPUT_ID: T-000001
+TASK_ID: T-000004
+PARENT_TASK_ID: T-000001
+ROOT_USER_INPUT_ID: T-000001
+
+Sibling tasks MUST NOT be connected to each other merely because they are executed sequentially.
+
+Incorrect:
+
+T-000002 → T-000003 → T-000004
+
+Correct:
+
+T-000001
+├── T-000002
+├── T-000003
+└── T-000004
+
+⸻
+
+12. Task Decomposition
+
+Any task MAY be decomposed into child tasks.
+
+Example:
+
+T-000001
+└── T-000002
+    ├── T-000005
+    └── T-000006
+
+Child records:
+
+TASK_ID: T-000005
+PARENT_TASK_ID: T-000002
+ROOT_USER_INPUT_ID: T-000001
+TASK_ID: T-000006
+PARENT_TASK_ID: T-000002
+ROOT_USER_INPUT_ID: T-000001
+
+Task depth is not encoded by ID syntax.
+
+It is determined exclusively through PARENT_TASK_ID.
+
+⸻
+
+13. DEPENDS
+
+DEPENDS represents additional journal-entry dependencies.
+
+Format:
+
+DEPENDS: JID-1, JID-2, JID-3
+
+It MAY be used when one workflow event requires several completed branches.
+
+Example:
+
+TYPE: TASKS_COMPLETE
+PARENT: <common TASK_REVIEW JID>
+DEPENDS: <final JID of task 1>, <final JID of task 2>
+
+DEPENDS does not define task hierarchy.
+
+Task hierarchy remains defined only by:
+
+TASK_ID
+PARENT_TASK_ID
+ROOT_USER_INPUT_ID
+
+⸻
+
+14. Required Journal Invariants
+
+The journal MUST preserve these rules:
+
+1. Every JID is unique.
+2. Every USER_INPUT has PARENT: --.
+3. Every USER_INPUT has ROOT equal to its own JID.
+4. Every derived journal entry points to an existing direct journal parent.
+5. Every derived journal entry preserves the originating journal ROOT.
+6. Every TASK_ID identifies one logical task.
+7. Every root task has PARENT_TASK_ID: --.
+8. Every root task has ROOT_USER_INPUT_ID equal to its own TASK_ID.
+9. Every child task points to its direct parent through PARENT_TASK_ID.
+10. Every child task copies ROOT_USER_INPUT_ID from its parent.
+11. All journal entries for one task use the same task-tree fields.
+12. Sibling tasks share a parent; they are not chained by execution order.
+13. Journal relationships and task relationships remain independent.
+
+⸻
+
+15. Complete Example
+
+=== J-20260614-100000-001 ===
+TYPE: USER_INPUT
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: --
+ROOT: J-20260614-100000-001
+TASK_ID: T-000001
+PARENT_TASK_ID: --
+ROOT_USER_INPUT_ID: T-000001
+DETAIL: Implement a Tetris game.
+=== J-20260614-100000-002 ===
+TYPE: SPEC_SPEC
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-001
+ROOT: J-20260614-100000-001
+DETAIL: Tetris specification created.
+=== J-20260614-100000-003 ===
+TYPE: SPEC_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-20260614-100000-002
+ROOT: J-20260614-100000-001
+DETAIL: Specification approved.
+=== J-20260614-100000-004 ===
+TYPE: DECOMPOSE
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-003
+ROOT: J-20260614-100000-001
+DETAIL: Specification decomposed into Board and Piece tasks.
+=== J-20260614-100000-005 ===
+TYPE: TASK_REVIEW
+SPEC: S-TETRIS-01
+STATUS: PASS
+PARENT: J-20260614-100000-004
+ROOT: J-20260614-100000-001
+DETAIL: Task decomposition approved.
+=== J-20260614-100000-006 ===
+TYPE: RED
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-005
+ROOT: J-20260614-100000-001
+TASK_ID: T-000002
+PARENT_TASK_ID: T-000001
+ROOT_USER_INPUT_ID: T-000001
+DETAIL: Board tests fail because the board is not implemented.
+=== J-20260614-100000-007 ===
+TYPE: RED
+SPEC: S-TETRIS-01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-005
+ROOT: J-20260614-100000-001
+TASK_ID: T-000003
+PARENT_TASK_ID: T-000001
+ROOT_USER_INPUT_ID: T-000001
+DETAIL: Piece tests fail because tetrominoes are not implemented.
+
+Entries 006 and 007 are sibling journal branches and sibling tasks.
+
+Both tasks originate from the same user input task:
+
+ROOT_USER_INPUT_ID: T-000001
