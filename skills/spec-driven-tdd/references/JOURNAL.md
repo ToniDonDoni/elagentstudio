@@ -129,19 +129,24 @@ subtask-id    = task-id "." integer
 full-task-id  = task-id / subtask-id
 ```
 
-The separator between the `T-` prefix and the trailing integer is always `-`.
-The dot `.` is reserved as the subtask separator and MUST NOT appear inside
-SPEC_ID when constructing a TASK ID.
+**Parsing rules (unambiguous):**
 
-Note: SPEC_ID may itself contain dots (e.g. `S-TETRIS-01.01`), but within a
-TASK ID the dots are only used for subtask suffixes. The parser distinguishes
-them by position: the last dot-separated segment is the subtask index;
-everything before is the task-id with its embedded SPEC_ID.
+1. Strip the trailing `-NNN` (task number) from the right. Everything
+   before `-NNN` is the SPEC_ID frame.
+2. Within the remaining string after dropping `T-` prefix, any dot `.`
+   belongs to the SPEC_ID (e.g. `S-TETRIS-01.01`).
+3. A subtask is identified by a dot AFTER the task number:
+   `T-{SPEC_ID}-{NNN}.{SUFFIX}`.
+4. The presence of ANY dot in the TASK string is NOT sufficient to
+   classify it as a subtask. Only a dot after the task-number segment
+   indicates a subtask.
 
 Examples:
-- `T-S-TETRIS-01-001` — top-level task
-- `T-S-TETRIS-01-001.001` — subtask of T-S-TETRIS-01-001
-- `T-S-TETRIS-01.01-001` — task for sub-spec S-TETRIS-01.01
+- `T-S-TETRIS-01-001` — top-level task (no dot after number)
+- `T-S-TETRIS-01-001.001` — subtask (dot after 001)
+- `T-S-TETRIS-01.01-001` — task for sub-spec, NOT a subtask
+  (dot is inside SPEC_ID, before the task number)
+- `T-S-TETRIS-01.01-001.002` — subtask of task for sub-spec
 
 ### 2.8 TASK_PARENT — Parent task (optional)
 
@@ -159,7 +164,9 @@ TASK_PARENT: T-S-TETRIS-01-001
 3. The task-parent graph MUST NOT contain cycles
 4. Parent task and child task MUST belong to the same ROOT
 5. All entries with the same TASK value MUST have the same TASK_PARENT value
-6. Task ID MUST be unique within a single ROOT
+6. Within one ROOT, a TASK ID identifies exactly one logical task and
+   MUST always have the same SPEC and TASK_PARENT across all entries.
+   Multiple journal entries MAY reference the same TASK ID.
 
 ### 2.9 DEPENDS — Dependency barrier (optional)
 
@@ -179,9 +186,9 @@ TYPE: TASKS_COMPLETE
 SPEC: S-TETRIS-01
 STATUS: COMPLETED
 PARENT: J-20260614-100000-005     ← TASK_REVIEW
+ROOT: J-20260614-100000-001
 DEPENDS: J-20260614-100000-010, J-20260614-100000-020, J-20260614-100000-030
                                   ← last entries of each task branch
-ROOT: J-20260614-100000-001
 DETAIL: All 3 tasks completed
 ```
 
@@ -199,8 +206,8 @@ decisions, test output summaries, and reviewer verdicts.
 | USER_INPUT | required | required | `--` | self JID | — | — | — |
 | SPEC_SPEC | required | required | required | required | — | — | — |
 | SPEC_REVIEW | required | required | required | required | — | — | — |
-| DECOMPOSE | required | required | required | required | required | — | — |
-| TASK_REVIEW | required | required | required | required | required | — | — |
+| DECOMPOSE | required | required | required | required | optional | — | — |
+| TASK_REVIEW | required | required | required | required | optional | — | — |
 | AGENT_DECISION | required | required | required | required | optional | — | — |
 | RED | required | required | required | required | required | optional | — |
 | RED_REVIEW | required | required | required | required | required | optional | — |
@@ -214,8 +221,11 @@ decisions, test output summaries, and reviewer verdicts.
 | DONE | required | required | required | required | — | — | — |
 
 Notes:
-- `TASK` on DECOMPOSE and TASK_REVIEW identifies which task is being
-  decomposed/reviewed (see §2.7).
+- `TASK` on DECOMPOSE is required when decomposing an existing task into
+  subtasks (identifies the parent task being decomposed). Omitted for
+  top-level spec decomposition.
+- `TASK` on TASK_REVIEW is required when reviewing decomposition of a
+  specific task. Omitted for top-level task set review.
 - `TASK_PARENT` on RED/RED_REVIEW/GREEN/GREEN_REVIEW is required when the
   entry belongs to a subtask.
 - `DEPENDS` on TASKS_COMPLETE lists the final JID of each task branch.
@@ -272,7 +282,7 @@ Any transition not listed here is a validation error.
 | RED_REVIEW | FAIL, NEEDS_CLARIFICATION | RED (re-fix) |
 | GREEN | COMPLETED | GREEN_REVIEW |
 | GREEN | FIXED | GREEN_REVIEW |
-| GREEN_REVIEW | PASS | TASKS_COMPLETE, REGRESSION, DONE |
+|| GREEN_REVIEW | PASS | TASKS_COMPLETE, REGRESSION |
 | GREEN_REVIEW | FAIL, NEEDS_CLARIFICATION | GREEN (re-fix) |
 | TASKS_COMPLETE | any | REGRESSION |
 | REGRESSION | COMPLETED | REGRESSION_REVIEW |
@@ -286,8 +296,7 @@ Any transition not listed here is a validation error.
 - After `FAIL` on a review, the pipeline MUST return to the work step
   (SPEC_SPEC, DECOMPOSE, RED, GREEN, REGRESSION).
 - After `PASS` on the final review of a branch, the next transition MUST be
-  to TASKS_COMPLETE (if there are sibling branches), REGRESSION (last branch),
-  or DONE (single-task pipeline).
+  to TASKS_COMPLETE (if there are sibling branches) or REGRESSION (last/single branch).
 - `CANCELLED` entries MUST NOT have children.
 
 ### 4.4 Branching (Divergence)
@@ -381,8 +390,9 @@ TASK_REVIEW
 2. No entry MAY have `TASK_PARENT` equal to its own `TASK` value
 3. The relation defined by `TASK_PARENT` MUST NOT contain cycles
 4. Parent task and child task entries MUST belong to the same `ROOT`
-5. Task ID MUST be unique within a single `ROOT` (no two tasks with the same
-   TASK in the same tree)
+5. Within one ROOT, a TASK ID identifies exactly one logical task and
+   MUST always have the same SPEC and TASK_PARENT across all entries.
+   Multiple journal entries MAY reference the same TASK ID.
 
 ### 4.8 Per-Tree Completion Validation
 
@@ -390,17 +400,24 @@ The journal validation MUST be performed per ROOT, not globally.
 
 1. Group all entries by ROOT.
 2. For each ROOT group:
-   a. The group MUST contain at least one `DONE` entry OR at least one
-      `CANCELLED` entry.
-   b. If the group has a `DONE` entry: the DONE MUST belong to that ROOT
+   a. The group MUST contain at least one `DONE` entry to be considered
+      complete.
+   b. A ROOT MAY be terminated without DONE via a root-level cancellation:
+      an entry with TYPE=USER_INPUT and STATUS=CANCELLED, or a dedicated
+      entry TYPE=ESCALATION STATUS=CANCELLED whose PARENT chain reaches
+      the ROOT's USER_INPUT.
+   c. A single CANCELLED entry on a task branch does NOT complete the ROOT.
+      Other non-cancelled branches in the same ROOT must still reach DONE.
+   d. If the group has a `DONE` entry: the DONE MUST belong to that ROOT
       (DONE.ROOT == ROOT).
-   c. If the group has a `DONE` entry: every non-CANCELLED branch in the
-      group MUST have reached a terminal state (completed its lifecycle).
-   d. The DONE entry's PARENT chain MUST terminate at a USER_INPUT whose
+   e. If the group has a `DONE` entry: every non-CANCELLED branch in the
+      group MUST have reached a terminal state (completed its lifecycle
+      through GREEN_REVIEW).
+   f. The DONE entry's PARENT chain MUST terminate at a USER_INPUT whose
       JID matches the ROOT.
-3. A ROOT group with NO `DONE` and NO `CANCELLED` is an incomplete pipeline.
-4. A ROOT group with BOTH `DONE` and `CANCELLED` is allowed: the CANCELLED
-   branches are excluded from completion checks.
+3. A ROOT group with BOTH `DONE` and `CANCELLED` is allowed: the CANCELLED
+   branches are excluded from completion checks, but all non-CANCELLED
+   branches must still be complete.
 
 ### 4.9 DONE Validation (per DONE entry)
 
@@ -458,8 +475,7 @@ SPEC: S-TETRIS-01
 STATUS: PASS
 PARENT: J-20260614-100000-004
 ROOT: J-20260614-100000-001
-TASK: T-S-TETRIS-01-001
-DETAIL: T1 approved — Board
+DETAIL: All 3 tasks approved — Board, Pieces, Game
 
 === J-20260614-100000-006 ===
 TYPE: RED
@@ -538,8 +554,8 @@ TYPE: TASKS_COMPLETE
 SPEC: S-TETRIS-01
 STATUS: COMPLETED
 PARENT: J-20260614-100000-005
-DEPENDS: J-20260614-100000-009, J-20260614-100000-013
 ROOT: J-20260614-100000-001
+DEPENDS: J-20260614-100000-009, J-20260614-100000-013
 DETAIL: All 2 tasks completed
 
 === J-20260614-100000-015 ===
@@ -729,6 +745,16 @@ function validate_journal(journal_text):
             if entry.task_parent not in all_task_ids(entries):
                 errors.append(f"TASK_PARENT references non-existent task: {entry.task_parent}")
 
+        # SPEC consistency: a TASK ID must always have same SPEC
+        if entry.task and entry.spec:
+            for other in entries:
+                if other.jid != entry.jid and other.task == entry.task:
+                    if other.spec != entry.spec:
+                        errors.append(
+                            f"TASK {entry.task} has conflicting SPEC: "
+                            f"{entry.jid}.spec={entry.spec} vs {other.jid}.spec={other.spec}"
+                        )
+
     # --- Phase 2: duplicate JIDs ---
     if duplicate_jids(entries): errors.append("Duplicate JIDs found")
 
@@ -762,7 +788,54 @@ function validate_journal(journal_text):
             if parent.type not in BRANCHING_ALLOWED_TYPES:
                 errors.append(f"Illegal branching: {parent.type} has {len(children)} children")
 
-    # --- Phase 7: Convergence check ---
+    # --- Phase 7: DEPENDS validation ---
+    for entry in entries:
+        if not entry.depends:
+            continue
+        for dep_jid in split(entry.depends, ","):
+            dep_jid = strip(dep_jid)
+            if dep_jid not in entries:
+                errors.append(f"DEPENDS references non-existent JID: {dep_jid}")
+                continue
+            dep = entries[dep_jid]
+            if dep.root != entry.root:
+                errors.append(
+                    f"DEPENDS ROOT mismatch: {entry.jid} depends on "
+                    f"{dep_jid} (root={dep.root}) but own root={entry.root}"
+                )
+            if dep_jid == entry.jid:
+                errors.append(f"Self-dependency: {entry.jid} depends on itself")
+            if has_depends_cycle(entry, entries):
+                errors.append(f"Dependency cycle involving {entry.jid}")
+
+    # TASKS_COMPLETE.DEPENDS must cover all active task branches
+    for entry in entries:
+        if entry.type != TASKS_COMPLETE:
+            continue
+        dep_jids = set(split(entry.depends, ","))
+        task_jids = find_task_branch_terminals(entries, entry.root)
+        active_terminals = {
+            j for j in task_jids
+            if entries[j].status != "CANCELLED"
+        }
+        if dep_jids != active_terminals:
+            errors.append(
+                f"TASKS_COMPLETE {entry.jid} DEPENDS missing or extra terminals: "
+                f"expected={active_terminals}, got={dep_jids}"
+            )
+        # Each dependency must be a terminal entry (GREEN_REVIEW)
+        for jid in dep_jids:
+            if entries[jid].type not in ("GREEN_REVIEW", "CANCELLED"):
+                errors.append(
+                    f"TASKS_COMPLETE {entry.jid} DEPENDS on non-terminal {jid}: "
+                    f"type={entries[jid].type}"
+                )
+            if entries[jid].status == "FAIL":
+                errors.append(
+                    f"TASKS_COMPLETE {entry.jid} DEPENDS on FAILED entry {jid}"
+                )
+
+    # --- Phase 8: Convergence check ---
     for root_jid, root_entries in by_root.items():
         task_branches = count_task_branches(root_entries)
         has_tasks_complete = any(e.type == TASKS_COMPLETE for e in root_entries)
@@ -773,15 +846,67 @@ function validate_journal(journal_text):
                 f"ROOT {root_jid}: multi-task pipeline with DONE but no TASKS_COMPLETE"
             )
 
-    # --- Phase 8: Per-tree completion ---
+    # --- Phase 9: Mandatory regression + final review path ---
     for root_jid, root_entries in by_root.items():
-        if not any(e.type in (DONE, CANCELLED) for e in root_entries):
-            errors.append(f"ROOT {root_jid}: incomplete pipeline — no DONE or CANCELLED")
-
         done_entries = [e for e in root_entries if e.type == DONE]
         for d in done_entries:
+            # Trace DONE's PARENT chain back; must pass through FINAL_REVIEW and REGRESSION
+            chain = parent_chain(d, entries)
+            chain_types = [entries[c].type for c in chain]
+            if "FINAL_REVIEW" not in chain_types:
+                errors.append(
+                    f"DONE {d.jid} PARENT chain does not include FINAL_REVIEW"
+                )
+            if "REGRESSION" not in chain_types:
+                errors.append(
+                    f"DONE {d.jid} PARENT chain does not include REGRESSION"
+                )
+
+    # --- Phase 10: TASK_PARENT cycles ---
+    for entry in entries:
+        if entry.task_parent:
+            visited = set()
+            current = entry.task
+            while current:
+                if current in visited:
+                    errors.append(
+                        f"TASK_PARENT cycle involving {entry.task}"
+                    )
+                    break
+                visited.add(current)
+                # Find the parent task_id from any entry with this TASK
+                parent_tasks = {
+                    e.task_parent for e in entries
+                    if e.task == current and e.task_parent
+                }
+                if not parent_tasks:
+                    break
+                current = next(iter(parent_tasks))
+
+    # --- Phase 11: Per-tree completion ---
+    for root_jid, root_entries in by_root.items():
+        done_entries = [e for e in root_entries if e.type == DONE]
+        cancelled_entries = [e for e in root_entries if e.status == "CANCELLED"]
+        root_level_cancelled = any(
+            e.type in ("USER_INPUT", "ESCALATION") and e.status == "CANCELLED"
+            for e in root_entries
+        )
+
+        if not done_entries and not root_level_cancelled:
+            # Check if ALL task branches are individually CANCELLED
+            task_branches = find_task_branches(root_entries)
+            all_cancelled = all(
+                any(e.status == "CANCELLED" for e in branch)
+                for branch in task_branches
+            ) if task_branches else False
+            if not all_cancelled:
+                errors.append(f"ROOT {root_jid}: incomplete pipeline — no DONE")
+
+        for d in done_entries:
             if d.root != root_jid:
-                errors.append(f"DONE ROOT mismatch: {d.jid} root={d.root} != {root_jid}")
+                errors.append(
+                    f"DONE ROOT mismatch: {d.jid} root={d.root} != {root_jid}"
+                )
 
     return errors
 ```
