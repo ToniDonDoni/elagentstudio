@@ -1,178 +1,20 @@
 # Demo Feature Case: Counter API with Commit-Based Spec-Driven TDD
 
-## Purpose
+This walkthrough demonstrates the workflow defined in `SKILL.md`.
 
-This demo shows how spec-driven-tdd works when every artifact is treated declaratively and immutably.
+All journal entries follow `references/JOURNAL.md`.
 
-Core idea:
+---
 
-Every meaningful change creates an artifact.  
-Every artifact is committed.  
-Every committed artifact is reviewed.  
-Every review result is written to JOURNAL_SDD_TDD_SKILL.log.  
-Every JOURNAL_SDD_TDD_SKILL.log update is also committed.  
-Every fix after review is a new commit.
+## 1. User Input
 
-Nothing is silently edited.  
-Nothing is reviewed from an uncommitted working tree.  
-No stage moves forward without review evidence and journal evidence.
+The user requests:
 
-## Pipeline
+> Build a simple in-memory counter. It starts at zero, can be decremented, never goes below zero, and exposes its current value.
 
-Full pipeline:
+Create the initial journal entry:
 
-User Input  
- ->  SPEC-DRAFT.md  
- ->  commit  
- ->  review spec  
- ->  JOURNAL_SDD_TDD_SKILL.log update  
- ->  commit journal  
- ->  TASKS.md  
- ->  commit  
- ->  review tasks  
- ->  JOURNAL_SDD_TDD_SKILL.log update  
- ->  commit journal  
- ->  RED (write test + run, expect failure)
- ->  commit
- ->  review RED
- ->  JOURNAL_SDD_TDD_SKILL.log update
- ->  commit journal
- ->  implementation code  
- ->  commit  
- ->  review GREEN  
- ->  JOURNAL_SDD_TDD_SKILL.log update  
- ->  commit journal  
- ->  optional refactor  
- ->  commit  
- ->  review refactor  
- ->  JOURNAL_SDD_TDD_SKILL.log update  
- ->  commit journal  
- ->  regression run  
- ->  JOURNAL_SDD_TDD_SKILL.log update  
- ->  commit journal  
- ->  DONE
-
-## Global Rules
-
-### Rule 1 -- Every artifact is committed
-
-Any created or changed artifact must be committed before it can be reviewed.
-
-Artifacts include:
-
-- spec files
-- task files
-- test files
-- implementation files
-- generated documentation
-- review notes
-- journal updates
-- regression evidence
-- retry/fix artifacts
-
-### Rule 2 -- Review only committed state
-
-Reviewer must review a commit, not a dirty working tree.
-
-Every review request must include:
-
-- commit hash
-- artifact path
-- spec ID
-- task ID if applicable
-- expected review scope
-
-### Rule 3 -- Every review updates the journal
-
-After every review result, append a record to JOURNAL_SDD_TDD_SKILL.log.
-
-Review outcomes:
-
-- PASS
-- FAIL
-- NEEDS_CLARIFICATION
-- CANCELLED
-
-### Rule 4 -- Journal updates are committed
-
-After appending to JOURNAL_SDD_TDD_SKILL.log, commit the journal change.
-
-The journal commit becomes part of the audit trail.
-
-### Rule 5 -- Every fix is a new commit
-
-If review fails, do not amend history unless explicitly allowed.
-
-Default behavior:
-
-- create a fix commit
-- review the fix commit
-- append review result to journal
-- commit journal update
-
-### Rule 6 -- No silent mutation of immutable input
-
-SPEC-DRAFT.md is immutable after initial commit.
-
-If the user clarifies or changes something, write it to JOURNAL_SDD_TDD_SKILL.log and create a derived spec amendment artifact if needed.
-
-Original input stays preserved.
-
-## Demo Feature: Counter API
-
-Spec ID: S-DEMO-01  
-Title: Counter API  
-Status: Draft  
-Parent: -- 
-
-Build a simple in-memory counter.
-
-Requirements:
-
-S-DEMO-01.01 -- Initial value  
-A new counter starts at 0.
-
-S-DEMO-01.02 -- Increment  
-Calling increment() increases the counter value by 1.
-
-S-DEMO-01.03 -- Decrement  
-Calling decrement() decreases the counter value by 1.
-
-S-DEMO-01.04 -- Lower bound  
-The counter must never go below 0.
-
-S-DEMO-01.05 -- Read current value  
-Calling get_value() returns the current counter value.
-
-## Expected Files
-
-SPEC-DRAFT.md  
-Immutable original feature request.
-
-TASKS.md  
-Task decomposition. Each task maps to exactly one acceptance criterion.
-
-JOURNAL_SDD_TDD_SKILL.log  
-Append-only audit trail. Every event gets a JID.
-
-tests/test_counter.py  
-Acceptance-oriented tests.
-
-counter.py  
-Minimal production implementation.
-
-## Stage 0 -- User Input
-
-User provides the initial feature request:
-
-"Build a simple counter. It starts at zero, can increment and decrement, never goes below zero, and exposes current value."
-
-Action:
-
-Create initial journal entry for external input.
-
-Journal entry:
-
+```text
 === J-20260614-100000-001 ===
 TYPE: USER_INPUT
 SPEC: S-DEMO-01
@@ -182,846 +24,643 @@ ROOT: J-20260614-100000-001
 TASK_ID: T-DEMO-01-000
 PARENT_TASK_ID: --
 ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Initial feature request received.
-
-Then commit:
-
-Commit message:
-
-spec-driven-tdd: record initial user input for S-DEMO-01
-
-Review:
-
-No feature review yet. This only records incoming context.
-
-## Stage 1 -- Create Immutable Spec Draft
-
-Action:
-
-Create SPEC-DRAFT.md.
-
-It contains:
-
-- root spec ID
-- child spec IDs
-- requirements
-- acceptance criteria
-- parent-child structure
-
-Important:
-
-SPEC-DRAFT.md must not be edited after this stage.
+DETAIL: Initial Counter API request received.
+```
 
 Commit:
 
-spec: add immutable counter API draft S-DEMO-01
+```text
+spec-driven-tdd: record initial user input for S-DEMO-01
+```
 
-Review request:
+---
 
-Review commit <hash>.
+## 2. Create the Immutable Specification
 
-Scope:
+Create `SPEC-DRAFT.md`:
 
-- Is the spec testable?
-- Are all acceptance criteria observable?
-- Are requirements unambiguous?
-- Are child spec IDs valid?
-- Is the lower-bound behavior clear?
+```markdown
+# Counter API Specification
 
-Expected review result:
+Spec ID: S-DEMO-01
+Parent: --
 
-PASS.
+## S-DEMO-01.01 — Initial value
 
-Journal update:
+A new counter starts at `0`.
 
+Acceptance criterion:
+
+- `Counter().get_value()` returns `0`.
+
+## S-DEMO-01.02 — Lower bound
+
+Calling `decrement()` must never reduce the counter below `0`.
+
+Acceptance criterion:
+
+- Calling `decrement()` on a new counter keeps the value at `0`.
+```
+
+Commit:
+
+```text
+spec: add immutable Counter API draft S-DEMO-01
+```
+
+Record the created specification:
+
+```text
 === J-20260614-100000-002 ===
 TYPE: SPEC_SPEC
 SPEC: S-DEMO-01
 STATUS: COMPLETED
 PARENT: J-20260614-100000-001
 ROOT: J-20260614-100000-001
-DETAIL: Counter API spec draft created.
+DETAIL: Immutable Counter API specification created.
+```
 
+Review the committed specification.
+
+Review scope:
+
+- both acceptance criteria are observable;
+- the behavior is unambiguous;
+- each acceptance criterion can be tested independently.
+
+Record the review:
+
+```text
 === J-20260614-100000-003 ===
 TYPE: SPEC_REVIEW
 SPEC: S-DEMO-01
 STATUS: PASS
 PARENT: J-20260614-100000-002
 ROOT: J-20260614-100000-001
-DETAIL: Spec is testable and decomposable. Reviewed commit <hash>.
-
-Commit journal:
-
-journal: record spec review for S-DEMO-01
-
-If review fails:
-
-- create SPEC-AMENDMENT-001.md or update a non-immutable derived spec artifact
-- commit fix
-- re-review
-- journal FAIL and retry events
-- commit journal
-
-## Stage 2 -- Decompose Tasks
-
-Action:
-
-Create TASKS.md.
-
-Task list:
-
-T-DEMO-01-001  
-Spec: S-DEMO-01.01  
-Acceptance: a new counter returns 0 from get_value().
-
-T-DEMO-01-002  
-Spec: S-DEMO-01.02  
-Acceptance: after one increment(), get_value() returns 1.
-
-T-DEMO-01-003  
-Spec: S-DEMO-01.03  
-Acceptance: after two increments and one decrement, get_value() returns 1.
-
-T-DEMO-01-004  
-Spec: S-DEMO-01.04  
-Acceptance: calling decrement() on a new counter keeps value at 0.
-
-T-DEMO-01-005  
-Spec: S-DEMO-01.05  
-Acceptance: get_value() always returns current state after operations.
+DETAIL: Specification is complete, unambiguous, and testable. Reviewed commit <hash>.
+```
 
 Commit:
 
-tasks: decompose counter API spec into TDD tasks
+```text
+journal: record specification review for S-DEMO-01
+```
 
-Review request:
+---
 
-Review commit <hash>.
+## 3. Decompose the Specification into Tasks
 
-Scope:
+Create `TASKS.md`:
 
-- Does every task map to exactly one acceptance criterion?
-- Are task IDs linked to spec IDs?
-- Is task order reasonable?
-- Are tasks small enough for TDD?
-- Is traceability preserved?
+```markdown
+# Counter API Tasks
 
-Expected review result:
+## T-DEMO-01-001 — Initial value
 
-PASS.
+Spec: S-DEMO-01.01
+Parent task: T-DEMO-01-000
+Root user input: T-DEMO-01-000
 
-Journal update:
+Acceptance criterion:
 
+- `Counter().get_value()` returns `0`.
+
+## T-DEMO-01-002 — Lower bound
+
+Spec: S-DEMO-01.02
+Parent task: T-DEMO-01-000
+Root user input: T-DEMO-01-000
+
+Acceptance criterion:
+
+- Calling `decrement()` on a new counter keeps the value at `0`.
+```
+
+Commit:
+
+```text
+tasks: decompose Counter API into two TDD tasks
+```
+
+Record decomposition:
+
+```text
 === J-20260614-100000-004 ===
 TYPE: DECOMPOSE
 SPEC: S-DEMO-01
 STATUS: COMPLETED
 PARENT: J-20260614-100000-003
 ROOT: J-20260614-100000-001
-DETAIL: Spec decomposed into 5 tasks (T-DEMO-01-001 through T-DEMO-01-005).
+DETAIL: Specification decomposed into T-DEMO-01-001 and T-DEMO-01-002.
+```
 
+Review the committed task decomposition.
+
+Record the review:
+
+```text
 === J-20260614-100000-005 ===
 TYPE: TASK_REVIEW
 SPEC: S-DEMO-01
 STATUS: PASS
 PARENT: J-20260614-100000-004
 ROOT: J-20260614-100000-001
-DETAIL: TASKS.md maps five tasks to five acceptance criteria. Reviewed commit <hash>.
-
-Commit journal:
-
-journal: record task decomposition review for S-DEMO-01
-
-## Stage 3 -- Implement Task T-DEMO-01-004
-
-This walkthrough focuses on lower-bound behavior.
-
-Task:
-
-T-DEMO-01-004  
-Spec: S-DEMO-01.04  
-Acceptance: calling decrement() on a new counter keeps value at 0.
-
-## Stage 3.1 -- Select Task (T-DEMO-01-004)
-
-Action:
-
-Agent chooses T-DEMO-01-004.
-
-Journal update:
-
-=== J-20260614-100000-006 ===
-TYPE: AGENT_DECISION
-SPEC: S-DEMO-01.04
-STATUS: COMPLETED
-PARENT: J-20260614-100000-005
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-004
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Selected lower-bound behavior task T-DEMO-01-004.
-
-Commit journal:
-
-journal: select lower-bound counter task
-
-## Stage 3.2 -- RED (Write Test + Run, Expect Failure)
-
-Action:
-
-Write a failing test targeting the acceptance criterion, then run it immediately.
-
-Test intent:
-
-- create a new counter
-- call decrement()
-- verify current value is still 0
-- test public behavior only
-- do not inspect private fields
-
-Expected result:
-
-The test fails before implementation.
-
-Valid failure reasons:
-
-- Counter does not exist
-- decrement() does not exist
-- lower-bound behavior is missing
-
-Invalid failure reasons:
-
-- syntax error
-- broken import unrelated to the feature
-- bad fixture
-- test cannot run
-- environment failure
-
-Commit RED artifact: test file + RED evidence (test output) + journal entry
-
+DETAIL: Both tasks map to one acceptance criterion and share the correct root task. Reviewed commit <hash>.
 ```
-test: add lower-bound acceptance test for counter
-```
-
-Then run the test and confirm FAIL.
-
-Journal update:
-
-=== J-20260614-100000-007 ===
-TYPE: RED
-SPEC: S-DEMO-01.04
-STATUS: COMPLETED
-PARENT: J-20260614-100000-006
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-004
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Test written and RED — failure confirms required behavior is missing.
-
-Commit journal:
-
-journal: record RED result for S-DEMO-01.04
-
-Review request:
-
-Review commit <hash> and RED evidence.
-
-Scope:
-
-- Does the test verify S-DEMO-01.04?
-- Does it test behavior, not implementation details?
-- Is it focused on exactly one acceptance criterion?
-- Would it fail without lower-bound behavior?
-- Did the test actually fail?
-- Did it fail for the correct reason (missing behavior, not a broken test)?
-- Is terminal evidence recorded?
-
-Expected review result:
-
-PASS.
-
-Journal update:
-
-=== J-20260614-100000-008 ===
-TYPE: RED_REVIEW
-SPEC: S-DEMO-01.04
-STATUS: PASS
-PARENT: J-20260614-100000-007
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-004
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: RED is valid. Test matches acceptance criterion and failure proves behavior is not implemented. Reviewed commit <hash>.
-
-Commit journal:
-
-journal: record RED review for S-DEMO-01.04
-
-If review fails:
-
-- fix test/setup in a new commit
-- re-run test
-- journal retry
-- commit journal
-- re-review
-
-## Stage 3.3 -- GREEN
-
-Action:
-
-Create or update counter.py.
-
-Implementation rule:
-
-Write the smallest code needed to pass the focused test.
-
-Allowed:
-
-- create Counter
-- initialize value to 0
-- implement decrement() with lower-bound behavior
-- implement get_value() if needed by the test
-
-Forbidden:
-
-- implement unrelated future behavior unless required by current test
-- refactor unrelated files
-- change the test during GREEN unless the test has an obvious mechanical error
-
-Run the focused test again.
-
-Expected result:
-
-PASS.
 
 Commit:
 
-impl: add minimal lower-bound counter behavior
+```text
+journal: record task decomposition review for S-DEMO-01
+```
 
-Review request:
+---
 
-Review commit <hash>.
+## 4. Task T-DEMO-01-001 — Initial Value
 
-Scope:
+### 4.1 Select the Task
 
-- Does the focused test pass?
-- Is implementation minimal?
-- Does implementation satisfy S-DEMO-01.04?
-- Were tests preserved during GREEN?
-- Are there unrelated changes?
-
-Expected review result:
-
-PASS.
-
-Journal update:
-
-=== J-20260614-100000-009 ===
-TYPE: GREEN
-SPEC: S-DEMO-01.04
-STATUS: COMPLETED
-PARENT: J-20260614-100000-008
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-004
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Minimal lower-bound implementation complete.
-
-=== J-20260614-100000-010 ===
-TYPE: GREEN_REVIEW
-SPEC: S-DEMO-01.04
-STATUS: PASS
-PARENT: J-20260614-100000-009
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-004
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Minimal implementation satisfies lower-bound behavior. Reviewed commit <hash>.
-
-Commit journal:
-
-journal: record GREEN review for S-DEMO-01.04
-
-If GREEN review fails:
-
-- fix code in a new commit
-- do not rewrite test unless review explicitly identifies a test defect
-- run focused test again
-- journal fix/retry
-- commit journal
-- re-review
-
-## Stage 3.4 -- Refactor Decision
-
-Action:
-
-Agent decides whether refactor is needed.
-
-For this demo:
-
-No refactor is needed.
-
-Journal update:
-
-=== J-20260614-100000-011 ===
+```text
+=== J-20260614-100000-006 ===
 TYPE: AGENT_DECISION
-SPEC: S-DEMO-01.04
+SPEC: S-DEMO-01.01
 STATUS: COMPLETED
-PARENT: J-20260614-100000-010
+PARENT: J-20260614-100000-005
 ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-004
+TASK_ID: T-DEMO-01-001
 PARENT_TASK_ID: T-DEMO-01-000
 ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Refactor skipped; implementation is already minimal.
+DETAIL: Selected the initial-value task.
+```
 
-Commit journal:
+### 4.2 RED
 
-journal: record refactor decision for S-DEMO-01.04
+Create the first test in `tests/test_counter.py`:
 
-If refactor is needed:
+```python
+from counter import Counter
 
-- change code only, not behavior
-- run focused and regression tests
-- commit refactor
-- review refactor commit
-- append review result to journal
-- commit journal
 
-## Stage 3.5 -- Per-Task Regression
+def test_new_counter_starts_at_zero():
+    counter = Counter()
 
-Action:
+    assert counter.get_value() == 0
+```
 
-Run the focused test for T-DEMO-01-004 only.
+Run:
+
+```text
+pytest tests/test_counter.py::test_new_counter_starts_at_zero -v
+```
+
+Expected RED evidence:
+
+```text
+FAILED — ModuleNotFoundError: No module named 'counter'
+```
+
+Commit the test and RED evidence:
+
+```text
+test: add initial-value acceptance test
+```
+
+Record RED:
+
+```text
+=== J-20260614-100000-007 ===
+TYPE: RED
+SPEC: S-DEMO-01.01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-006
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-001
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Initial-value test fails because the Counter implementation does not exist.
+```
+
+Review the committed test and RED evidence.
+
+Record the review:
+
+```text
+=== J-20260614-100000-008 ===
+TYPE: RED_REVIEW
+SPEC: S-DEMO-01.01
+STATUS: PASS
+PARENT: J-20260614-100000-007
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-001
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Test covers S-DEMO-01.01 and fails for the expected missing-feature reason. Reviewed commit <hash>.
+```
+
+### 4.3 GREEN
+
+Create `counter.py`:
+
+```python
+class Counter:
+    def __init__(self) -> None:
+        self._value = 0
+
+    def get_value(self) -> int:
+        return self._value
+```
+
+Run the focused test again:
+
+```text
+pytest tests/test_counter.py::test_new_counter_starts_at_zero -v
+```
 
 Expected result:
 
-PASS.
+```text
+PASSED
+```
 
-Journal update:
+Commit:
 
+```text
+impl: add minimal initial-value Counter implementation
+```
+
+Record GREEN:
+
+```text
+=== J-20260614-100000-009 ===
+TYPE: GREEN
+SPEC: S-DEMO-01.01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-008
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-001
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Minimal implementation makes the initial-value test pass.
+```
+
+Review the committed implementation.
+
+Record the review:
+
+```text
+=== J-20260614-100000-010 ===
+TYPE: GREEN_REVIEW
+SPEC: S-DEMO-01.01
+STATUS: PASS
+PARENT: J-20260614-100000-009
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-001
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Implementation is minimal and satisfies S-DEMO-01.01. Reviewed commit <hash>.
+```
+
+---
+
+## 5. Task T-DEMO-01-002 — Lower Bound
+
+### 5.1 Select the Task
+
+```text
+=== J-20260614-100000-011 ===
+TYPE: AGENT_DECISION
+SPEC: S-DEMO-01.02
+STATUS: COMPLETED
+PARENT: J-20260614-100000-005
+ROOT: J-20260614-100000-001
+TASK_ID: T-DEMO-01-002
+PARENT_TASK_ID: T-DEMO-01-000
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+DETAIL: Selected the lower-bound task.
+```
+
+### 5.2 RED
+
+Append the second test to `tests/test_counter.py`:
+
+```python
+def test_decrement_does_not_go_below_zero():
+    counter = Counter()
+
+    counter.decrement()
+
+    assert counter.get_value() == 0
+```
+
+Run:
+
+```text
+pytest tests/test_counter.py::test_decrement_does_not_go_below_zero -v
+```
+
+Expected RED evidence:
+
+```text
+FAILED — AttributeError: 'Counter' object has no attribute 'decrement'
+```
+
+Commit:
+
+```text
+test: add lower-bound acceptance test
+```
+
+Record RED:
+
+```text
 === J-20260614-100000-012 ===
-TYPE: REGRESSION
-SPEC: S-DEMO-01
+TYPE: RED
+SPEC: S-DEMO-01.02
 STATUS: COMPLETED
 PARENT: J-20260614-100000-011
 ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-004
+TASK_ID: T-DEMO-01-002
 PARENT_TASK_ID: T-DEMO-01-000
 ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Per-task regression for T-DEMO-01-004 — single-task test passes.
+DETAIL: Lower-bound test fails because decrement is not implemented.
+```
 
-Commit journal:
+Review the committed test and RED evidence.
 
-journal: record per-task regression for T-DEMO-01-004
+Record the review:
 
-## Stage 3.6 -- Task Branch Complete
-
-Completion criteria for T-DEMO-01-004:
-
-- task selected and journaled
-- RED completed and committed (test written + run, RED confirmed)
-- RED reviewed (covers test quality + RED result)
-- review result journaled and committed
-- implementation committed
-- GREEN reviewed
-- GREEN review journaled and committed
-- refactor decision journaled and committed
-- per-task regression completed and journaled
-
-Note:
-
-There is no task-level DONE. Reaching GREEN_REVIEW(PASS) through the cycle
-means the task branch is complete. All task branches converge at
-TASKS_COMPLETE before proceeding to full REGRESSION.
-
-## Stage 4 -- Implement Remaining Tasks
-
-Each remaining task follows the same cycle as T-DEMO-01-004:
-AGENT_DECISION → RED → RED_REVIEW → GREEN → GREEN_REVIEW.
-All four task branches are siblings — each starts from the shared
-TASK_REVIEW (J-005).
-
-### T-DEMO-01-001 -- Initial value
-
+```text
 === J-20260614-100000-013 ===
-TYPE: AGENT_DECISION
-SPEC: S-DEMO-01.01
-STATUS: COMPLETED
-PARENT: J-20260614-100000-005
+TYPE: RED_REVIEW
+SPEC: S-DEMO-01.02
+STATUS: PASS
+PARENT: J-20260614-100000-012
 ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-001
+TASK_ID: T-DEMO-01-002
 PARENT_TASK_ID: T-DEMO-01-000
 ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Selected initial-value task T-DEMO-01-001.
+DETAIL: Test covers S-DEMO-01.02 and fails for the expected missing-feature reason. Reviewed commit <hash>.
+```
 
+### 5.3 GREEN
+
+Update `counter.py`:
+
+```python
+class Counter:
+    def __init__(self) -> None:
+        self._value = 0
+
+    def decrement(self) -> None:
+        if self._value > 0:
+            self._value -= 1
+
+    def get_value(self) -> int:
+        return self._value
+```
+
+Run the focused test:
+
+```text
+pytest tests/test_counter.py::test_decrement_does_not_go_below_zero -v
+```
+
+Expected result:
+
+```text
+PASSED
+```
+
+Commit:
+
+```text
+impl: add minimal lower-bound behavior
+```
+
+Record GREEN:
+
+```text
 === J-20260614-100000-014 ===
-TYPE: RED
-SPEC: S-DEMO-01.01
+TYPE: GREEN
+SPEC: S-DEMO-01.02
 STATUS: COMPLETED
 PARENT: J-20260614-100000-013
 ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-001
+TASK_ID: T-DEMO-01-002
 PARENT_TASK_ID: T-DEMO-01-000
 ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Test written and fails because initial value is not implemented.
+DETAIL: Minimal decrement implementation keeps the value at zero.
+```
 
+Review the committed implementation.
+
+Record the review:
+
+```text
 === J-20260614-100000-015 ===
-TYPE: RED_REVIEW
-SPEC: S-DEMO-01.01
+TYPE: GREEN_REVIEW
+SPEC: S-DEMO-01.02
 STATUS: PASS
 PARENT: J-20260614-100000-014
 ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-001
+TASK_ID: T-DEMO-01-002
 PARENT_TASK_ID: T-DEMO-01-000
 ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: RED valid. Test confirms initial value behaviour is absent.
+DETAIL: Implementation is minimal and satisfies S-DEMO-01.02. Reviewed commit <hash>.
+```
 
+---
+
+## 6. Converge the Task Branches
+
+Both sibling task branches are complete:
+
+| Task | Terminal journal entry |
+|---|---|
+| `T-DEMO-01-001` | `J-20260614-100000-010` |
+| `T-DEMO-01-002` | `J-20260614-100000-015` |
+
+Create the convergence entry:
+
+```text
 === J-20260614-100000-016 ===
-TYPE: GREEN
-SPEC: S-DEMO-01.01
-STATUS: COMPLETED
-PARENT: J-20260614-100000-015
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-001
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Initial value implementation complete.
-
-=== J-20260614-100000-017 ===
-TYPE: GREEN_REVIEW
-SPEC: S-DEMO-01.01
-STATUS: PASS
-PARENT: J-20260614-100000-016
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-001
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Initial value test passes. T-DEMO-01-001 complete.
-
-### T-DEMO-01-002 -- Increment
-
-=== J-20260614-100000-018 ===
-TYPE: AGENT_DECISION
-SPEC: S-DEMO-01.02
-STATUS: COMPLETED
-PARENT: J-20260614-100000-005
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-002
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Selected increment task T-DEMO-01-002.
-
-=== J-20260614-100000-019 ===
-TYPE: RED
-SPEC: S-DEMO-01.02
-STATUS: COMPLETED
-PARENT: J-20260614-100000-018
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-002
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Increment test written and fails.
-
-=== J-20260614-100000-020 ===
-TYPE: RED_REVIEW
-SPEC: S-DEMO-01.02
-STATUS: PASS
-PARENT: J-20260614-100000-019
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-002
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Increment RED valid.
-
-=== J-20260614-100000-021 ===
-TYPE: GREEN
-SPEC: S-DEMO-01.02
-STATUS: COMPLETED
-PARENT: J-20260614-100000-020
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-002
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Increment implementation complete.
-
-=== J-20260614-100000-022 ===
-TYPE: GREEN_REVIEW
-SPEC: S-DEMO-01.02
-STATUS: PASS
-PARENT: J-20260614-100000-021
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-002
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Increment test passes. T-DEMO-01-002 complete.
-
-### T-DEMO-01-003 -- Decrement
-
-=== J-20260614-100000-023 ===
-TYPE: AGENT_DECISION
-SPEC: S-DEMO-01.03
-STATUS: COMPLETED
-PARENT: J-20260614-100000-005
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-003
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Selected decrement task T-DEMO-01-003.
-
-=== J-20260614-100000-024 ===
-TYPE: RED
-SPEC: S-DEMO-01.03
-STATUS: COMPLETED
-PARENT: J-20260614-100000-023
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-003
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Decrement test written and fails.
-
-=== J-20260614-100000-025 ===
-TYPE: RED_REVIEW
-SPEC: S-DEMO-01.03
-STATUS: PASS
-PARENT: J-20260614-100000-024
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-003
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Decrement RED valid.
-
-=== J-20260614-100000-026 ===
-TYPE: GREEN
-SPEC: S-DEMO-01.03
-STATUS: COMPLETED
-PARENT: J-20260614-100000-025
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-003
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Decrement implementation complete.
-
-=== J-20260614-100000-027 ===
-TYPE: GREEN_REVIEW
-SPEC: S-DEMO-01.03
-STATUS: PASS
-PARENT: J-20260614-100000-026
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-003
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Decrement test passes. T-DEMO-01-003 complete.
-
-### T-DEMO-01-005 -- Read current value
-
-=== J-20260614-100000-028 ===
-TYPE: AGENT_DECISION
-SPEC: S-DEMO-01.05
-STATUS: COMPLETED
-PARENT: J-20260614-100000-005
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-005
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Selected read-value task T-DEMO-01-005.
-
-=== J-20260614-100000-029 ===
-TYPE: RED
-SPEC: S-DEMO-01.05
-STATUS: COMPLETED
-PARENT: J-20260614-100000-028
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-005
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Get-value test written and fails.
-
-=== J-20260614-100000-030 ===
-TYPE: RED_REVIEW
-SPEC: S-DEMO-01.05
-STATUS: PASS
-PARENT: J-20260614-100000-029
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-005
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Get-value RED valid.
-
-=== J-20260614-100000-031 ===
-TYPE: GREEN
-SPEC: S-DEMO-01.05
-STATUS: COMPLETED
-PARENT: J-20260614-100000-030
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-005
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Get-value implementation complete.
-
-=== J-20260614-100000-032 ===
-TYPE: GREEN_REVIEW
-SPEC: S-DEMO-01.05
-STATUS: PASS
-PARENT: J-20260614-100000-031
-ROOT: J-20260614-100000-001
-TASK_ID: T-DEMO-01-005
-PARENT_TASK_ID: T-DEMO-01-000
-ROOT_USER_INPUT_ID: T-DEMO-01-000
-DETAIL: Get-value test passes. T-DEMO-01-005 complete.
-
-### Convergence -- All Tasks Complete
-
-All five task branches have reached GREEN_REVIEW(PASS):
-
-| Task | GREEN_REVIEW JID |
-|------|-----------------|
-| T-DEMO-01-004 | J-20260614-100000-010 |
-| T-DEMO-01-001 | J-20260614-100000-017 |
-| T-DEMO-01-002 | J-20260614-100000-022 |
-| T-DEMO-01-003 | J-20260614-100000-027 |
-| T-DEMO-01-005 | J-20260614-100000-032 |
-
-Create the convergence barrier:
-
-=== J-20260614-100000-033 ===
 TYPE: TASKS_COMPLETE
 SPEC: S-DEMO-01
 STATUS: COMPLETED
 PARENT: J-20260614-100000-005
 ROOT: J-20260614-100000-001
-DEPENDS: J-20260614-100000-010, J-20260614-100000-017, J-20260614-100000-022, J-20260614-100000-027, J-20260614-100000-032
-DETAIL: All 5 task branches complete.
-
-=== J-20260614-100000-034 ===
-TYPE: REGRESSION
-SPEC: S-DEMO-01
-STATUS: COMPLETED
-PARENT: J-20260614-100000-033
-ROOT: J-20260614-100000-001
-DETAIL: Full regression -- all 5 task tests pass.
-
-=== J-20260614-100000-035 ===
-TYPE: REGRESSION_REVIEW
-SPEC: S-DEMO-01
-STATUS: PASS
-PARENT: J-20260614-100000-034
-ROOT: J-20260614-100000-001
-DETAIL: Regression evidence accepted.
-
-Commit journal:
-
-journal: record convergence, regression, and regression review for S-DEMO-01
-
-
-## Stage 5 -- Final Feature Review
-
-Action:
-
-After all tasks are complete, run full verification.
-
-Checks:
-
-- all acceptance criteria are covered
-- every spec ID has at least one task
-- every task has a test
-- every RED was reviewed
-- every GREEN was reviewed
-- every refactor was reviewed or explicitly skipped
-- every journal update was committed
-- every artifact has a commit hash
-- all tests pass
-- traceability works from spec to journal to task to test to implementation
+DEPENDS: J-20260614-100000-010, J-20260614-100000-015
+DETAIL: Both task branches reached GREEN_REVIEW with PASS.
+```
 
 Commit:
 
-verification: add final counter API completion evidence
+```text
+journal: record completion of Counter API task branches
+```
 
-Review request:
+---
 
-Review final feature commit <hash>.
+## 7. Regression
 
-Scope:
+Run all tests:
 
-- Does implementation satisfy S-DEMO-01?
-- Is traceability complete?
-- Are all journal records present?
-- Are commit boundaries clean?
-- Is there any unreviewed artifact?
+```text
+pytest tests/ -v
+```
 
 Expected result:
 
-PASS.
+```text
+2 passed
+```
 
-Journal update:
+Record regression:
 
-=== J-20260614-100000-036 ===
+```text
+=== J-20260614-100000-017 ===
+TYPE: REGRESSION
+SPEC: S-DEMO-01
+STATUS: COMPLETED
+PARENT: J-20260614-100000-016
+ROOT: J-20260614-100000-001
+DETAIL: Full Counter API test suite passes.
+```
+
+Review the regression evidence.
+
+Record the review:
+
+```text
+=== J-20260614-100000-018 ===
+TYPE: REGRESSION_REVIEW
+SPEC: S-DEMO-01
+STATUS: PASS
+PARENT: J-20260614-100000-017
+ROOT: J-20260614-100000-001
+DETAIL: Regression evidence confirms both acceptance criteria remain satisfied. Reviewed commit <hash>.
+```
+
+---
+
+## 8. Final Review
+
+Review the complete committed feature.
+
+Review scope:
+
+- both acceptance criteria are implemented;
+- both task branches have reviewed RED and GREEN stages;
+- all tests pass;
+- journal and commit history are complete;
+- no uncommitted solution artifacts remain.
+
+Record the result:
+
+```text
+=== J-20260614-100000-019 ===
 TYPE: FINAL_REVIEW
 SPEC: S-DEMO-01
 STATUS: PASS
-PARENT: J-20260614-100000-035
+PARENT: J-20260614-100000-018
 ROOT: J-20260614-100000-001
-DETAIL: Full feature review passed. All spec items implemented through committed TDD workflow.
+DETAIL: Final feature review passed. Reviewed commit <hash>.
+```
 
-Commit journal:
+Commit:
 
-journal: record final feature review for S-DEMO-01
+```text
+journal: record final review for S-DEMO-01
+```
 
-## Stage 6 -- Final Done
+---
 
-Journal update:
+## 9. Completion
 
-=== J-20260614-100000-037 ===
+Record pipeline completion:
+
+```text
+=== J-20260614-100000-020 ===
 TYPE: DONE
 SPEC: S-DEMO-01
 STATUS: COMPLETED
-PARENT: J-20260614-100000-036
+PARENT: J-20260614-100000-019
 ROOT: J-20260614-100000-001
-DETAIL: Counter API completed through commit-based spec-driven TDD pipeline.
+DETAIL: Counter API completed through the reviewed spec-driven TDD workflow.
+```
 
-Commit journal:
+Commit:
 
-journal: mark counter API feature complete
+```text
+journal: mark S-DEMO-01 complete
+```
 
-## Traceability Example
+---
 
-Spec:
+## 10. Final Artifacts
 
-S-DEMO-01.04
+The completed example contains:
 
-Task:
-
-T-DEMO-01-004
-
-Test artifact:
-
+```text
+SPEC-DRAFT.md
+TASKS.md
+JOURNAL_SDD_TDD_SKILL.log
 tests/test_counter.py
-
-Implementation artifact:
-
 counter.py
+```
 
-Journal records:
+Final `tests/test_counter.py`:
 
-Search S-DEMO-01.04 in JOURNAL_SDD_TDD_SKILL.log.
+```python
+from counter import Counter
 
-Commits:
 
-Each artifact and each journal update has its own commit.
+def test_new_counter_starts_at_zero():
+    counter = Counter()
 
-Review evidence:
+    assert counter.get_value() == 0
 
-Each reviewed stage references the reviewed commit hash.
 
-## Final Rule
+def test_decrement_does_not_go_below_zero():
+    counter = Counter()
 
-A stage is not complete when the file is edited.
+    counter.decrement()
 
-A stage is complete only when:
+    assert counter.get_value() == 0
+```
 
-1. the artifact exists,
-2. the artifact is committed,
-3. the commit is reviewed,
-4. the review result is written to JOURNAL_SDD_TDD_SKILL.log,
-5. the journal update is committed.
+Final `counter.py`:
 
-That is the contract.
+```python
+class Counter:
+    def __init__(self) -> None:
+        self._value = 0
+
+    def decrement(self) -> None:
+        if self._value > 0:
+            self._value -= 1
+
+    def get_value(self) -> int:
+        return self._value
+```
+
+---
+
+## 11. Traceability
+
+| Requirement | Task | Test | Implementation | Terminal task entry |
+|---|---|---|---|---|
+| `S-DEMO-01.01` | `T-DEMO-01-001` | `test_new_counter_starts_at_zero` | `Counter.__init__`, `Counter.get_value` | `J-20260614-100000-010` |
+| `S-DEMO-01.02` | `T-DEMO-01-002` | `test_decrement_does_not_go_below_zero` | `Counter.decrement` | `J-20260614-100000-015` |
+
+Both tasks trace to:
+
+```text
+ROOT_USER_INPUT_ID: T-DEMO-01-000
+```
+
+All workflow events trace to:
+
+```text
+ROOT: J-20260614-100000-001
+```
