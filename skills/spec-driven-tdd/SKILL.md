@@ -697,29 +697,6 @@ review_red = delegate_task(goal="Verify RED", context=red_context, toolsets=[])
 # ... fresh context again ...
 ```
 
----
-
-## Codex CLI Code Review (additional review)
-
-For external, independent review of the skill or documentation -- use Codex CLI directly:
-
-```bash
-# In the project root with SKILL.md and SPEC-DRAFT.md
-codex exec --skip-git-repo-check --sandbox danger-full-access \
-  "Review the skill SKILL.md against SPEC-DRAFT.md requirements. \
-   Check: journaling section, spec ID hierarchy, traceability, \
-   journal entries in all Phase 3 steps, pitfalls >=12. PASS/FAIL per item."
-```
-
-If the sandbox (bwrap) blocks local files -- pass the content through stdin:
-
-```bash
-cat SKILL.md SPEC-DRAFT.md | codex exec --skip-git-repo-check \
-  --sandbox danger-full-access - "Review..."
-```
-
-> Note: Codex CLI does not support --acp. Use codex exec or codex review --uncommitted. For ACP review -- opencode acp or copilot --acp --stdio.
-
 ## Spec Format Example
 
 > **Full reference:** See [SPEC-EXAMPLE.md](references/SPEC-EXAMPLE.md) for a complete, end-to-end walkthrough of the pipeline (Counter API demo). The examples below are quick inline references.
