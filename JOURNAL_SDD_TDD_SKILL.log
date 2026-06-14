@@ -86,3 +86,11 @@ STATUS: COMPLETED
 PARENT: J-20260614-000840-003
 ROOT: J-20260613-235000-001
 DETAIL: Pipeline complete. SKILL.md v1.3.0 with task naming tree, ROOT/TASK fields, PARENT chain validation.
+
+=== J-20260614-010000-001 ===
+TYPE: USER_INPUT
+SPEC: S-JTT-01
+STATUS: COMPLETED
+PARENT: --
+ROOT: J-20260614-010000-001
+DETAIL: User requires a test tests/test_journal_task_tree.py that validates every task has a traceable PARENT chain to USER_INPUT, no orphans, correct ROOT/TASK fields. Test uses a Tetris SDD scenario as the subject. Full SDD/TDD pipeline with reviewer at every stage.
