@@ -343,7 +343,7 @@ def test_generator_returns_string():
 def test_generator_has_27_entries():
     """S-JTT-01.01: Journal has exactly 27 entries."""
     journal = generate_tetris_journal()
-    count = journal.count("===")
+    count = sum(1 for line in journal.split("\n") if line.startswith("==="))
     assert count == 27, f"Expected 27 entries (=== markers), got {count}"
 
 
