@@ -841,10 +841,9 @@ Tests SHOULD:
 - avoid unnecessary coupling to internal implementation details;
 - avoid mocking internal components when the real behavior can be exercised directly.
 
-A full system end-to-end test MUST be used when it is practical and reliable.
+A full-system end-to-end test MUST be used. Only an end-to-end test proves that the application works from the user’s perspective. Therefore, end-to-end tests MUST cover every user scenario defined in SPEC.md.
 
-When full end-to-end execution is impractical, use the closest stable boundary
-that still proves the required behavior, such as:
+When full end-to-end execution is absolutely impossible, use the closest stable boundary that still proves the required behavior, such as:
 
 - API-level tests;
 - service-level tests;
