@@ -143,6 +143,9 @@ Only the primary agent applies corrections.
 Every behavior that can be verified automatically MUST be implemented through
 a reviewed RED-GREEN cycle.
 
+All code MUST be tested; otherwise, it cannot be considered working code. Therefore, tests MUST be added for all code.
+Tests also MUST NOT pass as false positives. Therefore, the RED test MUST be submitted before the code to prove that the test does not pass without the implementation. For this reason, the RED-GREEN sequence is crucial.
+
 This applies to:
 
 - production code;
