@@ -116,7 +116,7 @@ Input:
 ```json
 {
   "repo_path": "/absolute/path/to/repo",
-  "previous_task_id": "broker-assigned id or null"
+  "previous_task_id": "broker-assigned id returned by the verified task"
 }
 ```
 

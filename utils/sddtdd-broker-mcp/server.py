@@ -8,7 +8,6 @@ as a task broker using the shared SDDTDD process skill plus the broker skill.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import uuid
 from pathlib import Path
@@ -39,7 +38,30 @@ def _git(repo_path: str, *args: str) -> str:
     return result.stdout.strip()
 
 
-def capture_repo_state(repo_path: str) -> dict[str, Any]:
+def _candidate_evidence_paths(journal: str | None, explicit: list[str] | None = None) -> list[str]:
+    """Extract conservative repo-relative evidence path candidates.
+
+    The journal DETAIL field is free text, so this intentionally recognizes only
+    path-like tokens. The broker receives these file contents as evidence context
+    but still decides whether they are sufficient.
+    """
+    candidates: list[str] = []
+    for source in [*(explicit or []), *(journal or "").replace("`", " ").split()]:
+        token = source.strip().strip(",.;:()[]{}<>\"'")
+        if not token or token.startswith("/") or ".." in Path(token).parts:
+            continue
+        if "/" in token or token.endswith((".md", ".log", ".txt", ".json", ".jsonl", ".xml", ".yaml", ".yml")):
+            candidates.append(token)
+    seen: set[str] = set()
+    result: list[str] = []
+    for candidate in candidates:
+        if candidate not in seen:
+            seen.add(candidate)
+            result.append(candidate)
+    return result
+
+
+def capture_repo_state(repo_path: str, explicit_evidence: list[str] | None = None) -> dict[str, Any]:
     path = Path(repo_path).resolve()
     if not path.exists():
         raise RuntimeError(f"repo_path does not exist: {repo_path}")
@@ -52,18 +74,28 @@ def capture_repo_state(repo_path: str) -> dict[str, Any]:
         "files": {},
     }
 
-    for name in [
+    core_files = [
         "JOURNAL_SDD_TDD_SKILL.log",
         "SPEC-DRAFT.md",
         "SPEC.md",
         "ARCHITECTURE.md",
         "TASKS.md",
-    ]:
+    ]
+    for name in core_files:
         file_path = path / name
         if file_path.exists() and file_path.is_file():
             state["files"][name] = file_path.read_text(errors="replace")
         else:
             state["files"][name] = None
+
+    state["evidence_files"] = {}
+    journal = state["files"].get("JOURNAL_SDD_TDD_SKILL.log")
+    for name in _candidate_evidence_paths(journal, explicit_evidence):
+        if name in core_files:
+            continue
+        file_path = path / name
+        if file_path.exists() and file_path.is_file():
+            state["evidence_files"][name] = file_path.read_text(errors="replace")
 
     return state
 
@@ -147,7 +179,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="next_task",
             description="Return the next legal Spec-Driven TDD task after a verified task",
-            inputSchema=_tool_schema(["repo_path"]),
+            inputSchema=_tool_schema(["repo_path", "previous_task_id"]),
         ),
     ]
 
@@ -159,7 +191,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
     request_id = uuid.uuid4().hex
     try:
-        repo_state = capture_repo_state(arguments["repo_path"])
+        explicit_evidence = arguments.get("evidence") if isinstance(arguments.get("evidence"), list) else None
+        repo_state = capture_repo_state(arguments["repo_path"], explicit_evidence)
         prompt = build_broker_prompt(name, arguments, repo_state)
         ctx = app.request_context
         sampling_result = await ctx.session.create_message(
