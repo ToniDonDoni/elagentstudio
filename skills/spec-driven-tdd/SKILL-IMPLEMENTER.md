@@ -158,8 +158,8 @@ work journal entry
    TYPE = the stage the task represents
    STATUS = COMPLETED
 
-independent reviewer verdict
-   TYPE = <review_type>_REVIEW
+independent reviewer verdict (only when the task requires one)
+   TYPE = <review_type>
    STATUS = PASS
    PARENT = work journal entry
 

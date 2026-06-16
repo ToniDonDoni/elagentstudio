@@ -189,12 +189,23 @@ def _commit_journal(tmp_path, text: str) -> None:
     subprocess.run(["git", "commit", "-m", "journal update"], cwd=tmp_path, check=True, capture_output=True)
 
 
+def _head_sha(tmp_path) -> str:
+    out = subprocess.run(
+        ["git", "-C", str(tmp_path), "rev-parse", "HEAD"],
+        capture_output=True, text=True, check=True, timeout=10,
+    )
+    return out.stdout.strip()
+
+
 def test_review_task_pass_when_capture_task_no_reviewer_required(tmp_path):
     tmp_path = _make_repo(tmp_path)
     _commit_journal(
         tmp_path,
         "=== J-1 ===\nTYPE: USER_INPUT\nSTATUS: COMPLETED\nDETAIL: original user request\n",
     )
+    (tmp_path / "SPEC-DRAFT.md").write_text("the original user request")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "draft"], cwd=tmp_path, check=True, capture_output=True)
     result = _check_process_gate(
         repo_path=str(tmp_path),
         task_id="B-000001",
@@ -202,6 +213,7 @@ def test_review_task_pass_when_capture_task_no_reviewer_required(tmp_path):
         review_type=None,
         work_journal_id="J-1",
         evidence={},
+        head_sha_before=_head_sha(tmp_path),
     )
     assert result["status"] == "PASS", result
 
@@ -220,6 +232,7 @@ def test_review_task_fail_when_working_tree_dirty(tmp_path):
         review_type=None,
         work_journal_id="J-1",
         evidence={},
+        head_sha_before=_head_sha(tmp_path),
     )
     assert result["status"] == "FAIL"
     assert any("dirty" in f.lower() for f in result["findings"])
@@ -238,6 +251,7 @@ def test_review_task_fail_when_work_journal_entry_missing(tmp_path):
         review_type=None,
         work_journal_id="J-DOES-NOT-EXIST",
         evidence={},
+        head_sha_before=_head_sha(tmp_path),
     )
     assert result["status"] == "FAIL"
     assert any("work_journal_id" in f for f in result["findings"])
@@ -256,9 +270,35 @@ def test_review_task_fail_when_work_entry_status_not_completed(tmp_path):
         review_type=None,
         work_journal_id="J-1",
         evidence={},
+        head_sha_before=_head_sha(tmp_path),
     )
     assert result["status"] == "FAIL"
     assert any("STATUS" in f and "COMPLETED" in f for f in result["findings"])
+
+
+def test_review_task_fail_when_required_artifact_missing(tmp_path):
+    """Broker fails when the stage-required artifact does not exist
+    in the committed tree, even if the journal is perfect. This
+    catches the 'journal is pretty, artifact evaporated' failure.
+    """
+    tmp_path = _make_repo(tmp_path)
+    _commit_journal(
+        tmp_path,
+        "=== J-1 ===\nTYPE: SPEC_SPEC\nSTATUS: COMPLETED\nPARENT: J-0\nDETAIL: x\n"
+        "\n=== J-2 ===\nTYPE: SPEC_REVIEW\nSTATUS: PASS\nPARENT: J-1\nDETAIL: x\n",
+    )
+    # No SPEC.md committed; broker must reject.
+    result = _check_process_gate(
+        repo_path=str(tmp_path),
+        task_id="B-000003",
+        task_kind="SPEC_SPEC",
+        review_type="SPEC_REVIEW",
+        work_journal_id="J-1",
+        evidence={"review_journal_id": "J-2"},
+        head_sha_before=_head_sha(tmp_path),
+    )
+    assert result["status"] == "FAIL"
+    assert any("SPEC.md" in f and "absent" in f for f in result["findings"])
 
 
 def test_review_task_pass_when_red_review_passes(tmp_path):
@@ -275,6 +315,7 @@ def test_review_task_pass_when_red_review_passes(tmp_path):
         review_type="RED_REVIEW",
         work_journal_id="J-1",
         evidence={"review_journal_id": "J-2"},
+        head_sha_before=_head_sha(tmp_path),
     )
     assert result["status"] == "PASS", result
 
@@ -292,6 +333,7 @@ def test_review_task_fail_when_red_review_missing(tmp_path):
         review_type="RED_REVIEW",
         work_journal_id="J-1",
         evidence={},
+        head_sha_before=_head_sha(tmp_path),
     )
     assert result["status"] == "FAIL"
     assert any("RED_REVIEW" in f for f in result["findings"])
@@ -311,6 +353,7 @@ def test_review_task_fail_when_reviewer_verdict_not_pass(tmp_path):
         review_type="RED_REVIEW",
         work_journal_id="J-1",
         evidence={"review_journal_id": "J-2"},
+        head_sha_before=_head_sha(tmp_path),
     )
     assert result["status"] == "FAIL"
     assert any("STATUS" in f and "PASS" in f for f in result["findings"])
@@ -330,9 +373,61 @@ def test_review_task_fail_when_reviewer_verdict_wrong_type(tmp_path):
         review_type="RED_REVIEW",
         work_journal_id="J-1",
         evidence={"review_journal_id": "J-2"},
+        head_sha_before=_head_sha(tmp_path),
     )
     assert result["status"] == "FAIL"
     assert any("TYPE" in f and "RED_REVIEW" in f for f in result["findings"])
+
+
+def test_review_task_fail_when_reviewer_verdict_descends_from_different_work_entry(tmp_path):
+    """Catches the 'reuse a PASS from a previous task' failure.
+
+    The reviewer verdict must descend from the work_journal_id the
+    implementer just committed, not from any other work entry. If a
+    implementer copies an old PASS and points it at the new work
+    entry, the broker must reject it.
+    """
+    tmp_path = _make_repo(tmp_path)
+    _commit_journal(
+        tmp_path,
+        "=== J-1 ===\nTYPE: RED\nSTATUS: COMPLETED\nPARENT: J-0\nDETAIL: previous red\n"
+        "\n=== J-2 ===\nTYPE: RED_REVIEW\nSTATUS: PASS\nPARENT: J-1\nDETAIL: previous reviewer\n"
+        "\n=== J-3 ===\nTYPE: RED\nSTATUS: COMPLETED\nPARENT: J-2\nDETAIL: current red\n",
+    )
+    # Implementer claims J-3 is the work, J-2 is the reviewer verdict.
+    # The broker must reject because J-2's PARENT is J-1, not J-3.
+    result = _check_process_gate(
+        repo_path=str(tmp_path),
+        task_id="B-000011",
+        task_kind="RED",
+        review_type="RED_REVIEW",
+        work_journal_id="J-3",
+        evidence={"review_journal_id": "J-2"},
+        head_sha_before=_head_sha(tmp_path),
+    )
+    assert result["status"] == "FAIL"
+    assert any("PARENT" in f and "J-1" in f for f in result["findings"])
+
+
+def test_review_task_fail_when_reviewer_verdict_has_no_parent(tmp_path):
+    """A reviewer verdict with no PARENT at all is rejected outright."""
+    tmp_path = _make_repo(tmp_path)
+    _commit_journal(
+        tmp_path,
+        "=== J-1 ===\nTYPE: RED\nSTATUS: COMPLETED\nPARENT: J-0\nDETAIL: x\n"
+        "\n=== J-2 ===\nTYPE: RED_REVIEW\nSTATUS: PASS\nDETAIL: no parent\n",
+    )
+    result = _check_process_gate(
+        repo_path=str(tmp_path),
+        task_id="B-000012",
+        task_kind="RED",
+        review_type="RED_REVIEW",
+        work_journal_id="J-1",
+        evidence={"review_journal_id": "J-2"},
+        head_sha_before=_head_sha(tmp_path),
+    )
+    assert result["status"] == "FAIL"
+    assert any("PARENT" in f and "J-1" in f for f in result["findings"])
 
 
 def test_review_task_fail_when_green_without_prior_red_review(tmp_path):
@@ -349,6 +444,7 @@ def test_review_task_fail_when_green_without_prior_red_review(tmp_path):
         review_type="GREEN_REVIEW",
         work_journal_id="J-1",
         evidence={"review_journal_id": "J-2"},
+        head_sha_before=_head_sha(tmp_path),
     )
     assert result["status"] == "FAIL"
     assert any("RED_REVIEW" in f and "prerequisite" in f.lower() for f in result["findings"])
@@ -370,6 +466,7 @@ def test_review_task_pass_when_green_has_red_review_prerequisite(tmp_path):
         review_type="GREEN_REVIEW",
         work_journal_id="J-3",
         evidence={"review_journal_id": "J-4"},
+        head_sha_before=_head_sha(tmp_path),
     )
     assert result["status"] == "PASS", result
 

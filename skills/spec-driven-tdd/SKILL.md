@@ -96,16 +96,11 @@ process-gate verification; its decision policy lives in
 `SKILL-ORCHESTRATOR.md`. The implementer does not read
 `SKILL-ORCHESTRATOR.md`; the broker does.
 
-The independent reviewer is the same in both modes:
-`mcp_sddtdd_review_review`. There are two independent verifications:
-
-- the independent reviewer evaluates the artifact's correctness and
-  returns `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`;
-- the broker checks the process state: are the right reviewer verdicts
-  in the committed journal in the right order with the right `PARENT`
-  chain. The broker does not re-review the artifact.
-
-These two verifications do not replace each other.
+There are two independent verifications in broker mode. The
+independent reviewer (`mcp_sddtdd_review_review`) checks artifact
+correctness. The broker checks process state. These are separate
+checks, with separate journals, and they do not replace each other.
+The detailed broker checks are defined in `SKILL-ORCHESTRATOR.md`.
 
 ## Roles
 

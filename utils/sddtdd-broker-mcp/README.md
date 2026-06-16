@@ -101,14 +101,29 @@ The response is one of:
 The broker applies these checks in order:
 
 1. Working tree is clean (`git status --porcelain` is empty).
-2. `JOURNAL_SDD_TDD_SKILL.log` exists at `HEAD`.
-3. `work_journal_id` exists in the committed journal.
-4. The work entry has `STATUS: COMPLETED`.
-5. Prerequisite reviewer verdicts exist (`RED_REVIEW: PASS` before
+2. `head_sha_before` is recorded. The broker reads the committed
+   journal from that exact ref for the rest of the call. The
+   implementer cannot commit additional journal entries or verdict
+   JIDs after the broker started verification and then re-ask for
+   a PASS.
+3. Stage-required artifacts exist at `head_sha_before`:
+   `USER_INPUT`/`SPEC_DRAFT` → `SPEC-DRAFT.md`; `SPEC_SPEC` →
+   `SPEC.md`; `ARCHITECTURE` → `ARCHITECTURE.md`; `DECOMPOSE` →
+   `TASKS.md`. Code-producing stages have no broker artifact check.
+4. `JOURNAL_SDD_TDD_SKILL.log` exists at `head_sha_before`.
+5. `work_journal_id` exists in the committed journal.
+6. The work entry has `STATUS: COMPLETED`.
+7. Prerequisite reviewer verdicts exist (`RED_REVIEW: PASS` before
    `GREEN`, `REGRESSION_REVIEW: PASS` before `FINAL`).
-6. When `review_type` is non-null, a reviewer-verdict journal entry
-   with the right `TYPE` and `STATUS: PASS` exists.
-7. The reviewer verdict's `PARENT` resolves in the journal.
+8. When `review_type` is non-null, a reviewer-verdict journal
+   entry with the right `TYPE` and `STATUS: PASS` exists.
+9. The reviewer verdict's `PARENT` equals the `work_journal_id` of
+   this task. The broker rejects verdicts whose `PARENT` points to
+   a different work entry or that have no `PARENT` at all. This
+   catches a implementer that reuses an old `PASS` from a previous
+   task.
+10. The reviewer verdict's `PARENT` is present in the committed
+    journal.
 
 The broker does not check whether the artifact's content is correct,
 idiomatic, or appropriate. That is the reviewer's job.

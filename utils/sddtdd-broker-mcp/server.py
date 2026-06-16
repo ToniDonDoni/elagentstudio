@@ -81,6 +81,19 @@ STAGE_PREREQUISITE_REVIEWS: dict[str, list[str]] = {
     "FINAL": ["REGRESSION_REVIEW"],
 }
 
+# Mapping from a workflow stage to the artifacts that must exist at
+# ``head_sha_before`` for the broker to consider the stage complete.
+# The broker does not re-review the artifact's content — that is the
+# reviewer's job — but it does verify that the artifact that the
+# reviewer allegedly reviewed actually exists in the committed tree.
+STAGE_REQUIRED_ARTIFACTS: dict[str, list[str]] = {
+    "USER_INPUT": ["SPEC-DRAFT.md"],
+    "SPEC_DRAFT": ["SPEC-DRAFT.md"],
+    "SPEC_SPEC": ["SPEC.md"],
+    "ARCHITECTURE": ["ARCHITECTURE.md"],
+    "DECOMPOSE": ["TASKS.md"],
+}
+
 
 # ---------------------------------------------------------------------------
 # Git and journal helpers
@@ -171,14 +184,33 @@ def _parse_journal(text: str) -> list[dict[str, str]]:
     return entries
 
 
-def _committed_journal(repo_path: str) -> str | None:
-    """Return the committed journal text (or None if the file is absent)."""
+def _committed_journal(repo_path: str, ref: str | None = None) -> str | None:
+    """Return the committed journal text at the given ref (or HEAD).
+
+    The broker reads the journal at ``head_sha_before`` (the HEAD the
+    broker observed at the start of ``reviewTask``). The implementer
+    cannot commit additional journal entries after the broker started
+    verification and then re-ask for a PASS.
+    """
+    if ref is None:
+        try:
+            ref = _git(repo_path, "rev-parse", "HEAD")
+        except Exception:
+            return None
+    return _git_show(repo_path, ref, "JOURNAL_SDD_TDD_SKILL.log")
+
+
+def _file_exists_at_ref(repo_path: str, ref: str, file_path: str) -> bool:
     try:
-        head_sha = _git(repo_path, "rev-parse", "HEAD")
+        result = subprocess.run(
+            ["git", "-C", repo_path, "cat-file", "-e", f"{ref}:{file_path}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.returncode == 0
     except Exception:
-        return None
-    content = _git_show(repo_path, head_sha, "JOURNAL_SDD_TDD_SKILL.log")
-    return content
+        return False
 
 
 def _working_tree_dirty(repo_path: str) -> bool:
@@ -294,8 +326,14 @@ def _check_process_gate(
     review_type: str | None,
     work_journal_id: str,
     evidence: dict[str, Any],
+    head_sha_before: str,
 ) -> dict[str, Any]:
     """Run the process-gate checks for the issued task.
+
+    The broker reads the committed journal at ``head_sha_before`` (the
+    HEAD the broker observed when ``reviewTask`` was called). The
+    implementer cannot commit additional journal entries after the
+    broker started verification and then re-ask for a PASS.
 
     Returns a dict with ``status`` in {PASS, FAIL, NEEDS_CLARIFICATION, ERROR}
     and ``findings`` (a list of strings).
@@ -310,11 +348,30 @@ def _check_process_gate(
             ],
         }
 
-    journal_text = _committed_journal(repo_path)
+    if not head_sha_before:
+        return {
+            "status": "ERROR",
+            "findings": ["HEAD is unknown; cannot pin the broker's verification to a commit."],
+        }
+
+    # Required artifacts: the broker verifies the artifact that the
+    # reviewer allegedly reviewed actually exists in the committed
+    # tree. This catches the "journal is pretty, artifact evaporated"
+    # failure.
+    for artifact in STAGE_REQUIRED_ARTIFACTS.get(task_kind, []):
+        if not _file_exists_at_ref(repo_path, head_sha_before, artifact):
+            findings.append(
+                f"required artifact {artifact!r} is absent at HEAD {head_sha_before[:12]}; "
+                f"the broker cannot accept a process-gate PASS for {task_kind} without it."
+            )
+
+    journal_text = _committed_journal(repo_path, head_sha_before)
     if journal_text is None:
         return {
             "status": "ERROR",
-            "findings": ["JOURNAL_SDD_TDD_SKILL.log is absent at HEAD; cannot verify process state."],
+            "findings": [
+                f"JOURNAL_SDD_TDD_SKILL.log is absent at HEAD {head_sha_before[:12]}; cannot verify process state."
+            ],
         }
 
     entries = _parse_journal(journal_text)
@@ -329,7 +386,7 @@ def _check_process_gate(
         return {
             "status": "FAIL",
             "findings": [
-                f"work_journal_id {work_journal_id} not found in committed JOURNAL_SDD_TDD_SKILL.log; "
+                f"work_journal_id {work_journal_id} not found in committed JOURNAL_SDD_TDD_SKILL.log at HEAD {head_sha_before[:12]}; "
                 "the implementer must commit the work journal entry before calling reviewTask."
             ],
         }
@@ -360,7 +417,7 @@ def _check_process_gate(
             review_entry = _find_entry(entries, review_journal_id)
             if review_entry is None:
                 findings.append(
-                    f"review_journal_id {review_journal_id} not found in committed JOURNAL_SDD_TDD_SKILL.log."
+                    f"review_journal_id {review_journal_id} not found in committed JOURNAL_SDD_TDD_SKILL.log at HEAD {head_sha_before[:12]}."
                 )
             else:
                 if review_entry.get("TYPE") != required_review:
@@ -371,11 +428,15 @@ def _check_process_gate(
                     findings.append(
                         f"review_journal_id {review_journal_id} has STATUS {review_entry.get('STATUS')!r}; expected 'PASS'."
                     )
-                # PARENT chain: the reviewer verdict should descend from the work entry
-                # the broker task represents (or from a prior review on the same chain).
-                if review_entry.get("PARENT") and not _find_entry(entries, review_entry["PARENT"]):
+                # Strict binding: the reviewer verdict must descend
+                # from the work_journal_id the implementer just
+                # committed. A verdict that descends from a different
+                # work entry — or has no PARENT — is rejected.
+                if review_entry.get("PARENT") != work_journal_id:
                     findings.append(
-                        f"review_journal_id {review_journal_id} PARENT {review_entry.get('PARENT')!r} not found in the journal."
+                        f"review_journal_id {review_journal_id} has PARENT {review_entry.get('PARENT')!r}; "
+                        f"expected {work_journal_id!r} (the work entry for this broker task). "
+                        "The reviewer verdict must descend from the work entry of the task being verified."
                     )
 
     if findings:
@@ -383,7 +444,7 @@ def _check_process_gate(
     return {
         "status": "PASS",
         "findings": [
-            f"process-gate verification passed for task {task_id} ({task_kind})"
+            f"process-gate verification passed for task {task_id} ({task_kind}) at HEAD {head_sha_before[:12]}"
         ],
     }
 
@@ -598,6 +659,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
                 review_type=arguments.get("review_type"),
                 work_journal_id=arguments.get("work_journal_id", ""),
                 evidence=evidence,
+                head_sha_before=head_sha_before,
             )
             result["request_id"] = request_id
             result["task_id"] = arguments.get("task_id")

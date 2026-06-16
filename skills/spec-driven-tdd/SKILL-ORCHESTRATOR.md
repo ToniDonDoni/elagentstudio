@@ -171,18 +171,18 @@ same procedure the broker enforces.
 The broker does not decide this dynamically. The mapping is fixed by
 this file:
 
-| `task_kind` | required `review_type` | prerequisite reviews |
-|---|---|---|
-| `USER_INPUT` | (none) | — |
-| `SPEC_DRAFT` | (none) | — |
-| `SPEC_SPEC` | `SPEC_REVIEW` | — |
-| `ARCHITECTURE` | `ARCHITECTURE_REVIEW` | `SPEC_REVIEW` |
-| `DECOMPOSE` | `TASK_REVIEW` | `SPEC_REVIEW`, `ARCHITECTURE_REVIEW` |
-| `RED` | `RED_REVIEW` | `SPEC_REVIEW`, `ARCHITECTURE_REVIEW`, `TASK_REVIEW` |
-| `GREEN` | `GREEN_REVIEW` | `RED_REVIEW` (and the chain above) |
-| `REGRESSION` | `REGRESSION_REVIEW` | the per-task chain above |
-| `FINAL` | `FINAL_REVIEW` | `REGRESSION_REVIEW` (and the chain above) |
-| `DONE` | (none) | all of the above |
+| `task_kind` | required `review_type` | prerequisite reviews | required artifacts |
+|---|---|---|---|
+| `USER_INPUT` | (none) | — | `SPEC-DRAFT.md` |
+| `SPEC_DRAFT` | (none) | — | `SPEC-DRAFT.md` |
+| `SPEC_SPEC` | `SPEC_REVIEW` | — | `SPEC.md` |
+| `ARCHITECTURE` | `ARCHITECTURE_REVIEW` | `SPEC_REVIEW` | `ARCHITECTURE.md` |
+| `DECOMPOSE` | `TASK_REVIEW` | `SPEC_REVIEW`, `ARCHITECTURE_REVIEW` | `TASKS.md` |
+| `RED` | `RED_REVIEW` | `SPEC_REVIEW`, `ARCHITECTURE_REVIEW`, `TASK_REVIEW` | — |
+| `GREEN` | `GREEN_REVIEW` | `RED_REVIEW` (and the chain above) | — |
+| `REGRESSION` | `REGRESSION_REVIEW` | the per-task chain above | — |
+| `FINAL` | `FINAL_REVIEW` | `REGRESSION_REVIEW` (and the chain above) | — |
+| `DONE` | (none) | all of the above | — |
 
 `DONE` itself is a journal entry with `STATUS: COMPLETED`. The broker
 treats it as process-complete when all required prior reviews have
@@ -196,31 +196,53 @@ the broker returns `FAIL` with the specific findings.
 1. **Working tree is clean.** The broker only verifies committed
    state. If `git status --porcelain` is non-empty, the broker
    returns `FAIL` and tells the implementer to commit first.
-2. **Committed journal exists.** `JOURNAL_SDD_TDD_SKILL.log` must
-   exist at `HEAD`. If not, the broker returns `ERROR`.
-3. **`work_journal_id` exists in the committed journal.** The
+2. **`head_sha_before` is known.** The broker records the
+   `HEAD` SHA at the start of `reviewTask` and reads the committed
+   journal from that exact commit for the rest of the call. This
+   means the implementer cannot commit additional journal entries
+   or verdict JIDs after the broker started verification and then
+   re-ask for a PASS.
+3. **Stage-required artifacts exist at `head_sha_before`.** For
+   document-producing stages, the broker verifies the artifact the
+   reviewer allegedly reviewed actually exists in the committed tree:
+   - `USER_INPUT` and `SPEC_DRAFT` require `SPEC-DRAFT.md`.
+   - `SPEC_SPEC` requires `SPEC.md`.
+   - `ARCHITECTURE` requires `ARCHITECTURE.md`.
+   - `DECOMPOSE` requires `TASKS.md`.
+   For code-producing stages (`RED`, `GREEN`, `REGRESSION`, `FINAL`,
+   `DONE`) the broker does not check artifact existence — the broker
+   does not decide which code files belong to a task, the reviewer
+   does.
+4. **Committed journal exists at `head_sha_before`.**
+   `JOURNAL_SDD_TDD_SKILL.log` must exist at the recorded ref. If
+   not, the broker returns `ERROR`.
+5. **`work_journal_id` exists in the committed journal.** The
    implementer must commit the work journal entry for the issued
    `task_kind` before calling `reviewTask`. If the JID is not found,
    the broker returns `FAIL`.
-4. **Work entry has `STATUS: COMPLETED`.** Anything else means the
+6. **Work entry has `STATUS: COMPLETED`.** Anything else means the
    implementer is asking the broker to verify work that the
    implementer itself has not marked complete.
-5. **Prerequisite reviewer verdicts exist.** When `task_kind` is
+7. **Prerequisite reviewer verdicts exist.** When `task_kind` is
    `GREEN`, the broker requires `RED_REVIEW: PASS` to already be in
    the committed journal. When `task_kind` is `FINAL`, the broker
    requires `REGRESSION_REVIEW: PASS`. This is the process-order
    check.
-6. **Required reviewer verdict exists and is `PASS`.** When the
+8. **Required reviewer verdict exists and is `PASS`.** When the
    issued `review_type` is non-null, the broker requires a
    reviewer-verdict journal entry whose `TYPE` matches the issued
    `review_type` and whose `STATUS` is `PASS`. The implementer
    supplies the JID of that entry as `evidence.review_journal_id`.
-7. **Reviewer verdict is committed and present at `HEAD`.** The
-   broker reads the committed journal at `HEAD` and looks up the JID
-   there. If the JID is missing, the broker returns `FAIL`.
-8. **Reviewer verdict's `PARENT` resolves in the journal.** The
-   reviewer verdict's `PARENT` JID must be present in the committed
-   journal. This catches a guessed or fabricated `PARENT`.
+9. **Reviewer verdict is bound to the work entry of this task.**
+   The reviewer verdict's `PARENT` JID must equal the
+   `work_journal_id` of the task being verified. The broker rejects
+   reviewer verdicts whose `PARENT` points to a different work entry
+   or that have no `PARENT` at all. This catches a implementer that
+   reuses an old `PASS` verdict from a previous task.
+10. **Reviewer verdict's `PARENT` resolves in the journal.** The
+    reviewer verdict's `PARENT` JID is also required to be present in
+    the committed journal. This catches a guessed or fabricated
+    `PARENT`.
 
 The broker does not check:
 
@@ -228,12 +250,14 @@ The broker does not check:
 - whether the changes are within `allowed_scope` (reviewer's job);
 - whether unrelated work was added (reviewer's job);
 - whether tests are valid RED (reviewer's job);
-- whether architecture decisions are good (reviewer's job).
+- whether architecture decisions are good (reviewer's job);
+- which source files belong to a given code task (reviewer's job).
 
 The broker does check the **process state**: are the right reviewer
-verdicts in the right place with the right status, in the right order,
-with the right parent chain, in the committed journal, on a clean
-working tree.
+verdicts in the right place with the right status, in the right
+order, with the right parent chain pointing at the right work
+entry, in the committed journal at the broker-recorded ref, on a
+clean working tree, with the right artifacts in the tree.
 
 ## Broker access log
 
