@@ -135,7 +135,7 @@ def test_get_next_task_empty_repo_with_user_input_starts_with_user_input(tmp_pat
     state = _read_repo_state(str(tmp_path))
     result = _select_next_task(state, previous_task_id=None, user_input="build a thing")
     assert result["status"] == "TASK"
-    assert result["task_kind"] == "USER_INPUT"
+    assert result["task_kind"] == "USER_INPUT_CAPTURE"
     assert result["independent_review_required"] is False
     assert result["review_type"] is None
 
@@ -209,7 +209,7 @@ def test_review_task_pass_when_capture_task_no_reviewer_required(tmp_path):
     result = _check_process_gate(
         repo_path=str(tmp_path),
         task_id="B-000001",
-        task_kind="USER_INPUT",
+        task_kind="USER_INPUT_CAPTURE",
         review_type=None,
         work_journal_id="J-1",
         evidence={},
@@ -228,7 +228,7 @@ def test_review_task_fail_when_working_tree_dirty(tmp_path):
     result = _check_process_gate(
         repo_path=str(tmp_path),
         task_id="B-000001",
-        task_kind="USER_INPUT",
+        task_kind="USER_INPUT_CAPTURE",
         review_type=None,
         work_journal_id="J-1",
         evidence={},
@@ -247,7 +247,7 @@ def test_review_task_fail_when_work_journal_entry_missing(tmp_path):
     result = _check_process_gate(
         repo_path=str(tmp_path),
         task_id="B-000001",
-        task_kind="USER_INPUT",
+        task_kind="USER_INPUT_CAPTURE",
         review_type=None,
         work_journal_id="J-DOES-NOT-EXIST",
         evidence={},
@@ -266,7 +266,7 @@ def test_review_task_fail_when_work_entry_status_not_completed(tmp_path):
     result = _check_process_gate(
         repo_path=str(tmp_path),
         task_id="B-000001",
-        task_kind="USER_INPUT",
+        task_kind="USER_INPUT_CAPTURE",
         review_type=None,
         work_journal_id="J-1",
         evidence={},

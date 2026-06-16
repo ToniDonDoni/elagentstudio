@@ -78,7 +78,7 @@ the workflow order to execute it. A task carries:
 ```json
 {
   "task_id": "B-000001",
-  "task_kind": "USER_INPUT | SPEC_DRAFT | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | REGRESSION | FINAL | DONE",
+  "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | REGRESSION | FINAL | DONE",
   "instruction": "one concrete instruction in natural language",
   "allowed_scope": ["files, paths, or artifacts the task may touch"],
   "required_evidence": [
@@ -95,7 +95,7 @@ The implementer follows the `instruction` literally, stays within
 runs the independent reviewer when `independent_review_required` is
 true.
 
-Capture tasks (`USER_INPUT`, `SPEC_DRAFT`) carry
+Capture tasks (`USER_INPUT_CAPTURE`) carry
 `independent_review_required: false` and `review_type: null`. They do
 not need an independent reviewer verdict; the broker only checks that
 the work journal entry exists and is committed.
@@ -117,15 +117,15 @@ implementer executes the issued task exactly.
    1. Follow the `instruction` exactly, stay within `allowed_scope`,
       and produce every item in `required_evidence`.
    2. Journal the work as the appropriate `TYPE` for the stage the
-      task represents (`USER_INPUT`, `SPEC_SPEC`, `ARCHITECTURE`,
-      `DECOMPOSE`, `RED`, `GREEN`, `REGRESSION`, `DONE`, etc.) with
-      `STATUS: COMPLETED`. Commit the work and the journal entry.
+      task represents (`USER_INPUT_CAPTURE`, `SPEC_SPEC`,
+      `ARCHITECTURE`, `DECOMPOSE`, `RED`, `GREEN`, `REGRESSION`,
+      `DONE`, etc.) with `STATUS: COMPLETED`. Commit the work and
+      the journal entry.
    3. If `independent_review_required` is true, call
       `mcp_sddtdd_review_review` with the appropriate `review_type`,
       capture the verdict, journal it as the corresponding
       `*_REVIEW` entry with `STATUS: PASS` (or `FAIL` and rework),
-      and commit. Repeat reviewer until `PASS`. Then append
-      `BROKER_TASK_SUBMITTED` and commit.
+      and commit. Repeat reviewer until `PASS`.
    4. Call broker `reviewTask` with the task id, `task_kind`,
       `review_type`, `claimed_result`, `work_journal_id` (the JID of
       the work entry from step 3.2), and `evidence.review_journal_id`
@@ -151,7 +151,7 @@ implementer executes the issued task exactly.
 ### Broker task journal chain
 
 The implementer produces this sequence in the journal for every broker
-task that requires a reviewer verdict:
+task:
 
 ```text
 work journal entry
@@ -163,20 +163,15 @@ independent reviewer verdict (only when the task requires one)
    STATUS = PASS
    PARENT = work journal entry
 
-BROKER_TASK_SUBMITTED
-   STATUS = COMPLETED
-   PARENT = reviewer verdict (or work journal entry when no reviewer)
-   DETAIL = references broker task id, work entry, reviewer verdict
-
 BROKER_TASK_REVIEW
    STATUS = PASS | FAIL | NEEDS_CLARIFICATION | ERROR
-   PARENT = BROKER_TASK_SUBMITTED
+   PARENT = reviewer verdict (or work journal entry when no reviewer)
    DETAIL = broker verdict and findings
 ```
 
-For capture tasks (`USER_INPUT`, `SPEC_DRAFT`) the reviewer-verdict
-entry is omitted; `BROKER_TASK_SUBMITTED.PARENT` is the work journal
-entry directly.
+For capture tasks (`USER_INPUT_CAPTURE`) the reviewer-verdict entry
+is omitted; `BROKER_TASK_REVIEW.PARENT` is the work journal entry
+directly.
 
 The next broker task's work entry has the `BROKER_TASK_REVIEW: PASS`
 entry as its `PARENT`.

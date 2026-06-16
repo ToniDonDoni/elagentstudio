@@ -56,7 +56,7 @@ literally, stays within `allowed_scope`, produces the items in
 `independent_review_required` is true. `task_kind` is the workflow
 stage; `review_type` is the type of independent reviewer verdict the
 implementer must obtain and journal, and is `null` for capture tasks
-(`USER_INPUT`, `SPEC_DRAFT`) that do not require a reviewer.
+that do not require a reviewer (e.g. `USER_INPUT_CAPTURE`).
 
 ### `reviewTask`
 
@@ -86,7 +86,7 @@ correctness — that is the independent reviewer's job.
 }
 ```
 
-For capture tasks (`USER_INPUT`, `SPEC_DRAFT`) the implementer passes
+For capture tasks (`USER_INPUT_CAPTURE`) the implementer passes
 `review_type: null` and omits `evidence.review_journal_id`.
 
 The response is one of:
@@ -107,9 +107,9 @@ The broker applies these checks in order:
    JIDs after the broker started verification and then re-ask for
    a PASS.
 3. Stage-required artifacts exist at `head_sha_before`:
-   `USER_INPUT`/`SPEC_DRAFT` → `SPEC-DRAFT.md`; `SPEC_SPEC` →
-   `SPEC.md`; `ARCHITECTURE` → `ARCHITECTURE.md`; `DECOMPOSE` →
-   `TASKS.md`. Code-producing stages have no broker artifact check.
+   `USER_INPUT_CAPTURE` → `SPEC-DRAFT.md`; `SPEC_SPEC` → `SPEC.md`;
+   `ARCHITECTURE` → `ARCHITECTURE.md`; `DECOMPOSE` → `TASKS.md`.
+   Code-producing stages have no broker artifact check.
 4. `JOURNAL_SDD_TDD_SKILL.log` exists at `head_sha_before`.
 5. `work_journal_id` exists in the committed journal.
 6. The work entry has `STATUS: COMPLETED`.

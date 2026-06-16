@@ -99,8 +99,9 @@ process-gate verification; its decision policy lives in
 There are two independent verifications in broker mode. The
 independent reviewer (`mcp_sddtdd_review_review`) checks artifact
 correctness. The broker checks process state. These are separate
-checks, with separate journals, and they do not replace each other.
-The detailed broker checks are defined in `SKILL-ORCHESTRATOR.md`.
+verification chains, with separate verdict JIDs, and they do not
+replace each other. The detailed broker checks are defined in
+`SKILL-ORCHESTRATOR.md`.
 
 ## Roles
 

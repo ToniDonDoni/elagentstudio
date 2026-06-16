@@ -29,7 +29,7 @@ TODO: Align JOURNAL.md with the new architecture stage.
 - Update the complete journal example to include `ARCHITECTURE` and `ARCHITECTURE_REVIEW`.
 - Do not add new relationship fields. Continue using `JID`, `PARENT`, `ROOT`, `DEPENDS`, and the existing task-tree fields.
 - Store artifact paths, reviewed commit hashes, and review evidence in `DETAIL` unless a separate structured-field change is explicitly approved.
-- DONE: Added TYPE `BROKER_TASK_SUBMITTED` for the implementer's hand-off of a broker-issued task and TYPE `BROKER_TASK_REVIEW` for the broker's verdict. Submission and verdict are separate journal events. See section 10.
+- DONE: Added TYPE `BROKER_TASK_REVIEW` for the broker's process-gate verdict on whether a broker-issued task is process-complete. See section 10.
 
 
 This document defines the required format and content of `JOURNAL_SDD_TDD_SKILL.log`.
@@ -116,8 +116,7 @@ J-20260614-204500-001
 | `REGRESSION` | Regression test run |
 | `REGRESSION_REVIEW` | Regression review result |
 | `FINAL_REVIEW` | Final implementation review result |
-| `BROKER_TASK_SUBMITTED` | Implementer reports a broker-issued task as ready for broker verification |
-| `BROKER_TASK_REVIEW` | MCP task broker verdict on whether a submitted broker task is complete |
+| `BROKER_TASK_REVIEW` | MCP task broker process-gate verdict on whether a broker-issued task is process-complete |
 | `ESCALATION` | Review limit exceeded or user decision required |
 | `DONE` | Pipeline completed |
 
@@ -316,7 +315,6 @@ All entries referring to the same logical task MUST use identical values for the
 | `REGRESSION` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `REGRESSION_REVIEW` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `FINAL_REVIEW` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
-| `BROKER_TASK_SUBMITTED` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `BROKER_TASK_REVIEW` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `ESCALATION` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `DONE` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
@@ -368,7 +366,7 @@ FINAL_REVIEW FAIL → affected task or REGRESSION
 ```
 
 In broker mode, the implementer produces this sequence in the journal
-for every broker task. Capture tasks (`USER_INPUT`, `SPEC_DRAFT`) omit
+for every broker task. Capture tasks (`USER_INPUT_CAPTURE`) omit
 the reviewer verdict step.
 
 ```text
@@ -377,14 +375,9 @@ work journal entry (e.g. SPEC_SPEC, RED, GREEN, REGRESSION, DONE)
    STATUS = COMPLETED
 
 independent reviewer verdict (only when the task requires one)
-   TYPE = <review_type>_REVIEW
+   TYPE = <review_type>
    STATUS = PASS (or FAIL during rework)
    PARENT = work journal entry
-
-BROKER_TASK_SUBMITTED
-   STATUS = COMPLETED
-   PARENT = reviewer verdict (or work journal entry for capture tasks)
-   DETAIL references broker task id, work entry, reviewer verdict
 
 broker.process-gate verification (reviewTask, no journal entry)
 
@@ -395,11 +388,6 @@ BROKER_TASK_REVIEW
    STATUS = NEEDS_CLARIFICATION        → implementer asks the user
    STATUS = ERROR                      → implementer resolves state
 ```
-
-`BROKER_TASK_SUBMITTED` records the hand-off. `BROKER_TASK_REVIEW`
-records the broker's process-gate verdict. The two events are
-distinct because submission and verdict happen at different points in
-time and should be reconstructable independently.
 
 `BROKER_TASK_REVIEW` is the broker's process-gate verdict. It is
 distinct from the reviewer `*_REVIEW` entries, which record the

@@ -60,7 +60,7 @@ BROKER_TOOLS = {"getNextTask", "reviewTask"}
 
 # Stages that have no independent reviewer and therefore require no
 # review verdict in the journal for process-gate verification.
-NO_REVIEW_STAGES = {"USER_INPUT", "PROJECT_INIT", "SPEC_DRAFT", "SPEC_SPEC", "DECOMPOSE"}
+NO_REVIEW_STAGES = {"USER_INPUT_CAPTURE", "PROJECT_INIT", "SPEC_SPEC", "DECOMPOSE"}
 
 # Mapping from a workflow stage to the review_type the implementer must
 # have journaled with STATUS: PASS by the time the broker verifies the
@@ -87,8 +87,7 @@ STAGE_PREREQUISITE_REVIEWS: dict[str, list[str]] = {
 # reviewer's job — but it does verify that the artifact that the
 # reviewer allegedly reviewed actually exists in the committed tree.
 STAGE_REQUIRED_ARTIFACTS: dict[str, list[str]] = {
-    "USER_INPUT": ["SPEC-DRAFT.md"],
-    "SPEC_DRAFT": ["SPEC-DRAFT.md"],
+    "USER_INPUT_CAPTURE": ["SPEC-DRAFT.md"],
     "SPEC_SPEC": ["SPEC.md"],
     "ARCHITECTURE": ["ARCHITECTURE.md"],
     "DECOMPOSE": ["TASKS.md"],
@@ -251,7 +250,7 @@ def _review_task_schema() -> dict[str, Any]:
             "task_id": {"type": "string", "description": "Broker-assigned task id being verified"},
             "task_kind": {
                 "type": "string",
-                "description": "Workflow stage the broker issued. One of USER_INPUT, SPEC_DRAFT, SPEC_SPEC, ARCHITECTURE, DECOMPOSE, RED, GREEN, REGRESSION, FINAL.",
+                "description": "Workflow stage the broker issued. One of USER_INPUT_CAPTURE, SPEC_SPEC, ARCHITECTURE, DECOMPOSE, RED, GREEN, REGRESSION, FINAL.",
             },
             "review_type": {
                 "type": ["string", "null"],
@@ -493,7 +492,7 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
         return {
             "status": "TASK",
             "task_id": "B-000001",
-            "task_kind": "USER_INPUT",
+            "task_kind": "USER_INPUT_CAPTURE",
             "instruction": (
                 "Preserve the original user request as SPEC-DRAFT.md, create the USER_INPUT journal entry, "
                 "and commit both. Do not translate, summarize, or normalize the user request."
@@ -509,7 +508,7 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
         return {
             "status": "TASK",
             "task_id": "B-000002",
-            "task_kind": "USER_INPUT",
+            "task_kind": "USER_INPUT_CAPTURE",
             "instruction": "The committed journal lacks a USER_INPUT entry. Create the USER_INPUT journal entry and commit it.",
             "allowed_scope": ["JOURNAL_SDD_TDD_SKILL.log"],
             "required_evidence": ["USER_INPUT journal JID"],

@@ -69,7 +69,7 @@ broker returns one of three shapes:
 {
   "status": "TASK",
   "task_id": "B-000001",
-  "task_kind": "USER_INPUT | SPEC_DRAFT | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | REGRESSION | FINAL | DONE",
+  "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | REGRESSION | FINAL | DONE",
   "instruction": "one concrete instruction in natural language",
   "allowed_scope": ["files, paths, or artifacts the task may touch"],
   "required_evidence": [
@@ -86,7 +86,7 @@ broker returns one of three shapes:
 execute. `review_type` is the type of independent reviewer verdict the
 implementer must obtain and journal; it is `null` (or absent) when the
 task does not require independent review, e.g. capture tasks for
-`USER_INPUT` or `SPEC-DRAFT`.
+`USER_INPUT_CAPTURE`.
 
 ### `reviewTask`
 
@@ -143,8 +143,7 @@ are journaled and committed.
 The order is:
 
 ```text
-USER_INPUT
-→ SPEC-DRAFT (capture; no reviewer)
+USER_INPUT_CAPTURE (no reviewer; creates SPEC-DRAFT.md and the USER_INPUT journal entry)
 → SPEC_SPEC
 → SPEC_REVIEW          (independent reviewer)
 → ARCHITECTURE
@@ -159,7 +158,7 @@ USER_INPUT
 → DONE
 ```
 
-Capture tasks (`USER_INPUT`, `SPEC-DRAFT`) are exempt from
+Capture tasks (`USER_INPUT_CAPTURE`) are exempt from
 `independent_review_required`. For those, `review_type` is `null` and
 the broker does not require a reviewer verdict.
 
@@ -173,8 +172,7 @@ this file:
 
 | `task_kind` | required `review_type` | prerequisite reviews | required artifacts |
 |---|---|---|---|
-| `USER_INPUT` | (none) | — | `SPEC-DRAFT.md` |
-| `SPEC_DRAFT` | (none) | — | `SPEC-DRAFT.md` |
+| `USER_INPUT_CAPTURE` | (none) | — | `SPEC-DRAFT.md` |
 | `SPEC_SPEC` | `SPEC_REVIEW` | — | `SPEC.md` |
 | `ARCHITECTURE` | `ARCHITECTURE_REVIEW` | `SPEC_REVIEW` | `ARCHITECTURE.md` |
 | `DECOMPOSE` | `TASK_REVIEW` | `SPEC_REVIEW`, `ARCHITECTURE_REVIEW` | `TASKS.md` |
@@ -205,7 +203,7 @@ the broker returns `FAIL` with the specific findings.
 3. **Stage-required artifacts exist at `head_sha_before`.** For
    document-producing stages, the broker verifies the artifact the
    reviewer allegedly reviewed actually exists in the committed tree:
-   - `USER_INPUT` and `SPEC_DRAFT` require `SPEC-DRAFT.md`.
+   - `USER_INPUT_CAPTURE` requires `SPEC-DRAFT.md`.
    - `SPEC_SPEC` requires `SPEC.md`.
    - `ARCHITECTURE` requires `ARCHITECTURE.md`.
    - `DECOMPOSE` requires `TASKS.md`.
@@ -311,8 +309,7 @@ need to look at this log; the broker uses it for investigation.
 - [ ] `TASK` carries `task_id`, `task_kind`, `instruction`,
       `allowed_scope`, `required_evidence`,
       `independent_review_required`, `review_type`.
-- [ ] `review_type` is `null` for capture tasks (`USER_INPUT`,
-      `SPEC_DRAFT`).
+- [ ] `review_type` is `null` for capture tasks (`USER_INPUT_CAPTURE`).
 - [ ] The emitted task is the earliest unmet mandatory workflow
       condition.
 - [ ] No task authorizes work based on uncommitted or unjournaled

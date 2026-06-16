@@ -303,7 +303,7 @@ Record the review:
 
 When the implementer runs in broker mode, the implementer first
 journals the work and obtains the independent reviewer verdict, then
-hands off to the broker.
+asks the broker to verify the task.
 
 Order of journal entries for one broker task that requires a reviewer
 verdict:
@@ -311,7 +311,6 @@ verdict:
 ```text
 work journal entry                       (STATUS: COMPLETED)
   → reviewer verdict                     (STATUS: PASS, PARENT = work)
-  → BROKER_TASK_SUBMITTED                (PARENT = reviewer verdict)
   → broker process-gate verification     (no journal entry; reviewTask)
   → BROKER_TASK_REVIEW                   (STATUS: PASS | FAIL | ...)
 ```
@@ -351,23 +350,10 @@ flags that the work journal entry has `STATUS: PENDING` instead of
 
 ```text
 === J-20260614-100000-010 ===
-|TYPE: BROKER_TASK_SUBMITTED
-|SPEC: S-DEMO-01.01
-|STATUS: COMPLETED
-|PARENT: J-20260614-100000-009
-|ROOT: J-20260614-100000-001
-|TASK_ID: T-DEMO-01-001
-|PARENT_TASK_ID: T-DEMO-01-000
-|ROOT_USER_INPUT_ID: T-DEMO-01-000
-|DETAIL: Submitting broker task B-000003. Work: J-20260614-100000-008. Reviewer: J-20260614-100000-009.
-```
-
-```text
-=== J-20260614-100000-011 ===
 |TYPE: BROKER_TASK_REVIEW
 |SPEC: S-DEMO-01.01
 |STATUS: FAIL
-|PARENT: J-20260614-100000-010
+|PARENT: J-20260614-100000-009
 |ROOT: J-20260614-100000-001
 |TASK_ID: T-DEMO-01-001
 |PARENT_TASK_ID: T-DEMO-01-000
@@ -375,28 +361,14 @@ flags that the work journal entry has `STATUS: PENDING` instead of
 |DETAIL: BROKER_TASK_REVIEW FAIL for B-000003: work_journal_id J-20260614-100000-008 has STATUS 'PENDING'; expected 'COMPLETED'.
 ```
 
-Implementer fixes the work entry, commits, re-records
-`BROKER_TASK_SUBMITTED` for the rework, and re-asks the broker:
+Implementer fixes the work entry, commits, and re-asks the broker:
 
 ```text
-=== J-20260614-100000-012 ===
-|TYPE: BROKER_TASK_SUBMITTED
-|SPEC: S-DEMO-01.01
-|STATUS: COMPLETED
-|PARENT: J-20260614-100000-011
-|ROOT: J-20260614-100000-001
-|TASK_ID: T-DEMO-01-001
-|PARENT_TASK_ID: T-DEMO-01-000
-|ROOT_USER_INPUT_ID: T-DEMO-01-000
-|DETAIL: Resubmitting broker task B-000003 after broker FAIL. Work: J-20260614-100000-008 (corrected). Reviewer: J-20260614-100000-009.
-```
-
-```text
-=== J-20260614-100000-013 ===
+=== J-20260614-100000-011 ===
 |TYPE: BROKER_TASK_REVIEW
 |SPEC: S-DEMO-01.01
 |STATUS: PASS
-|PARENT: J-20260614-100000-012
+|PARENT: J-20260614-100000-009
 |ROOT: J-20260614-100000-001
 |TASK_ID: T-DEMO-01-001
 |PARENT_TASK_ID: T-DEMO-01-000
@@ -404,9 +376,9 @@ Implementer fixes the work entry, commits, re-records
 |DETAIL: BROKER_TASK_REVIEW PASS for B-000003: work entry STATUS: COMPLETED, RED_REVIEW: PASS present and PARENT chain valid. Reviewed commit <hash>.
 ```
 
-For capture tasks (`USER_INPUT`, `SPEC_DRAFT`) the reviewer-verdict
-step is omitted; `BROKER_TASK_SUBMITTED` descends directly from the
-work journal entry.
+For capture tasks (`USER_INPUT_CAPTURE`) the reviewer-verdict step
+is omitted; `BROKER_TASK_REVIEW.PARENT` is the work journal entry
+directly.
 
 Only after `BROKER_TASK_REVIEW: PASS` may the implementer call
 `getNextTask` for the next step.
