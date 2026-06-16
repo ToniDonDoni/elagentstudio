@@ -6,6 +6,8 @@ from server import (
     BROKER_TOOLS,
     _append_broker_event,
     _candidate_evidence_paths,
+    _missing_skill_pointers,
+    _resolve_skill_path,
     _verify_get_next_task_gate,
     app,
     build_broker_prompt,
@@ -13,6 +15,18 @@ from server import (
     list_tools,
     parse_json_response,
 )
+
+
+SKILL_POINTERS = {
+    "process_skill": "spec-driven-tdd",
+    "implementer_skill": "skills/spec-driven-tdd/SKILL-IMPLEMENTER.md",
+    "broker_skill": "skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md",
+    "instruction": (
+        "Read the broker skill I gave you. You are the broker. "
+        "Act according to it. Use the spec-driven-tdd process skill and this "
+        "orchestrator role file to decide. Do not implement, review, or edit files."
+    ),
+}
 
 
 def test_server_name():
@@ -30,6 +44,17 @@ def test_broker_tool_names():
     names = {tool.name for tool in tool_defs}
     assert names == {"init", "getNextTask", "reviewTask"}
     assert names == BROKER_TOOLS
+
+
+def test_schemas_require_implementer_tells_broker_who_it_is():
+    """Every tool schema must require process_skill, implementer_skill,
+    broker_skill, and instruction. This is how the broker knows it is the
+    broker: the implementer hands it the role file and the instruction."""
+    tool_defs = asyncio.run(list_tools())
+    for tool in tool_defs:
+        required = tool.inputSchema["required"]
+        for field in ("process_skill", "implementer_skill", "broker_skill", "instruction"):
+            assert field in required, f"{tool.name} schema missing required field {field}"
 
 
 def test_get_next_task_schema_optional_previous_task_id():
@@ -51,7 +76,9 @@ def test_review_task_schema_requires_task_id():
 def test_init_schema_requires_user_input():
     tool_defs = asyncio.run(list_tools())
     init_tool = [tool for tool in tool_defs if tool.name == "init"][0]
-    assert init_tool.inputSchema["required"] == ["repo_path", "user_input"]
+    required = set(init_tool.inputSchema["required"])
+    assert "repo_path" in required
+    assert "user_input" in required
 
 
 def test_parse_json_response_plain_object():
@@ -64,16 +91,48 @@ def test_parse_json_response_invalid_returns_error():
     assert "raw_response" in result
 
 
-def test_build_broker_prompt_contains_skills_and_repo_state():
+def test_build_broker_prompt_uses_implementer_supplied_skills():
+    """The prompt must literally contain the role-assignment text and the
+    process + broker skill contents the implementer passed in. The presence
+    of 'You are the broker' is how the broker recognizes its role."""
     prompt = build_broker_prompt(
         "getNextTask",
-        {"repo_path": "/tmp/repo"},
+        {"repo_path": "/tmp/repo", **SKILL_POINTERS},
         {"repo_path": "/tmp/repo", "head_sha": "abc", "files": {"JOURNAL_SDD_TDD_SKILL.log": ""}},
+        process_skill_path=__import__("server").DEFAULT_PROCESS_SKILL,
+        broker_skill_path=__import__("server").DEFAULT_ORCHESTRATOR_ROLE,
+        implementer_skill_path=__import__("server").DEFAULT_PROCESS_SKILL.parent / "SKILL-IMPLEMENTER.md",
+        instruction=SKILL_POINTERS["instruction"],
     )
+    assert "You are the broker" in prompt
     assert "spec-driven-tdd" in prompt
     assert "SKILL-ORCHESTRATOR" in prompt
     assert "getNextTask" in prompt
     assert "JOURNAL_SDD_TDD_SKILL.log" in prompt
+    assert SKILL_POINTERS["broker_skill"] in prompt
+    assert SKILL_POINTERS["process_skill"] in prompt
+
+
+def test_missing_skill_pointers_flags_each_missing_field():
+    missing = _missing_skill_pointers({"repo_path": "/tmp/repo"})
+    assert set(missing) == {"process_skill", "implementer_skill", "broker_skill", "instruction"}
+
+    missing = _missing_skill_pointers({"repo_path": "/tmp/repo", **{k: "x" for k in SKILL_POINTERS}})
+    assert missing == []
+
+
+def test_resolve_skill_path_relative_to_repo_root(tmp_path):
+    skill = tmp_path / "SKILL-ORCHESTRATOR.md"
+    skill.write_text("# broker")
+    resolved = _resolve_skill_path(tmp_path, "SKILL-ORCHESTRATOR.md", default=tmp_path / "missing.md")
+    assert resolved == skill.resolve()
+
+
+def test_resolve_skill_path_missing_raises(tmp_path):
+    import pytest
+
+    with pytest.raises(FileNotFoundError):
+        _resolve_skill_path(tmp_path, "does-not-exist.md", default=tmp_path / "missing.md")
 
 
 def test_candidate_evidence_paths_from_journal_and_explicit():

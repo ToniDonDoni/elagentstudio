@@ -8,6 +8,12 @@ in-folder orchestrator role file, then samples the LLM to make the decision.
 
 The orchestrator role file is the source of truth for the workflow order and
 review rules. The implementer only needs to know the two decision tools.
+
+The implementer tells the broker who it is on every call: it passes the
+``process_skill``, ``implementer_skill``, ``broker_skill`` file paths and a
+plain ``instruction`` such as "Read the broker skill I gave you. You are the
+broker." The broker loads the files the implementer names and uses them to
+decide.
 """
 
 from __future__ import annotations
@@ -26,11 +32,19 @@ from mcp.server.stdio import stdio_server
 
 app = mcp_server.Server("sddtdd-broker-mcp")
 
+# Fallback skill paths used only when the implementer does not pass
+# ``process_skill`` / ``broker_skill``. Real calls always pass them.
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PROCESS_SKILL = REPO_ROOT / "skills" / "spec-driven-tdd" / "SKILL.md"
-ORCHESTRATOR_ROLE = REPO_ROOT / "skills" / "spec-driven-tdd" / "SKILL-ORCHESTRATOR.md"
+DEFAULT_PROCESS_SKILL = REPO_ROOT / "skills" / "spec-driven-tdd" / "SKILL.md"
+DEFAULT_ORCHESTRATOR_ROLE = REPO_ROOT / "skills" / "spec-driven-tdd" / "SKILL-ORCHESTRATOR.md"
 
 BROKER_TOOLS = {"init", "getNextTask", "reviewTask"}
+
+DEFAULT_INSTRUCTION = (
+    "Read the broker skill I gave you. You are the broker. "
+    "Act according to it. Use the spec-driven-tdd process skill and this "
+    "orchestrator role file to decide. Do not implement, review, or edit files."
+)
 
 
 def _git(repo_path: str, *args: str) -> str:
@@ -161,20 +175,59 @@ def _read_skill(path: Path) -> str:
     return path.read_text(errors="replace")
 
 
-def build_broker_prompt(tool_name: str, arguments: dict[str, Any], repo_state: dict[str, Any]) -> str:
+def _resolve_skill_path(repo_root: Path, requested: str | None, default: Path) -> Path:
+    """Resolve a skill path provided by the implementer against the repo root.
+
+    Relative paths are taken as repo-relative. Absolute paths must point inside
+    the repository. Missing files raise ``FileNotFoundError``.
+    """
+    if not requested:
+        return default
+    candidate = Path(requested)
+    if not candidate.is_absolute():
+        candidate = (repo_root / candidate).resolve()
+    if not candidate.exists():
+        raise FileNotFoundError(f"skill file does not exist: {candidate}")
+    return candidate
+
+
+def build_broker_prompt(
+    tool_name: str,
+    arguments: dict[str, Any],
+    repo_state: dict[str, Any],
+    process_skill_path: Path,
+    broker_skill_path: Path,
+    implementer_skill_path: Path,
+    instruction: str,
+) -> str:
     return "\n".join([
-        "You are the SDDTDD MCP task broker/orchestrator.",
-        "Return JSON only. Do not implement, edit files, run tests, or review artifacts.",
-        "Use the orchestrator role file to decide the workflow order and review rules.",
+        "# Implementer instruction (read first)",
+        instruction.strip(),
+        "",
+        "# Role assignment",
+        json.dumps({
+            "role": "broker/orchestrator",
+            "process_skill": str(process_skill_path),
+            "broker_skill": str(broker_skill_path),
+            "implementer_skill": str(implementer_skill_path),
+        }, ensure_ascii=False, indent=2),
+        "",
+        "# How to act",
+        (
+            "You are the SDDTDD MCP task broker/orchestrator. "
+            "Return JSON only. Do not implement, edit files, run tests, or review artifacts. "
+            "Use the orchestrator role file to decide the workflow order and review rules. "
+            "The implementer must not be exposed to the internal stage type."
+        ),
         "",
         "# Tool call",
         json.dumps({"tool": tool_name, "arguments": arguments}, ensure_ascii=False, indent=2),
         "",
-        "# Process skill: spec-driven-tdd",
-        _read_skill(PROCESS_SKILL),
+        f"# Process skill: {process_skill_path.name}",
+        _read_skill(process_skill_path),
         "",
-        "# Orchestrator role: spec-driven-tdd/SKILL-ORCHESTRATOR.md",
-        _read_skill(ORCHESTRATOR_ROLE),
+        f"# Broker/Orchestrator role: {broker_skill_path.name}",
+        _read_skill(broker_skill_path),
         "",
         "# Repository state",
         json.dumps(repo_state, ensure_ascii=False, indent=2),
@@ -200,14 +253,45 @@ def parse_json_response(text: str) -> dict[str, Any]:
     return data
 
 
+def _skill_pointer_properties() -> dict[str, Any]:
+    return {
+        "process_skill": {
+            "type": "string",
+            "description": (
+                "Path to the shared process skill the implementer wants the broker to use "
+                "(e.g. 'spec-driven-tdd' or 'skills/spec-driven-tdd/SKILL.md')"
+            ),
+        },
+        "implementer_skill": {
+            "type": "string",
+            "description": "Path to the implementer role file (skills/spec-driven-tdd/SKILL-IMPLEMENTER.md)",
+        },
+        "broker_skill": {
+            "type": "string",
+            "description": (
+                "Path to the broker/orchestrator role file the implementer wants the broker to act as "
+                "(skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md). The broker loads this file and applies its decision policy."
+            ),
+        },
+        "instruction": {
+            "type": "string",
+            "description": (
+                "Plain natural-language instruction from the implementer. The implementer tells the broker: "
+                "'Read the broker skill I gave you. You are the broker. Act according to it.'"
+            ),
+        },
+    }
+
+
 def _init_schema() -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {
             "repo_path": {"type": "string", "description": "Absolute path to the Git repository"},
             "user_input": {"type": "string", "description": "Original user request or pointer to it"},
+            **_skill_pointer_properties(),
         },
-        "required": ["repo_path", "user_input"],
+        "required": ["repo_path", "user_input", "process_skill", "implementer_skill", "broker_skill", "instruction"],
     }
 
 
@@ -220,8 +304,9 @@ def _get_next_task_schema() -> dict[str, Any]:
                 "type": "string",
                 "description": "Task id returned by a previous getNextTask that passed reviewTask; omit on first call",
             },
+            **_skill_pointer_properties(),
         },
-        "required": ["repo_path"],
+        "required": ["repo_path", "process_skill", "implementer_skill", "broker_skill", "instruction"],
     }
 
 
@@ -237,8 +322,17 @@ def _review_task_schema() -> dict[str, Any]:
                 "items": {"type": "string"},
                 "description": "Commit hashes, journal entries, test commands, review request ids",
             },
+            **_skill_pointer_properties(),
         },
-        "required": ["repo_path", "task_id", "claimed_result"],
+        "required": [
+            "repo_path",
+            "task_id",
+            "claimed_result",
+            "process_skill",
+            "implementer_skill",
+            "broker_skill",
+            "instruction",
+        ],
     }
 
 
@@ -263,6 +357,15 @@ async def list_tools() -> list[types.Tool]:
     ]
 
 
+def _missing_skill_pointers(arguments: dict[str, Any]) -> list[str]:
+    missing: list[str] = []
+    for field in ("process_skill", "implementer_skill", "broker_skill", "instruction"):
+        value = arguments.get(field)
+        if not value or not isinstance(value, str) or not value.strip():
+            missing.append(field)
+    return missing
+
+
 @app.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
     if name not in BROKER_TOOLS:
@@ -270,7 +373,27 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
     request_id = uuid.uuid4().hex
     try:
+        missing_pointers = _missing_skill_pointers(arguments)
+        if missing_pointers:
+            result = {
+                "request_id": request_id,
+                "status": "ERROR",
+                "summary": (
+                    "Implementer did not tell the broker who it is. "
+                    f"Missing required fields: {', '.join(missing_pointers)}. "
+                    "The implementer must pass process_skill, implementer_skill, broker_skill, and an instruction such as: "
+                    "'Read the broker skill I gave you. You are the broker.'"
+                ),
+            }
+            return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+
         repo_path = str(Path(arguments["repo_path"]).resolve())
+        repo_root = Path(repo_path)
+
+        process_skill_path = _resolve_skill_path(repo_root, arguments.get("process_skill"), DEFAULT_PROCESS_SKILL)
+        implementer_skill_path = _resolve_skill_path(repo_root, arguments.get("implementer_skill"), DEFAULT_PROCESS_SKILL.parent / "SKILL-IMPLEMENTER.md")
+        broker_skill_path = _resolve_skill_path(repo_root, arguments.get("broker_skill"), DEFAULT_ORCHESTRATOR_ROLE)
+        instruction = arguments.get("instruction") or DEFAULT_INSTRUCTION
 
         if name == "getNextTask":
             blocked = _verify_get_next_task_gate(repo_path, arguments.get("previous_task_id"))
@@ -280,7 +403,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
         explicit_evidence = arguments.get("evidence") if isinstance(arguments.get("evidence"), list) else None
         repo_state = capture_repo_state(repo_path, explicit_evidence)
-        prompt = build_broker_prompt(name, arguments, repo_state)
+        prompt = build_broker_prompt(
+            name,
+            arguments,
+            repo_state,
+            process_skill_path,
+            broker_skill_path,
+            implementer_skill_path,
+            instruction,
+        )
         ctx = app.request_context
         sampling_result = await ctx.session.create_message(
             messages=[
@@ -321,7 +452,7 @@ async def main():
             write_stream,
             InitializationOptions(
                 server_name="sddtdd-broker-mcp",
-                server_version="1.1.0",
+                server_version="1.2.0",
                 capabilities=types.ServerCapabilities(),
             ),
         )

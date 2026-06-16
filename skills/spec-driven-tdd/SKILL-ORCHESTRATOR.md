@@ -25,6 +25,28 @@ The orchestrator is a state-machine gate over the Spec-Driven TDD workflow. It r
 
 The orchestrator does not implement, review, edit files, run tests, or update the journal. The only thing it does is read state and emit structured decisions for the implementer.
 
+## How the broker knows it is the broker
+
+The implementer hands this file to the broker MCP server on every call as
+the `broker_skill` argument, together with a plain instruction such as:
+
+```text
+Read the broker skill I gave you. You are the broker. Act according to it.
+Use the spec-driven-tdd process skill and this orchestrator role file to
+decide. Do not implement, review, or edit files.
+```
+
+When the broker MCP server receives a call, it loads:
+
+- the `process_skill` file (the shared `spec-driven-tdd` skill);
+- the `broker_skill` file (this file);
+- the current committed repository state.
+
+The presence of this `SKILL-ORCHESTRATOR.md` as `broker_skill` is what tells
+the broker it is acting as the orchestrator, and what tells it to apply the
+workflow order, the review rules, and the decision policy defined here.
+The implementer has no other way to switch the broker into this role.
+
 ## Inputs the orchestrator must read
 
 For every decision the orchestrator inspects the current committed state:

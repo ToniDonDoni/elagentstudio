@@ -10,6 +10,27 @@ The orchestrator role file (`skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md`)
 is the source of truth for the workflow order and the review rules. The
 implementer only needs the two decision tools.
 
+## How the broker knows it is the broker
+
+The implementer tells the broker on every call by passing four required
+arguments:
+
+- `process_skill` — the shared process skill the broker should use.
+- `implementer_skill` — the implementer role file.
+- `broker_skill` — the broker/orchestrator role file.
+- `instruction` — a plain natural-language instruction such as:
+
+```text
+Read the broker skill I gave you. You are the broker. Act according to it.
+Use the spec-driven-tdd process skill and this orchestrator role file to
+decide. Do not implement, review, or edit files.
+```
+
+The broker loads the files the implementer names and uses them. If any of
+the four fields is missing, the broker returns `ERROR` immediately without
+sampling, so the implementer cannot accidentally run a brokered workflow
+without first identifying the broker role.
+
 ## Tools
 
 ### `init`
@@ -19,7 +40,11 @@ Start or resume brokered work for a repository.
 ```json
 {
   "repo_path": "/path/to/project",
-  "user_input": "original user request"
+  "user_input": "original user request",
+  "process_skill": "spec-driven-tdd",
+  "implementer_skill": "skills/spec-driven-tdd/SKILL-IMPLEMENTER.md",
+  "broker_skill": "skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md",
+  "instruction": "Read the broker skill I gave you. You are the broker. ..."
 }
 ```
 
@@ -30,7 +55,11 @@ Ask the orchestrator for the next task, or for `complete` / `blocked`.
 ```json
 {
   "repo_path": "/path/to/project",
-  "previous_task_id": "B-000001"
+  "previous_task_id": "B-000001",
+  "process_skill": "spec-driven-tdd",
+  "implementer_skill": "skills/spec-driven-tdd/SKILL-IMPLEMENTER.md",
+  "broker_skill": "skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md",
+  "instruction": "Read the broker skill I gave you. You are the broker. ..."
 }
 ```
 
@@ -53,7 +82,11 @@ Ask the orchestrator to verify that the current task is genuinely complete.
   "repo_path": "/path/to/project",
   "task_id": "B-000001",
   "claimed_result": "SPEC.md committed and journaled",
-  "evidence": ["commit abc123", "J-20260616-010203-002"]
+  "evidence": ["commit abc123", "J-20260616-010203-002"],
+  "process_skill": "spec-driven-tdd",
+  "implementer_skill": "skills/spec-driven-tdd/SKILL-IMPLEMENTER.md",
+  "broker_skill": "skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md",
+  "instruction": "Read the broker skill I gave you. You are the broker. ..."
 }
 ```
 
