@@ -5,28 +5,15 @@ import subprocess
 from server import (
     BROKER_TOOLS,
     _append_broker_event,
+    _broker_log_path,
     _candidate_evidence_paths,
-    _missing_skill_pointers,
-    _resolve_skill_path,
-    _verify_get_next_task_gate,
+    _normalize_evidence,
     app,
     build_broker_prompt,
     capture_repo_state,
     list_tools,
     parse_json_response,
 )
-
-
-SKILL_POINTERS = {
-    "process_skill": "spec-driven-tdd",
-    "implementer_skill": "skills/spec-driven-tdd/SKILL-IMPLEMENTER.md",
-    "broker_skill": "skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md",
-    "instruction": (
-        "Read the broker skill I gave you. You are the broker. "
-        "Act according to it. Use the spec-driven-tdd process skill and this "
-        "orchestrator role file to decide. Do not implement, review, or edit files."
-    ),
-}
 
 
 def test_server_name():
@@ -46,31 +33,38 @@ def test_broker_tool_names():
     assert names == BROKER_TOOLS
 
 
-def test_schemas_require_implementer_tells_broker_who_it_is():
-    """Every tool schema must require process_skill, implementer_skill,
-    broker_skill, and instruction. This is how the broker knows it is the
-    broker: the implementer hands it the role file and the instruction."""
+def test_schemas_do_not_require_skill_pointer_fields():
+    """Implementer no longer hands the broker role files on every call. The
+    broker is configured with the process skill and the orchestrator role at
+    startup."""
     tool_defs = asyncio.run(list_tools())
     for tool in tool_defs:
         required = tool.inputSchema["required"]
         for field in ("process_skill", "implementer_skill", "broker_skill", "instruction"):
-            assert field in required, f"{tool.name} schema missing required field {field}"
+            assert field not in required, (
+                f"{tool.name} schema still requires {field}; "
+                "the broker is configured with the role files at startup, not per call"
+            )
 
 
 def test_get_next_task_schema_optional_previous_task_id():
     tool_defs = asyncio.run(list_tools())
     next_tool = [tool for tool in tool_defs if tool.name == "getNextTask"][0]
-    # previous_task_id is optional; the implementer is allowed to omit it on the first call.
     assert "previous_task_id" not in next_tool.inputSchema["required"]
     assert "repo_path" in next_tool.inputSchema["required"]
 
 
-def test_review_task_schema_requires_task_id():
+def test_review_task_schema_requires_task_id_and_accepts_structured_evidence():
     tool_defs = asyncio.run(list_tools())
     review_tool = [tool for tool in tool_defs if tool.name == "reviewTask"][0]
-    assert "repo_path" in review_tool.inputSchema["required"]
-    assert "task_id" in review_tool.inputSchema["required"]
-    assert "claimed_result" in review_tool.inputSchema["required"]
+    assert set(review_tool.inputSchema["required"]) == {"repo_path", "task_id", "claimed_result"}
+    evidence_schema = review_tool.inputSchema["properties"]["evidence"]
+    assert evidence_schema["type"] == "object"
+    assert "commits" in evidence_schema["properties"]
+    assert "journal_ids" in evidence_schema["properties"]
+    assert "review_request_id" in evidence_schema["properties"]
+    assert "test_commands" in evidence_schema["properties"]
+    assert "files" in evidence_schema["properties"]
 
 
 def test_init_schema_requires_user_input():
@@ -91,48 +85,52 @@ def test_parse_json_response_invalid_returns_error():
     assert "raw_response" in result
 
 
-def test_build_broker_prompt_uses_implementer_supplied_skills():
-    """The prompt must literally contain the role-assignment text and the
-    process + broker skill contents the implementer passed in. The presence
-    of 'You are the broker' is how the broker recognizes its role."""
+def test_build_broker_prompt_includes_process_orchestrator_and_stages():
     prompt = build_broker_prompt(
         "getNextTask",
-        {"repo_path": "/tmp/repo", **SKILL_POINTERS},
+        {"repo_path": "/tmp/repo"},
         {"repo_path": "/tmp/repo", "head_sha": "abc", "files": {"JOURNAL_SDD_TDD_SKILL.log": ""}},
-        process_skill_path=__import__("server").DEFAULT_PROCESS_SKILL,
-        broker_skill_path=__import__("server").DEFAULT_ORCHESTRATOR_ROLE,
-        implementer_skill_path=__import__("server").DEFAULT_PROCESS_SKILL.parent / "SKILL-IMPLEMENTER.md",
-        instruction=SKILL_POINTERS["instruction"],
     )
-    assert "You are the broker" in prompt
     assert "spec-driven-tdd" in prompt
     assert "SKILL-ORCHESTRATOR" in prompt
+    assert "STAGES" in prompt
     assert "getNextTask" in prompt
     assert "JOURNAL_SDD_TDD_SKILL.log" in prompt
-    assert SKILL_POINTERS["broker_skill"] in prompt
-    assert SKILL_POINTERS["process_skill"] in prompt
+    # The broker is told its role in the prompt itself; the broker does not
+    # need the implementer to remind it on every call.
+    assert "task broker/orchestrator" in prompt
+    # The broker is told that semantic verification is its job.
+    assert "broker-level task verification" in prompt
+    # The broker is told to return self-contained tasks with the new fields.
+    assert "allowed_scope" in prompt
+    assert "required_evidence" in prompt
 
 
-def test_missing_skill_pointers_flags_each_missing_field():
-    missing = _missing_skill_pointers({"repo_path": "/tmp/repo"})
-    assert set(missing) == {"process_skill", "implementer_skill", "broker_skill", "instruction"}
+def test_normalize_evidence_accepts_structured_object():
+    """explicit collects path-like tokens (files, commit hashes) for the
+    journal/evidence path helper. journal_ids are identifiers, not paths,
+    so they live in the structured object but not in ``explicit``."""
+    explicit, obj = _normalize_evidence({
+        "evidence": {
+            "commits": ["abc123"],
+            "journal_ids": ["J-20260616-001"],
+            "files": ["src/foo.py"],
+            "test_commands": ["pytest -q"],
+        }
+    })
+    assert "abc123" in explicit
+    assert "src/foo.py" in explicit
+    assert "J-20260616-001" not in explicit
+    assert obj["commits"] == ["abc123"]
+    assert obj["journal_ids"] == ["J-20260616-001"]
+    assert obj["test_commands"] == ["pytest -q"]
 
-    missing = _missing_skill_pointers({"repo_path": "/tmp/repo", **{k: "x" for k in SKILL_POINTERS}})
-    assert missing == []
 
-
-def test_resolve_skill_path_relative_to_repo_root(tmp_path):
-    skill = tmp_path / "SKILL-ORCHESTRATOR.md"
-    skill.write_text("# broker")
-    resolved = _resolve_skill_path(tmp_path, "SKILL-ORCHESTRATOR.md", default=tmp_path / "missing.md")
-    assert resolved == skill.resolve()
-
-
-def test_resolve_skill_path_missing_raises(tmp_path):
-    import pytest
-
-    with pytest.raises(FileNotFoundError):
-        _resolve_skill_path(tmp_path, "does-not-exist.md", default=tmp_path / "missing.md")
+def test_normalize_evidence_accepts_legacy_list():
+    explicit, obj = _normalize_evidence({"evidence": ["evidence/red.txt", "commit abc"]})
+    assert "evidence/red.txt" in explicit
+    assert "commit abc" in explicit
+    assert obj == {}
 
 
 def test_candidate_evidence_paths_from_journal_and_explicit():
@@ -173,35 +171,61 @@ def test_capture_repo_state_reads_committed_head_not_dirty_worktree(tmp_path):
     assert state["files"]["JOURNAL_SDD_TDD_SKILL.log"] == "DETAIL: committed journal\n"
 
 
-def test_get_next_task_gate_no_previous_task_is_allowed(tmp_path):
-    # No previous task: first call to getNextTask is allowed (the gate only fires
-    # when a previous_task_id is given and not yet verified).
-    assert _verify_get_next_task_gate(str(tmp_path), None) is None
-
-
-def test_get_next_task_gate_requires_verified_previous_task(tmp_path):
-    (tmp_path / ".git" / "sddtdd").mkdir(parents=True)
-
-    blocked = _verify_get_next_task_gate(str(tmp_path), "B-000001")
-    assert blocked is not None
-    assert blocked["status"] == "blocked"
-
-    _append_broker_event(str(tmp_path), {
-        "event": "task_verified",
-        "task_id": "B-000001",
-        "status": "PASS",
-    })
-    assert _verify_get_next_task_gate(str(tmp_path), "B-000001") is None
+def test_broker_log_path_is_under_dot_git_sddtdd(tmp_path):
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    path = _broker_log_path(str(tmp_path))
+    assert path == tmp_path / ".git" / "sddtdd" / "broker-access.jsonl"
 
 
 def test_broker_log_event_roundtrip(tmp_path):
-    (tmp_path / ".git" / "sddtdd").mkdir(parents=True)
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
     _append_broker_event(str(tmp_path), {
-        "event": "task_verified",
-        "task_id": "B-000002",
-        "status": "PASS",
+        "event": "task_review_started",
+        "task_id": "B-000001",
+        "head_sha_before": "abc",
+    })
+    _append_broker_event(str(tmp_path), {
+        "event": "task_review_completed",
+        "task_id": "B-000001",
+        "head_sha_before": "abc",
+        "head_sha_after": "def",
+        "status": "FAIL",
+        "findings": ["missing evidence"],
+        "duration_ms": 42,
     })
     log_path = tmp_path / ".git" / "sddtdd" / "broker-access.jsonl"
     lines = log_path.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 1
-    assert json.loads(lines[0])["task_id"] == "B-000002"
+    assert len(lines) == 2
+    started = json.loads(lines[0])
+    completed = json.loads(lines[1])
+    assert started["event"] == "task_review_started"
+    assert started["task_id"] == "B-000001"
+    assert completed["event"] == "task_review_completed"
+    assert completed["status"] == "FAIL"
+    assert completed["findings"] == ["missing evidence"]
+
+
+def test_broker_log_writes_both_started_and_completed_for_every_verdict(tmp_path):
+    """The broker must write task_review_started and task_review_completed
+    for every reviewTask call, not just on PASS. This is what makes
+    investigations possible."""
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    for verdict in ("PASS", "FAIL", "NEEDS_CLARIFICATION", "ERROR"):
+        _append_broker_event(str(tmp_path), {
+            "event": "task_review_started",
+            "task_id": f"B-{verdict}",
+            "head_sha_before": "abc",
+        })
+        _append_broker_event(str(tmp_path), {
+            "event": "task_review_completed",
+            "task_id": f"B-{verdict}",
+            "head_sha_before": "abc",
+            "head_sha_after": "abc",
+            "status": verdict,
+            "duration_ms": 1,
+        })
+    log_path = tmp_path / ".git" / "sddtdd" / "broker-access.jsonl"
+    lines = log_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 8
+    statuses = [json.loads(line)["status"] for line in lines if json.loads(line)["event"] == "task_review_completed"]
+    assert statuses == ["PASS", "FAIL", "NEEDS_CLARIFICATION", "ERROR"]

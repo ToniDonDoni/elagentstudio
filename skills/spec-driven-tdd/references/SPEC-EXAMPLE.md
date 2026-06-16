@@ -302,19 +302,35 @@ Record the review:
 #### 4.2.1 Broker verify (broker mode only)
 
 When the implementer runs in broker mode, after the reviewer verdict the
-implementer calls the broker `reviewTask`. The broker's verdict is recorded
-in the same journal as a `BROKER_TASK_REVIEW` entry.
+implementer appends a `BROKER_TASK_SUBMITTED` journal entry to record
+the hand-off, then calls the broker `reviewTask`. The broker's verdict
+is recorded as a separate `BROKER_TASK_REVIEW` entry.
 
-If the broker finds a gap, it returns `FAIL` and the implementer records it,
-fixes exactly the listed gap, and calls `reviewTask` again. Example — broker
-flags that the journal entry did not copy `PARENT_TASK_ID` from the parent:
+If the broker finds a gap, it returns `FAIL` and the implementer records
+it, fixes exactly the listed gap, re-runs review if needed, re-appends
+`BROKER_TASK_SUBMITTED` for the rework, and calls `reviewTask` again.
+Example — broker flags that the journal entry did not copy
+`PARENT_TASK_ID` from the parent:
 
 ```text
 === J-20260614-100000-008a ===
+|TYPE: BROKER_TASK_SUBMITTED
+|SPEC: S-DEMO-01.01
+|STATUS: COMPLETED
+|PARENT: J-20260614-100000-007
+|ROOT: J-20260614-100000-001
+|TASK_ID: T-DEMO-01-001
+|PARENT_TASK_ID: T-DEMO-01-000
+|ROOT_USER_INPUT_ID: T-DEMO-01-000
+|DETAIL: Submitting broker task B-000003. Work: J-20260614-100000-007. Reviewer: J-20260614-100000-008.
+```
+
+```text
+=== J-20260614-100000-008b ===
 |TYPE: BROKER_TASK_REVIEW
 |SPEC: S-DEMO-01.01
 |STATUS: FAIL
-|PARENT: J-20260614-100000-008
+|PARENT: J-20260614-100000-008a
 |ROOT: J-20260614-100000-001
 |TASK_ID: T-DEMO-01-001
 |PARENT_TASK_ID: T-DEMO-01-000
@@ -322,14 +338,28 @@ flags that the journal entry did not copy `PARENT_TASK_ID` from the parent:
 |DETAIL: BROKER_TASK_REVIEW FAIL for B-000003: gap "PARENT_TASK_ID missing on RED journal entry J-20260614-100000-007"; fix and re-call reviewTask.
 ```
 
-Implementer fixes the journal entry, commits, and re-asks the broker:
+Implementer fixes the journal entry, commits, re-appends a new
+`BROKER_TASK_SUBMITTED` for the rework, and re-asks the broker:
 
 ```text
-=== J-20260614-100000-008b ===
+=== J-20260614-100000-008c ===
+|TYPE: BROKER_TASK_SUBMITTED
+|SPEC: S-DEMO-01.01
+|STATUS: COMPLETED
+|PARENT: J-20260614-100000-008b
+|ROOT: J-20260614-100000-001
+|TASK_ID: T-DEMO-01-001
+|PARENT_TASK_ID: T-DEMO-01-000
+|ROOT_USER_INPUT_ID: T-DEMO-01-000
+|DETAIL: Resubmitting broker task B-000003 after broker FAIL. Work: J-20260614-100000-007 (corrected). Reviewer: J-20260614-100000-008.
+```
+
+```text
+=== J-20260614-100000-008d ===
 |TYPE: BROKER_TASK_REVIEW
 |SPEC: S-DEMO-01.01
 |STATUS: PASS
-|PARENT: J-20260614-100000-008a
+|PARENT: J-20260614-100000-008c
 |ROOT: J-20260614-100000-001
 |TASK_ID: T-DEMO-01-001
 |PARENT_TASK_ID: T-DEMO-01-000
