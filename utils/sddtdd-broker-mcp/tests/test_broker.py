@@ -1,7 +1,15 @@
 import json
 import subprocess
 
-from server import app, build_broker_prompt, capture_repo_state, parse_json_response, _candidate_evidence_paths
+from server import (
+    _append_broker_event,
+    _candidate_evidence_paths,
+    _verify_next_task_gate,
+    app,
+    build_broker_prompt,
+    capture_repo_state,
+    parse_json_response,
+)
 
 
 def test_server_name():
@@ -68,3 +76,29 @@ def test_capture_repo_state_loads_evidence_files(tmp_path):
     state = capture_repo_state(str(tmp_path), ["evidence/red.txt"])
     assert state["files"]["JOURNAL_SDD_TDD_SKILL.log"].startswith("DETAIL")
     assert state["evidence_files"]["evidence/red.txt"] == "RED failed for missing behavior"
+
+
+def test_capture_repo_state_reads_committed_head_not_dirty_worktree(tmp_path):
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text("DETAIL: committed journal\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text("DETAIL: dirty uncommitted journal\n")
+
+    state = capture_repo_state(str(tmp_path))
+    assert state["status_porcelain"]
+    assert state["files"]["JOURNAL_SDD_TDD_SKILL.log"] == "DETAIL: committed journal\n"
+
+
+def test_next_task_gate_requires_verified_task(tmp_path):
+    git_dir = tmp_path / ".git" / "sddtdd"
+    git_dir.mkdir(parents=True)
+
+    blocked = _verify_next_task_gate(str(tmp_path), "B-000001")
+    assert blocked is not None
+    assert blocked["status"] == "BLOCKED"
+
+    _append_broker_event(str(tmp_path), {"event": "task_verified", "task_id": "B-000001", "status": "PASS"})
+    assert _verify_next_task_gate(str(tmp_path), "B-000001") is None

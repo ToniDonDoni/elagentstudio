@@ -38,6 +38,60 @@ def _git(repo_path: str, *args: str) -> str:
     return result.stdout.strip()
 
 
+def _git_show(repo_path: str, ref: str, file_path: str) -> str | None:
+    result = subprocess.run(
+        ["git", "-C", repo_path, "show", f"{ref}:{file_path}"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
+def _broker_log_path(repo_path: str) -> Path:
+    return Path(repo_path) / ".git" / "sddtdd" / "broker-access.jsonl"
+
+
+def _append_broker_event(repo_path: str, event: dict[str, Any]) -> None:
+    path = _broker_log_path(repo_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+
+def _verified_task_ids(repo_path: str) -> set[str]:
+    path = _broker_log_path(repo_path)
+    if not path.exists():
+        return set()
+    verified: set[str] = set()
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("event") == "task_verified" and event.get("status") == "PASS" and event.get("task_id"):
+            verified.add(str(event["task_id"]))
+    return verified
+
+
+def _verify_next_task_gate(repo_path: str, previous_task_id: str | None) -> dict[str, Any] | None:
+    if not previous_task_id:
+        return {
+            "status": "BLOCKED",
+            "summary": "next_task requires previous_task_id from a broker task that passed verify_task",
+            "required_action": "Call verify_task for the current broker task and pass its task_id as previous_task_id",
+        }
+    if previous_task_id not in _verified_task_ids(repo_path):
+        return {
+            "status": "BLOCKED",
+            "summary": f"Task {previous_task_id} has not passed broker verify_task",
+            "required_action": "Complete the assigned task and obtain verify_task PASS before asking for next_task",
+        }
+    return None
+
+
 def _candidate_evidence_paths(journal: str | None, explicit: list[str] | None = None) -> list[str]:
     """Extract conservative repo-relative evidence path candidates.
 
@@ -81,21 +135,18 @@ def capture_repo_state(repo_path: str, explicit_evidence: list[str] | None = Non
         "ARCHITECTURE.md",
         "TASKS.md",
     ]
+    head_sha = state["head_sha"]
     for name in core_files:
-        file_path = path / name
-        if file_path.exists() and file_path.is_file():
-            state["files"][name] = file_path.read_text(errors="replace")
-        else:
-            state["files"][name] = None
+        state["files"][name] = _git_show(str(path), head_sha, name)
 
     state["evidence_files"] = {}
     journal = state["files"].get("JOURNAL_SDD_TDD_SKILL.log")
     for name in _candidate_evidence_paths(journal, explicit_evidence):
         if name in core_files:
             continue
-        file_path = path / name
-        if file_path.exists() and file_path.is_file():
-            state["evidence_files"][name] = file_path.read_text(errors="replace")
+        content = _git_show(str(path), head_sha, name)
+        if content is not None:
+            state["evidence_files"][name] = content
 
     return state
 
@@ -191,8 +242,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
     request_id = uuid.uuid4().hex
     try:
+        repo_path = str(Path(arguments["repo_path"]).resolve())
+        if name == "next_task":
+            blocked = _verify_next_task_gate(repo_path, arguments.get("previous_task_id"))
+            if blocked is not None:
+                blocked["request_id"] = request_id
+                return [types.TextContent(type="text", text=json.dumps(blocked, ensure_ascii=False, indent=2))]
+
         explicit_evidence = arguments.get("evidence") if isinstance(arguments.get("evidence"), list) else None
-        repo_state = capture_repo_state(arguments["repo_path"], explicit_evidence)
+        repo_state = capture_repo_state(repo_path, explicit_evidence)
         prompt = build_broker_prompt(name, arguments, repo_state)
         ctx = app.request_context
         sampling_result = await ctx.session.create_message(
@@ -209,6 +267,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         result = parse_json_response(response_text)
         result.setdefault("request_id", request_id)
         result.setdefault("repo_head", repo_state["head_sha"])
+        if name == "verify_task" and result.get("status") == "PASS" and arguments.get("task_id"):
+            _append_broker_event(repo_path, {
+                "event": "task_verified",
+                "request_id": request_id,
+                "task_id": arguments.get("task_id"),
+                "status": "PASS",
+                "repo_head": repo_state["head_sha"],
+            })
     except Exception as exc:
         result = {
             "request_id": request_id,
