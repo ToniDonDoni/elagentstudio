@@ -60,7 +60,7 @@ BROKER_TOOLS = {"getNextTask", "reviewTask"}
 
 # Stages that have no independent reviewer and therefore require no
 # review verdict in the journal for process-gate verification.
-NO_REVIEW_STAGES = {"USER_INPUT_CAPTURE", "PROJECT_INIT", "SPEC_SPEC", "DECOMPOSE"}
+NO_REVIEW_STAGES = {"USER_INPUT_CAPTURE", "PROJECT_INIT", "SPEC_SPEC", "DECOMPOSE", "TASKS_COMPLETE"}
 
 # Mapping from a workflow stage to the review_type the implementer must
 # have journaled with STATUS: PASS by the time the broker verifies the
@@ -74,11 +74,18 @@ STAGE_REQUIRED_REVIEW: dict[str, str] = {
     "FINAL": "FINAL_REVIEW",
 }
 
-# Mapping from a workflow stage to the prior review verdicts that must
-# also exist in the journal (in addition to the stage's own review).
-STAGE_PREREQUISITE_REVIEWS: dict[str, list[str]] = {
-    "GREEN": ["RED_REVIEW"],
-    "FINAL": ["REGRESSION_REVIEW"],
+# Mapping from a workflow stage to the prior journal entries that must
+# already exist in the committed journal for the broker to consider
+# this stage's prerequisites satisfied. Each entry is (TYPE, STATUS);
+# the broker only checks that any committed entry has that TYPE and
+# STATUS. ``*_REVIEW`` prerequisites are review verdicts (STATUS:
+# PASS); ``*_COMPLETE`` and work-type prerequisites are convergence
+# events or work entries (STATUS: COMPLETED).
+STAGE_PREREQUISITES: dict[str, list[tuple[str, str]]] = {
+    "GREEN": [("RED_REVIEW", "PASS")],
+    "TASKS_COMPLETE": [("GREEN_REVIEW", "PASS")],
+    "REGRESSION": [("TASKS_COMPLETE", "COMPLETED")],
+    "FINAL": [("REGRESSION_REVIEW", "PASS")],
 }
 
 # Mapping from a workflow stage to the artifacts that must exist at
@@ -250,7 +257,11 @@ def _review_task_schema() -> dict[str, Any]:
             "task_id": {"type": "string", "description": "Broker-assigned task id being verified"},
             "task_kind": {
                 "type": "string",
-                "description": "Workflow stage the broker issued. One of USER_INPUT_CAPTURE, SPEC_SPEC, ARCHITECTURE, DECOMPOSE, RED, GREEN, REGRESSION, FINAL.",
+                "description": (
+                    "Workflow stage the broker issued. One of USER_INPUT_CAPTURE, "
+                    "SPEC_SPEC, ARCHITECTURE, DECOMPOSE, RED, GREEN, TASKS_COMPLETE, "
+                    "REGRESSION, FINAL."
+                ),
             },
             "review_type": {
                 "type": ["string", "null"],
@@ -395,13 +406,15 @@ def _check_process_gate(
             f"work_journal_id {work_journal_id} has STATUS {work_entry.get('STATUS')!r}; expected 'COMPLETED'."
         )
 
-    # Stage prerequisites (prior review verdicts that must already exist).
-    for prereq in STAGE_PREREQUISITE_REVIEWS.get(task_kind, []):
+    # Stage prerequisites (prior journal entries that must already exist).
+    for prereq_type, prereq_status in STAGE_PREREQUISITES.get(task_kind, []):
         if not any(
-            e.get("TYPE") == prereq and e.get("STATUS") == "PASS" for e in entries
+            e.get("TYPE") == prereq_type and e.get("STATUS") == prereq_status
+            for e in entries
         ):
             findings.append(
-                f"prerequisite review {prereq}: PASS is required before {task_kind} and is missing from the committed journal."
+                f"prerequisite {prereq_type}: {prereq_status} is required before {task_kind} "
+                f"and is missing from the committed journal."
             )
 
     # Stage-required reviewer verdict.
@@ -453,6 +466,31 @@ def _check_process_gate(
 # ---------------------------------------------------------------------------
 
 
+def _read_broker_log(repo_path: str) -> list[dict[str, Any]]:
+    """Read the broker access log (a JSONL file under ``.git/sddtdd/``).
+
+    The access log records every ``getNextTask`` issuance and every
+    ``reviewTask`` verdict. It is **not** committed to the working
+    tree — it lives under ``.git/sddtdd/`` and is therefore writable
+    by the broker but not by the implementer through a normal
+    commit. The broker uses it to remember which task ids it has
+    issued in this delivery.
+    """
+    path = _broker_log_path(repo_path)
+    if not path.exists():
+        return []
+    events: list[dict[str, Any]] = []
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        raw_line = raw_line.strip()
+        if not raw_line:
+            continue
+        try:
+            events.append(json.loads(raw_line))
+        except json.JSONDecodeError:
+            continue
+    return events
+
+
 def _read_repo_state(repo_path: str) -> dict[str, Any]:
     try:
         head_sha = _git(repo_path, "rev-parse", "HEAD")
@@ -460,6 +498,29 @@ def _read_repo_state(repo_path: str) -> dict[str, Any]:
         return {"exists": False}
     journal_text = _git_show(repo_path, head_sha, "JOURNAL_SDD_TDD_SKILL.log")
     entries = _parse_journal(journal_text or "")
+
+    # Identify broker task ids the broker has issued in this delivery
+    # (from the broker access log) and the broker task ids the
+    # implementer has verified (from committed journal entries of
+    # TYPE=BROKER_TASK_REVIEW with STATUS=PASS, carrying TASK_ID).
+    broker_events = _read_broker_log(repo_path)
+    issued_task_ids: set[str] = set()
+    for event in broker_events:
+        if event.get("event") == "task_issued":
+            tid = event.get("task_id")
+            if isinstance(tid, str) and tid:
+                issued_task_ids.add(tid)
+    broker_passed_task_ids: set[str] = set()
+    for entry in entries:
+        if (
+            entry.get("TYPE") == "BROKER_TASK_REVIEW"
+            and entry.get("STATUS") == "PASS"
+        ):
+            tid = entry.get("TASK_ID")
+            if isinstance(tid, str) and tid:
+                broker_passed_task_ids.add(tid)
+    unverified_task_ids = issued_task_ids - broker_passed_task_ids
+
     return {
         "exists": True,
         "head_sha": head_sha,
@@ -468,9 +529,18 @@ def _read_repo_state(repo_path: str) -> dict[str, Any]:
         "has_spec": any(e.get("TYPE") == "SPEC_REVIEW" and e.get("STATUS") == "PASS" for e in entries),
         "has_architecture": any(e.get("TYPE") == "ARCHITECTURE_REVIEW" and e.get("STATUS") == "PASS" for e in entries),
         "has_task_review": any(e.get("TYPE") == "TASK_REVIEW" and e.get("STATUS") == "PASS" for e in entries),
+        "has_red_review": any(e.get("TYPE") == "RED_REVIEW" and e.get("STATUS") == "PASS" for e in entries),
+        "has_green_review": any(e.get("TYPE") == "GREEN_REVIEW" and e.get("STATUS") == "PASS" for e in entries),
+        "has_tasks_complete": any(
+            e.get("TYPE") == "TASKS_COMPLETE" and e.get("STATUS") == "COMPLETED"
+            for e in entries
+        ),
         "has_regression": any(e.get("TYPE") == "REGRESSION_REVIEW" and e.get("STATUS") == "PASS" for e in entries),
         "has_final_review": any(e.get("TYPE") == "FINAL_REVIEW" and e.get("STATUS") == "PASS" for e in entries),
         "has_done": any(e.get("TYPE") == "DONE" and e.get("STATUS") == "COMPLETED" for e in entries),
+        "issued_task_ids": issued_task_ids,
+        "broker_passed_task_ids": broker_passed_task_ids,
+        "unverified_task_ids": unverified_task_ids,
     }
 
 
@@ -481,7 +551,36 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
     broker picks the earliest unmet mandatory condition and returns one
     task. This is a deterministic state-machine; no LLM sampling is
     involved in v3.
+
+    The broker additionally enforces a **process-gate**: it will not
+    hand out the next task while a previously issued task id has not
+    been verified (``BROKER_TASK_REVIEW: PASS``) and committed. The
+    implementer cannot skip ``reviewTask`` and call ``getNextTask``
+    for the next step; the broker returns ``blocked`` with a
+    ``required_action`` telling the implementer to verify the
+    outstanding task first.
     """
+    # Broker gate: outstanding issued task ids must have a committed
+    # BROKER_TASK_REVIEW: PASS entry whose TASK_ID matches. This
+    # catches the implementer that does the work, never calls
+    # reviewTask, and asks the broker for the next task anyway.
+    unverified = sorted(repo_state.get("unverified_task_ids", set()))
+    if unverified:
+        return {
+            "status": "blocked",
+            "summary": (
+                f"Outstanding broker task id(s) {unverified} have not been verified "
+                f"with reviewTask and a committed BROKER_TASK_REVIEW: PASS journal entry. "
+                f"The broker will not issue the next task until the previous one is verified."
+            ),
+            "required_action": (
+                "Call reviewTask for the outstanding task id(s) first, append a "
+                "BROKER_TASK_REVIEW: PASS journal entry carrying TASK_ID=<task_id>, "
+                "commit, then call getNextTask again."
+            ),
+            "unverified_task_ids": unverified,
+        }
+
     if not repo_state.get("exists"):
         if not user_input:
             return {
@@ -556,10 +655,57 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
             "rationale": "Task review is the earliest unmet mandatory condition.",
         }
 
-    if not repo_state.get("has_regression"):
+    # Per-task work stages: in this delivery the broker keeps a flat
+    # single-task model and treats the RED → RED_REVIEW → GREEN →
+    # GREEN_REVIEW chain as one convergence sequence. A real
+    # multi-task model would iterate this block per task in TASKS.md.
+    if not repo_state.get("has_red_review"):
         return {
             "status": "TASK",
             "task_id": "B-000006",
+            "task_kind": "RED",
+            "instruction": "Create the failing test that defines the work. Journal the RED entry and request the RED_REVIEW verdict.",
+            "allowed_scope": ["tests/", "JOURNAL_SDD_TDD_SKILL.log"],
+            "required_evidence": ["commit hash", "RED journal JID", "RED_REVIEW journal JID with STATUS: PASS"],
+            "independent_review_required": True,
+            "review_type": "RED_REVIEW",
+            "rationale": "RED is the earliest unmet per-task stage.",
+        }
+
+    if not repo_state.get("has_green_review"):
+        return {
+            "status": "TASK",
+            "task_id": "B-000007",
+            "task_kind": "GREEN",
+            "instruction": "Implement the production code that makes the failing test pass. Journal the GREEN entry and request the GREEN_REVIEW verdict.",
+            "allowed_scope": ["src/", "tests/", "JOURNAL_SDD_TDD_SKILL.log"],
+            "required_evidence": ["commit hash", "GREEN journal JID", "GREEN_REVIEW journal JID with STATUS: PASS"],
+            "independent_review_required": True,
+            "review_type": "GREEN_REVIEW",
+            "rationale": "GREEN is the earliest unmet per-task stage.",
+        }
+
+    if not repo_state.get("has_tasks_complete"):
+        return {
+            "status": "TASK",
+            "task_id": "B-000008",
+            "task_kind": "TASKS_COMPLETE",
+            "instruction": (
+                "All per-task chains are closed (GREEN_REVIEW: PASS in the committed journal). "
+                "Record the TASKS_COMPLETE convergence event in the journal with STATUS: COMPLETED, "
+                "and commit. There is no independent reviewer verdict for this stage."
+            ),
+            "allowed_scope": ["JOURNAL_SDD_TDD_SKILL.log"],
+            "required_evidence": ["commit hash", "TASKS_COMPLETE journal JID with STATUS: COMPLETED"],
+            "independent_review_required": False,
+            "review_type": None,
+            "rationale": "Convergence event: all per-task branches reached GREEN_REVIEW: PASS.",
+        }
+
+    if not repo_state.get("has_regression"):
+        return {
+            "status": "TASK",
+            "task_id": "B-000009",
             "task_kind": "REGRESSION",
             "instruction": "Run the full required test suite and capture regression evidence. Create the REGRESSION and REGRESSION_REVIEW journal entries.",
             "allowed_scope": ["JOURNAL_SDD_TDD_SKILL.log", "regression evidence files"],
@@ -572,7 +718,7 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
     if not repo_state.get("has_final_review"):
         return {
             "status": "TASK",
-            "task_id": "B-000007",
+            "task_id": "B-000010",
             "task_kind": "FINAL",
             "instruction": "Final review of the complete committed solution and its artifact chain. Create the FINAL_REVIEW journal entry.",
             "allowed_scope": ["JOURNAL_SDD_TDD_SKILL.log"],
@@ -585,7 +731,7 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
     if not repo_state.get("has_done"):
         return {
             "status": "TASK",
-            "task_id": "B-000008",
+            "task_id": "B-000011",
             "task_kind": "DONE",
             "instruction": "Record the DONE journal entry with STATUS: COMPLETED.",
             "allowed_scope": ["JOURNAL_SDD_TDD_SKILL.log"],
@@ -649,6 +795,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             result = _select_next_task(repo_state, previous_task_id, user_input)
             result["request_id"] = request_id
             result.setdefault("repo_head", repo_state.get("head_sha", ""))
+            if result.get("status") == "TASK":
+                _append_broker_event(repo_path, {
+                    "event": "task_issued",
+                    "request_id": request_id,
+                    "task_id": result.get("task_id"),
+                    "task_kind": result.get("task_kind"),
+                    "head_sha_before": head_sha_before,
+                    "previous_task_id": previous_task_id,
+                })
         elif name == "reviewTask":
             evidence = _normalize_evidence(arguments)
             result = _check_process_gate(

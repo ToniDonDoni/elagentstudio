@@ -165,9 +165,12 @@ def test_get_next_task_returns_complete_when_done(tmp_path):
         "\n=== J-2 ===\nTYPE: SPEC_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
         "\n=== J-3 ===\nTYPE: ARCHITECTURE_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
         "\n=== J-4 ===\nTYPE: TASK_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
-        "\n=== J-5 ===\nTYPE: REGRESSION_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
-        "\n=== J-6 ===\nTYPE: FINAL_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
-        "\n=== J-7 ===\nTYPE: DONE\nSTATUS: COMPLETED\nDETAIL: x\n"
+        "\n=== J-5 ===\nTYPE: RED_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
+        "\n=== J-6 ===\nTYPE: GREEN_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
+        "\n=== J-7 ===\nTYPE: TASKS_COMPLETE\nSTATUS: COMPLETED\nDETAIL: x\n"
+        "\n=== J-8 ===\nTYPE: REGRESSION_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
+        "\n=== J-9 ===\nTYPE: FINAL_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
+        "\n=== J-10 ===\nTYPE: DONE\nSTATUS: COMPLETED\nDETAIL: x\n"
     )
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
@@ -469,6 +472,221 @@ def test_review_task_pass_when_green_has_red_review_prerequisite(tmp_path):
         head_sha_before=_head_sha(tmp_path),
     )
     assert result["status"] == "PASS", result
+
+
+# ---------------------------------------------------------------------------
+# TASKS_COMPLETE stage
+# ---------------------------------------------------------------------------
+
+
+def test_get_next_task_emits_tasks_complete_after_green_review(tmp_path):
+    """The broker emits a TASKS_COMPLETE task after GREEN_REVIEW: PASS and
+    before REGRESSION. TASKS_COMPLETE has no reviewer and no required
+    artifact; it is a pure journal convergence event.
+    """
+    _make_repo(tmp_path)
+    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text(
+        "=== J-1 ===\nTYPE: USER_INPUT\nSTATUS: COMPLETED\nDETAIL: x\n"
+        "\n=== J-2 ===\nTYPE: SPEC_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
+        "\n=== J-3 ===\nTYPE: ARCHITECTURE_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
+        "\n=== J-4 ===\nTYPE: TASK_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
+        "\n=== J-5 ===\nTYPE: RED_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
+        "\n=== J-6 ===\nTYPE: GREEN_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
+    )
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
+
+    state = _read_repo_state(str(tmp_path))
+    assert state["has_green_review"]
+    assert not state["has_tasks_complete"]
+    result = _select_next_task(state, previous_task_id=None, user_input=None)
+    assert result["status"] == "TASK"
+    assert result["task_kind"] == "TASKS_COMPLETE"
+    assert result["review_type"] is None
+    assert result["independent_review_required"] is False
+
+
+def test_get_next_task_does_not_emit_regression_before_tasks_complete(tmp_path):
+    """Regression must not be issued until TASKS_COMPLETE is committed.
+    This is the process-order check on REGRESSION's prerequisite.
+    """
+    _make_repo(tmp_path)
+    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text(
+        "=== J-1 ===\nTYPE: USER_INPUT\nSTATUS: COMPLETED\nDETAIL: x\n"
+        "\n=== J-2 ===\nTYPE: SPEC_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
+        "\n=== J-3 ===\nTYPE: ARCHITECTURE_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
+        "\n=== J-4 ===\nTYPE: TASK_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
+        "\n=== J-5 ===\nTYPE: RED_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
+        "\n=== J-6 ===\nTYPE: GREEN_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
+    )
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
+
+    state = _read_repo_state(str(tmp_path))
+    result = _select_next_task(state, previous_task_id=None, user_input=None)
+    assert result["task_kind"] == "TASKS_COMPLETE"
+    assert result["task_kind"] != "REGRESSION"
+
+
+def test_review_task_pass_when_tasks_complete_no_reviewer(tmp_path):
+    """TASKS_COMPLETE is a no-reviewer stage. The broker passes when
+    the work entry is committed with STATUS: COMPLETED and the
+    prerequisite GREEN_REVIEW: PASS is in the journal.
+    """
+    tmp_path = _make_repo(tmp_path)
+    _commit_journal(
+        tmp_path,
+        "=== J-1 ===\nTYPE: GREEN_REVIEW\nSTATUS: PASS\nPARENT: J-0\nDETAIL: x\n"
+        "\n=== J-2 ===\nTYPE: TASKS_COMPLETE\nSTATUS: COMPLETED\nPARENT: J-1\nDETAIL: x\n",
+    )
+    result = _check_process_gate(
+        repo_path=str(tmp_path),
+        task_id="B-000030",
+        task_kind="TASKS_COMPLETE",
+        review_type=None,
+        work_journal_id="J-2",
+        evidence={},
+        head_sha_before=_head_sha(tmp_path),
+    )
+    assert result["status"] == "PASS", result
+
+
+def test_review_task_fail_when_tasks_complete_without_green_review(tmp_path):
+    tmp_path = _make_repo(tmp_path)
+    _commit_journal(
+        tmp_path,
+        "=== J-1 ===\nTYPE: TASKS_COMPLETE\nSTATUS: COMPLETED\nPARENT: J-0\nDETAIL: x\n",
+    )
+    result = _check_process_gate(
+        repo_path=str(tmp_path),
+        task_id="B-000030",
+        task_kind="TASKS_COMPLETE",
+        review_type=None,
+        work_journal_id="J-1",
+        evidence={},
+        head_sha_before=_head_sha(tmp_path),
+    )
+    assert result["status"] == "FAIL"
+    assert any("GREEN_REVIEW" in f and "PASS" in f for f in result["findings"])
+
+
+def test_review_task_fail_when_regression_without_tasks_complete(tmp_path):
+    """REGRESSION's prerequisite is TASKS_COMPLETE: COMPLETED. Without
+    it the broker rejects the process-gate.
+    """
+    tmp_path = _make_repo(tmp_path)
+    _commit_journal(
+        tmp_path,
+        "=== J-1 ===\nTYPE: GREEN_REVIEW\nSTATUS: PASS\nPARENT: J-0\nDETAIL: x\n"
+        "\n=== J-2 ===\nTYPE: REGRESSION\nSTATUS: COMPLETED\nPARENT: J-1\nDETAIL: x\n"
+        "\n=== J-3 ===\nTYPE: REGRESSION_REVIEW\nSTATUS: PASS\nPARENT: J-2\nDETAIL: x\n",
+    )
+    result = _check_process_gate(
+        repo_path=str(tmp_path),
+        task_id="B-000040",
+        task_kind="REGRESSION",
+        review_type="REGRESSION_REVIEW",
+        work_journal_id="J-2",
+        evidence={"review_journal_id": "J-3"},
+        head_sha_before=_head_sha(tmp_path),
+    )
+    assert result["status"] == "FAIL"
+    assert any("TASKS_COMPLETE" in f and "COMPLETED" in f for f in result["findings"])
+
+
+# ---------------------------------------------------------------------------
+# Broker gate: getNextTask refuses when previous task is unverified
+# ---------------------------------------------------------------------------
+
+
+def test_get_next_task_blocked_when_previous_broker_task_unverified(tmp_path):
+    """The broker refuses to hand out the next task while a previously
+    issued broker task id has no committed BROKER_TASK_REVIEW: PASS
+    entry with matching TASK_ID.
+    """
+    _make_repo(tmp_path)
+    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text(
+        "=== J-1 ===\nTYPE: USER_INPUT\nSTATUS: COMPLETED\nDETAIL: x\n"
+    )
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
+    # Simulate that the broker issued B-000001 (USER_INPUT_CAPTURE)
+    # in a prior call. The implementer has not called reviewTask.
+    _append_broker_event(str(tmp_path), {
+        "event": "task_issued",
+        "task_id": "B-000001",
+        "task_kind": "USER_INPUT_CAPTURE",
+    })
+
+    state = _read_repo_state(str(tmp_path))
+    assert "B-000001" in state["unverified_task_ids"]
+    result = _select_next_task(state, previous_task_id=None, user_input=None)
+    assert result["status"] == "blocked"
+    assert result["unverified_task_ids"] == ["B-000001"]
+
+
+def test_get_next_task_passes_when_unverified_task_becomes_verified(tmp_path):
+    """After the implementer appends a BROKER_TASK_REVIEW: PASS entry
+    carrying the matching TASK_ID, the broker no longer blocks.
+    """
+    _make_repo(tmp_path)
+    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text(
+        "=== J-1 ===\nTYPE: USER_INPUT\nSTATUS: COMPLETED\nDETAIL: x\n"
+        "\n=== J-2 ===\nTYPE: BROKER_TASK_REVIEW\nTASK_ID: B-000001\nSTATUS: PASS\nPARENT: J-1\nDETAIL: verified\n"
+    )
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
+    _append_broker_event(str(tmp_path), {
+        "event": "task_issued",
+        "task_id": "B-000001",
+        "task_kind": "USER_INPUT_CAPTURE",
+    })
+
+    state = _read_repo_state(str(tmp_path))
+    assert state["unverified_task_ids"] == set()
+    assert "B-000001" in state["broker_passed_task_ids"]
+    # The next task should be SPEC_SPEC, not blocked.
+    result = _select_next_task(state, previous_task_id=None, user_input=None)
+    assert result["status"] == "TASK"
+    assert result["task_kind"] == "SPEC_SPEC"
+
+
+def test_get_next_task_does_not_match_broker_pass_with_wrong_task_id(tmp_path):
+    """A BROKER_TASK_REVIEW: PASS entry whose TASK_ID does not match
+    any issued task id does not unblock the broker.
+    """
+    _make_repo(tmp_path)
+    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text(
+        "=== J-1 ===\nTYPE: USER_INPUT\nSTATUS: COMPLETED\nDETAIL: x\n"
+        "\n=== J-2 ===\nTYPE: BROKER_TASK_REVIEW\nTASK_ID: B-999999\nSTATUS: PASS\nPARENT: J-1\nDETAIL: unrelated pass\n"
+    )
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
+    _append_broker_event(str(tmp_path), {
+        "event": "task_issued",
+        "task_id": "B-000001",
+        "task_kind": "USER_INPUT_CAPTURE",
+    })
+
+    state = _read_repo_state(str(tmp_path))
+    assert "B-000001" in state["unverified_task_ids"]
+    result = _select_next_task(state, previous_task_id=None, user_input=None)
+    assert result["status"] == "blocked"
+
+
+def test_get_next_task_no_gate_when_no_tasks_have_been_issued(tmp_path):
+    """On a brand-new repo with no broker access log, there is nothing
+    to verify and the broker proceeds normally.
+    """
+    _make_repo(tmp_path)
+    state = _read_repo_state(str(tmp_path))
+    # The fresh-repo branch is taken before unverified_task_ids is
+    # populated; the gate only applies to a delivery that has
+    # already had at least one issuance. Verify that the broker
+    # still returns a TASK without blocked.
+    result = _select_next_task(state, previous_task_id=None, user_input="build a thing")
+    assert result["status"] == "TASK"
+    assert result["task_kind"] == "USER_INPUT_CAPTURE"
 
 
 # ---------------------------------------------------------------------------
