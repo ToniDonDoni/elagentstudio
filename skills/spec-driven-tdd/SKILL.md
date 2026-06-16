@@ -176,6 +176,11 @@ mitigation.
 
 ## How to use this skill
 
+For a worked example of a user prompt, a checklist of what to verify
+afterwards, and the common failure modes, see
+[`README.md`](README.md). The two short procedures below are the minimum
+a running agent needs.
+
 ### Standalone
 
 ```text
@@ -194,6 +199,9 @@ Then read SKILL-IMPLEMENTER.md.
 Ask the broker MCP for the next task.
 Execute only the task the broker returns.
 ```
+
+A ready-to-copy user prompt template (broker mode) lives in
+[`README.md`](README.md) under "Example user prompt — broker mode".
 
 ## References
 
