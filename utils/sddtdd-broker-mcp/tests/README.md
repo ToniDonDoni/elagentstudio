@@ -58,6 +58,30 @@ They are small contract tests for the broker server itself:
 
 That keeps the suite fast while still checking the Git/journal behavior that matters for broker sequencing.
 
+## Main scenario covered by the Git-backed tests
+
+The most important broker scenario in this directory is:
+
+1. create a temporary Git repository;
+2. write a minimal `JOURNAL_SDD_TDD_SKILL.log` and, when needed, an evidence file such as `evidence/red.txt`;
+3. commit that state so the repo has a real `HEAD`;
+4. optionally dirty the working tree after the commit;
+5. optionally append a broker runtime event to `.git/sddtdd/broker-access.jsonl`;
+6. call the broker helper under test;
+7. verify that the helper behaves as the broker contract requires.
+
+### Expected behavior in that scenario
+
+- `capture_repo_state(...)` should read the committed files from `HEAD`, not the uncommitted dirty version.
+- `capture_repo_state(...)` should load evidence files that are referenced explicitly or discoverable from the journal.
+- `_verify_next_task_gate(...)` should block `next_task` before broker verification has passed.
+- `_verify_next_task_gate(...)` should allow `next_task` only after a `task_verified` event with status `PASS` exists in the broker log.
+
+### Practical interpretation
+
+So the scenario is not "run the full SDDTDD workflow".
+It is "simulate just enough repository and broker state to prove that the broker reads the right truth source and enforces sequencing".
+
 ## How to run
 
 From the repository root:
