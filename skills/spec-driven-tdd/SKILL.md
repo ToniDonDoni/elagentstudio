@@ -7,6 +7,7 @@ license: MIT
 metadata:
   hermes:
     tags: [spec-driven, tdd, requirements, architecture, testing, review, traceability, audit]
+    related_skills: [sddtdd-broker-implementer, sddtdd-task-broker]
 ---
 
 # Spec-Driven TDD
@@ -68,6 +69,31 @@ USER INPUT
 ```
 
 Every arrow means that the next artifact is derived only from reviewed inputs.
+
+### Declarative Task-Broker Mode
+
+When an MCP task broker is available, the primary implementer MUST NOT select the
+next workflow stage by interpreting this whole skill directly. Instead, the
+implementer loads `sddtdd-broker-implementer` and asks the task broker for the
+next task.
+
+In broker mode:
+
+- this skill remains the shared process contract;
+- `sddtdd-broker-implementer` defines the implementer's MCP interaction loop;
+- `sddtdd-task-broker` defines how the broker reads the journal and emits the
+  next allowed task;
+- independent review still uses `mcp_sddtdd_review_review`;
+- the implementer creates artifacts, runs commands, updates the journal, and
+  commits work only for the broker-issued task;
+- the broker decides the next allowed task from committed repository state and
+  `JOURNAL_SDD_TDD_SKILL.log`;
+- the implementer reports task completion back to the broker before asking for
+  another task.
+
+The broker is an orchestration gate, not a reviewer and not an implementer. It
+never replaces RED-GREEN, journal commits, independent review, or user
+clarification.
 
 ---
 
@@ -321,7 +347,7 @@ The primary agent is responsible for:
 - committing artifacts;
 - updating and committing the journal;
 - applying fixes after review failure;
-- selecting the next stage;
+- selecting the next stage, or in broker mode requesting it from the task broker;
 - recording deliberate deviations and accepted risks;
 - producing the final implementation.
 
@@ -1216,6 +1242,7 @@ The workflow is complete only when:
 14. Do not represent forced continuation as an ordinary review `PASS`.
 15. Record every deliberate deviation as a committed `AGENT_DECISION` before continuing.
 16. Do not treat an MCP review response as a completed review until the corresponding review entry is journaled and committed.
+17. In broker mode, do not self-select the next workflow task; request it from the task broker and execute only the task it returns.
 
 ---
 
@@ -1223,4 +1250,6 @@ The workflow is complete only when:
 
 - [JOURNAL.md](references/JOURNAL.md) — journal entry format, task relationships, parent/root rules, and required invariants.
 - [SPEC-EXAMPLE.md](references/SPEC-EXAMPLE.md) — canonical walkthrough of the complete reviewed artifact and RED-GREEN workflow.
+- [sddtdd-broker-implementer](../sddtdd-broker-implementer/SKILL.md) — implementer loop for task-broker MCP mode.
+- [sddtdd-task-broker](../sddtdd-task-broker/SKILL.md) — broker decision contract for MCP task orchestration.
 
