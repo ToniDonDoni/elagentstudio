@@ -1,12 +1,12 @@
 ---
 name: spec-driven-tdd-orchestrator
-description: "Use inside the MCP task broker for Spec-Driven TDD. The orchestrator knows the workflow stage order, the review rules, and the broker-level task verification policy. It returns the next task via getNextTask and verifies completion via reviewTask."
-version: 2.0.0
+description: "Use inside the MCP task broker for Spec-Driven TDD. The orchestrator owns the workflow order and performs process-gate verification on reviewTask. It does not sample an LLM; the broker itself reads the committed journal and decides."
+version: 3.0.0
 author: Hermes Agent
 license: MIT
 metadata:
   hermes:
-    tags: [spec-driven, tdd, mcp, task-broker, orchestrator, journal, workflow]
+    tags: [spec-driven, tdd, mcp, task-broker, orchestrator, journal, workflow, process-gate]
     related_skills: [spec-driven-tdd]
 ---
 
@@ -15,114 +15,85 @@ metadata:
 ## Overview
 
 This role file is the decision policy for the MCP task broker in
-Spec-Driven TDD broker mode. It is loaded by the broker MCP server. The
-implementer does **not** read this file.
+Spec-Driven TDD broker mode. It is loaded by the broker MCP server at
+startup. The implementer does **not** read this file.
 
 The orchestrator is a state-machine gate over the Spec-Driven TDD
-workflow. It reads the committed repository state, the SDDTDD journal,
-and the shared process skill, and decides:
+workflow. It owns the workflow order and the broker-level process-gate
+verification. It does not sample an LLM; the broker itself reads the
+committed repository state and the committed journal, and decides
+directly in Python according to the rules defined here.
 
-- what the implementer should do next — via `getNextTask`;
-- whether the implementer actually completed the current task — via
-  `reviewTask`;
-- whether the whole workflow is done — `getNextTask` returns `complete`;
-- whether progress is impossible right now — `getNextTask` returns
-  `blocked`.
+The orchestrator performs process-gate review, but does not replace
+`mcp_sddtdd_review_review` and does not independently re-review
+artifacts. The independent reviewer has already evaluated the
+artifact's correctness; the broker's job is to verify that the issued
+workflow step has produced all evidence and approvals required to
+permit the next workflow step.
 
-The orchestrator does not implement, does not perform the independent
-artifact review that belongs to `mcp_sddtdd_review_review`, does not
-edit files, and does not update the journal. The orchestrator only reads
-state and emits structured decisions for the implementer.
+## What the broker does and does not do
 
-## Inputs the orchestrator must read
+The broker:
 
-For every decision the orchestrator inspects the current committed
-state:
+- chooses the next workflow task;
+- performs process-gate verification of the previous task;
+- reads the committed journal and committed artifacts to do so;
+- writes an access log of every verification call.
 
-- absolute repository path;
-- current branch and `HEAD` SHA;
-- clean or dirty working tree;
-- `JOURNAL_SDD_TDD_SKILL.log`;
-- `SPEC-DRAFT.md`, `SPEC.md`, `ARCHITECTURE.md`, `TASKS.md` when
-  present;
-- evidence files named in the journal;
-- the shared `spec-driven-tdd` process skill;
-- the stage procedure (`references/STAGES.md`);
-- this role file.
+The broker does not:
 
-When the working tree is dirty, the orchestrator may only emit tasks
-whose purpose is to commit, inspect, or resolve the dirty state. It must
-not authorize review or new downstream work from uncommitted evidence.
+- implement, write code, write tests, or write artifacts;
+- perform the independent artifact review that belongs to
+  `mcp_sddtdd_review_review`;
+- judge whether the artifact's content is correct, idiomatic,
+  well-designed, or appropriate — that is the reviewer's responsibility;
+- sample an LLM to make process-gate decisions;
+- modify the journal itself. The implementer writes the journal.
 
-## Broker contract
+## Two tools
 
-The orchestrator answers exactly two questions from the implementer.
+The broker exposes exactly two tools. There is no `init`.
 
 ### `getNextTask`
 
-Input:
+The first call to `getNextTask` carries `user_input` and creates or
+resumes a delivery. Subsequent calls carry `previous_task_id`. The
+broker returns one of three shapes:
 
-```json
-{
-  "repo_path": "/absolute/path/to/repo",
-  "user_input": "original user request or a pointer to it",
-  "previous_task_id": "broker-assigned id of the last verified task (omit on first call)"
-}
-```
-
-Output is one of three shapes.
-
-#### `TASK`
-
-A new self-contained task to execute. The orchestrator picks the earliest
-unmet mandatory condition in the workflow and emits exactly one task.
+- `TASK` — one self-contained next task.
+- `complete` — all required SDDTDD completion conditions are
+  satisfied.
+- `blocked` — no workflow task can proceed right now.
 
 ```json
 {
   "status": "TASK",
   "task_id": "B-000001",
+  "task_kind": "USER_INPUT | SPEC_DRAFT | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | REGRESSION | FINAL | DONE",
   "instruction": "one concrete instruction in natural language",
   "allowed_scope": ["files, paths, or artifacts the task may touch"],
   "required_evidence": [
     "commits, journal ids, reviewer request ids, test commands, or
-     other concrete artifacts the broker will check"
+     other concrete artifacts the implementer must produce"
   ],
   "independent_review_required": true,
-  "review_type": "SPEC_REVIEW | ARCHITECTURE_REVIEW | TASK_REVIEW | RED_REVIEW | GREEN_REVIEW | REGRESSION_REVIEW | FINAL_REVIEW",
+  "review_type": "SPEC_REVIEW | ARCHITECTURE_REVIEW | TASK_REVIEW | RED_REVIEW | GREEN_REVIEW | REGRESSION_REVIEW | FINAL_REVIEW | null",
   "rationale": "why this is the next legal task"
 }
 ```
 
-The implementer MUST be able to execute this task from `instruction`
-plus `required_evidence` plus the shared process skill, without reading
-this orchestrator role file.
-
-#### `complete`
-
-All required SDDTDD completion conditions are satisfied.
-
-```json
-{
-  "status": "complete",
-  "summary": "all required SDDTDD completion conditions are satisfied",
-  "rationale": "journal and evidence chain checked"
-}
-```
-
-#### `blocked`
-
-No workflow task can proceed right now.
-
-```json
-{
-  "status": "blocked",
-  "summary": "what prevents progress",
-  "required_action": "what the implementer or user must provide",
-  "rationale": "why no workflow task may proceed"
-}
-```
+`task_kind` is the workflow stage the implementer is being asked to
+execute. `review_type` is the type of independent reviewer verdict the
+implementer must obtain and journal; it is `null` (or absent) when the
+task does not require independent review, e.g. capture tasks for
+`USER_INPUT` or `SPEC-DRAFT`.
 
 ### `reviewTask`
+
+`reviewTask` performs process-gate verification. The broker itself
+reads the committed journal, the issued `task_kind`, the claimed
+`work_journal_id`, and the `review_journal_id` when one is required,
+and decides whether the issued step is process-complete.
 
 Input:
 
@@ -130,23 +101,28 @@ Input:
 {
   "repo_path": "/absolute/path/to/repo",
   "task_id": "broker-assigned id being verified",
+  "task_kind": "the same task_kind that was issued by getNextTask",
+  "review_type": "the same review_type that was issued (null when not required)",
   "claimed_result": "brief implementer summary",
+  "work_journal_id": "JID of the work journal entry the implementer just committed",
   "evidence": {
-    "commits": ["commit hashes"],
-    "journal_ids": ["work entry JID", "BROKER_TASK_SUBMITTED JID", "reviewer verdict JID"],
-    "review_request_id": "id of the independent reviewer MCP call, if any",
-    "test_commands": ["pytest ...", "..."]
+    "review_journal_id": "JID of the reviewer verdict journal entry (when required)",
+    "commits": ["..."],
+    "journal_ids": ["..."],
+    "files": ["..."],
+    "test_commands": ["..."]
   }
 }
 ```
 
 Output statuses:
 
-- `PASS` — the task is genuinely complete and committed; the
-  implementer may call `getNextTask` again.
-- `FAIL` — the listed gaps must be fixed and `reviewTask` called again.
-- `NEEDS_CLARIFICATION` — the implementer (or user) must supply missing
-  information.
+- `PASS` — the issued step is process-complete; the implementer may
+  call `getNextTask` again.
+- `FAIL` — the listed findings must be fixed and `reviewTask` called
+  again.
+- `NEEDS_CLARIFICATION` — the implementer or user must supply
+  information that cannot be derived from committed state.
 - `ERROR` — repository or tooling state must be resolved before
   continuing.
 
@@ -158,146 +134,110 @@ Output statuses:
 }
 ```
 
-## Workflow order the orchestrator enforces
+## Workflow order
 
-The orchestrator chooses the earliest unmet mandatory condition. It
-must never skip forward because a later artifact appears to exist.
-Existing artifacts count only when the journal contains the required
-committed and passed entries.
+The orchestrator picks the earliest unmet mandatory condition in the
+workflow. Existing artifacts and reviewer verdicts count only when they
+are journaled and committed.
 
-### Top-level order
+The order is:
 
-1. Capture immutable user input as `SPEC-DRAFT.md` and a `USER_INPUT`
-   journal entry.
-2. Create or revise `SPEC.md`.
-3. Obtain `SPEC_REVIEW: PASS` (independent reviewer MCP).
-4. Create or revise `ARCHITECTURE.md`.
-5. Obtain `ARCHITECTURE_REVIEW: PASS`.
-6. Create or revise `TASKS.md`.
-7. Obtain `TASK_REVIEW: PASS`.
-8. For each required task, complete reviewed RED, reviewed GREEN.
-9. Record `TASKS_COMPLETE`.
-10. Run regression and obtain `REGRESSION_REVIEW: PASS`.
-11. Obtain `FINAL_REVIEW: PASS`.
-12. Record `DONE`.
+```text
+USER_INPUT
+→ SPEC-DRAFT (capture; no reviewer)
+→ SPEC_SPEC
+→ SPEC_REVIEW          (independent reviewer)
+→ ARCHITECTURE
+→ ARCHITECTURE_REVIEW
+→ DECOMPOSE
+→ TASK_REVIEW
+→ per task: RED → RED_REVIEW → GREEN → GREEN_REVIEW
+→ TASKS_COMPLETE
+→ REGRESSION
+→ REGRESSION_REVIEW
+→ FINAL_REVIEW
+→ DONE
+```
 
-### Task branch order
+Capture tasks (`USER_INPUT`, `SPEC-DRAFT`) are exempt from
+`independent_review_required`. For those, `review_type` is `null` and
+the broker does not require a reviewer verdict.
 
-For each task selected from reviewed `TASKS.md`:
+The stage procedure is defined in `references/STAGES.md` and is the
+same procedure the broker enforces.
 
-1. Create the failing tests and RED evidence.
-2. Obtain `RED_REVIEW: PASS`.
-3. Create the minimum implementation and GREEN evidence.
-4. Obtain `GREEN_REVIEW: PASS`.
+## Mapping: task_kind → required reviewer verdict
 
-The full stage-by-stage procedure is defined in
-`references/STAGES.md` and is the same procedure the broker enforces.
+The broker does not decide this dynamically. The mapping is fixed by
+this file:
 
-## Review rules (independent reviewer)
+| `task_kind` | required `review_type` | prerequisite reviews |
+|---|---|---|
+| `USER_INPUT` | (none) | — |
+| `SPEC_DRAFT` | (none) | — |
+| `SPEC_SPEC` | `SPEC_REVIEW` | — |
+| `ARCHITECTURE` | `ARCHITECTURE_REVIEW` | `SPEC_REVIEW` |
+| `DECOMPOSE` | `TASK_REVIEW` | `SPEC_REVIEW`, `ARCHITECTURE_REVIEW` |
+| `RED` | `RED_REVIEW` | `SPEC_REVIEW`, `ARCHITECTURE_REVIEW`, `TASK_REVIEW` |
+| `GREEN` | `GREEN_REVIEW` | `RED_REVIEW` (and the chain above) |
+| `REGRESSION` | `REGRESSION_REVIEW` | the per-task chain above |
+| `FINAL` | `FINAL_REVIEW` | `REGRESSION_REVIEW` (and the chain above) |
+| `DONE` | (none) | all of the above |
 
-A reviewer result is usable as approval only when:
+`DONE` itself is a journal entry with `STATUS: COMPLETED`. The broker
+treats it as process-complete when all required prior reviews have
+passed and the `DONE` entry exists.
 
-- `status = COMPLETED`
-- `verdict = PASS`
-- `stale = false`
+## Process-gate verification rules
 
-And the reviewer verdict is recorded in `JOURNAL_SDD_TDD_SKILL.log` and
-committed.
+The broker applies the following checks in order. If any check fails,
+the broker returns `FAIL` with the specific findings.
 
-A reviewer `FAIL` returns the workflow to the corresponding artifact
-creation stage.
+1. **Working tree is clean.** The broker only verifies committed
+   state. If `git status --porcelain` is non-empty, the broker
+   returns `FAIL` and tells the implementer to commit first.
+2. **Committed journal exists.** `JOURNAL_SDD_TDD_SKILL.log` must
+   exist at `HEAD`. If not, the broker returns `ERROR`.
+3. **`work_journal_id` exists in the committed journal.** The
+   implementer must commit the work journal entry for the issued
+   `task_kind` before calling `reviewTask`. If the JID is not found,
+   the broker returns `FAIL`.
+4. **Work entry has `STATUS: COMPLETED`.** Anything else means the
+   implementer is asking the broker to verify work that the
+   implementer itself has not marked complete.
+5. **Prerequisite reviewer verdicts exist.** When `task_kind` is
+   `GREEN`, the broker requires `RED_REVIEW: PASS` to already be in
+   the committed journal. When `task_kind` is `FINAL`, the broker
+   requires `REGRESSION_REVIEW: PASS`. This is the process-order
+   check.
+6. **Required reviewer verdict exists and is `PASS`.** When the
+   issued `review_type` is non-null, the broker requires a
+   reviewer-verdict journal entry whose `TYPE` matches the issued
+   `review_type` and whose `STATUS` is `PASS`. The implementer
+   supplies the JID of that entry as `evidence.review_journal_id`.
+7. **Reviewer verdict is committed and present at `HEAD`.** The
+   broker reads the committed journal at `HEAD` and looks up the JID
+   there. If the JID is missing, the broker returns `FAIL`.
+8. **Reviewer verdict's `PARENT` resolves in the journal.** The
+   reviewer verdict's `PARENT` JID must be present in the committed
+   journal. This catches a guessed or fabricated `PARENT`.
 
-A reviewer `NEEDS_CLARIFICATION` returns `blocked` (or asks the user)
-unless the missing information is already present in a committed user
-clarification.
+The broker does not check:
 
-A stale or errored reviewer response is not a verdict and cannot
-authorize the next stage.
+- whether the implementation satisfies the instruction (reviewer's job);
+- whether the changes are within `allowed_scope` (reviewer's job);
+- whether unrelated work was added (reviewer's job);
+- whether tests are valid RED (reviewer's job);
+- whether architecture decisions are good (reviewer's job).
 
-## Broker-level task verification (reviewTask)
-
-`reviewTask` performs **semantic task verification**, not just
-"presence-of-paperwork" checks. The broker must decide whether the
-implementer actually did what the issued task asked for, within the
-issued scope, against the issued requirements, with the right
-reviewer verdict and the right journal entries, in committed state.
-
-The orchestrator does not perform the independent artifact review that
-belongs to `mcp_sddtdd_review_review`. The implementer is responsible
-for invoking the reviewer when the broker task says
-`independent_review_required: true`. The broker's job is to verify that
-the right reviewer verdict exists, was journaled, was committed, and
-matches the broker task's `review_type` and scope.
-
-### When `reviewTask` MUST return `FAIL`
-
-`reviewTask` MUST return `FAIL` when any of the following is true:
-
-- required evidence listed in the broker task is missing;
-- required evidence is uncommitted (exists only in the working tree);
-- the committed files do not satisfy the issued `instruction`;
-- the implementation or artifact differs from `allowed_scope` (unrelated
-  work was added, or required work was skipped);
-- the independent reviewer approved a different commit than the one
-  being claimed as completed;
-- the reviewer verdict is missing when
-  `independent_review_required: true`;
-- the reviewer verdict is `FAIL`, `NEEDS_CLARIFICATION`, `STALE`, or
-  `ERROR`;
-- a journal entry is missing for the work the task represents
-  (`USER_INPUT`, `SPEC_SPEC`, `ARCHITECTURE`, `DECOMPOSE`, `RED`,
-  `GREEN`, `REGRESSION`, etc.);
-- the `BROKER_TASK_SUBMITTED` journal entry is missing, uncommitted, or
-  has the wrong `PARENT`;
-- the `BROKER_TASK_SUBMITTED` `DETAIL` does not reference the work
-  entry, the reviewer verdict (if any), and the broker task id;
-- the journal relationships are inconsistent with the broker task
-  chain (e.g. `PARENT` JID does not exist, or points to a JID outside
-  the broker task chain);
-- the implementer's claimed files include changes outside `allowed_scope`
-  or touch unreviewed artifacts;
-- the result violates the shared process contract (e.g. skipping RED
-  before GREEN, claiming a task complete without its reviewer verdict
-  journaled and committed);
-- the work is in scope but the referenced requirement or task does not
-  exist, or has not been reviewed.
-
-### When `reviewTask` MUST return `PASS`
-
-`reviewTask` MUST return `PASS` when all of the following are true:
-
-- the issued `instruction` is satisfied by the committed state;
-- the changes are within `allowed_scope`;
-- every item in `required_evidence` exists and is committed;
-- the reviewer verdict is `PASS` when
-  `independent_review_required: true`;
-- the work journal entry and the `BROKER_TASK_SUBMITTED` entry are
-  present, correctly related, and committed;
-- the journal relationships are correct and consistent;
-- the shared process contract is not violated.
-
-### When `reviewTask` MUST return `NEEDS_CLARIFICATION`
-
-`reviewTask` MUST return `NEEDS_CLARIFICATION` when the implementer's
-evidence is structurally present but cannot be evaluated without
-information that is not in the committed state — for example, missing
-acceptance criteria, ambiguous requirement text, or contradictory
-constraints. The broker SHOULD list the specific clarification needed
-in `findings`.
-
-### When `reviewTask` MUST return `ERROR`
-
-`reviewTask` MUST return `ERROR` when the repository or tooling is in a
-state that prevents evaluation — for example, a dirty working tree
-with the claimed evidence, a missing `JOURNAL_SDD_TDD_SKILL.log`, or a
-broker runtime failure. The broker SHOULD describe the
-`required_action` to resolve the error.
+The broker does check the **process state**: are the right reviewer
+verdicts in the right place with the right status, in the right order,
+with the right parent chain, in the committed journal, on a clean
+working tree.
 
 ## Broker access log
 
-The broker writes every `reviewTask` call to an append-only access log
-so the broker's checks can be investigated, not just the successful
-ones:
+The broker writes every `reviewTask` call to an append-only access log:
 
 ```text
 <repo>/.git/sddtdd/broker-access.jsonl
@@ -306,18 +246,15 @@ ones:
 Each call produces two events:
 
 - `task_review_started` — written at the start of `reviewTask`,
-  containing the request id, the broker task id, the claimed head SHA,
-  and a snapshot of the requested evidence.
+  containing the request id, the broker task id, the committed `HEAD`
+  SHA before, and the arguments the implementer passed.
 - `task_review_completed` — written at the end, containing the
-  request id, the broker task id, the actual head SHA, the verdict
-  (`PASS`, `FAIL`, `NEEDS_CLARIFICATION`, or `ERROR`), the findings,
-  and the duration in milliseconds.
+  request id, the broker task id, the `HEAD` SHA before and after,
+  the verdict, the findings, and the duration in milliseconds.
 
 The broker writes both events for every `reviewTask` call, including
-calls that fail with `FAIL`, `NEEDS_CLARIFICATION`, or `ERROR`. The
-implementer does not need to look at this log; the broker uses it for
-its own investigation and for answering "why did the broker say FAIL
-that time?"
+`FAIL`, `NEEDS_CLARIFICATION`, and `ERROR`. The implementer does not
+need to look at this log; the broker uses it for investigation.
 
 ## Independence rules
 
@@ -326,17 +263,19 @@ that time?"
 - Do not perform the independent artifact review that belongs to
   `mcp_sddtdd_review_review`. The implementer must call the reviewer
   MCP.
-- Do not ask the implementer to skip journal commits.
+- Do not sample an LLM to make process-gate decisions. The process
+  rules are explicit and are enforced in code.
 - Do not issue multi-stage tasks; return exactly one next task.
 - Do not infer a `PASS` from artifact presence. Only journaled
-  reviewer `PASS` plus a correctly-built journal chain plus
-  scope-conforming committed files together justify `PASS`.
+  reviewer `PASS` plus a correctly-built journal chain justify a
+  broker `PASS`.
 - Do not create JIDs or task IDs for the implementer except
   orchestrator-local task IDs such as `B-000001`. Required journal
   parents must be copied from existing journal entries.
-- Do not expose the internal stage type to the implementer. The
-  implementer loop is intentionally simple: `init` → `getNextTask` →
-  work → `reviewTask` → `getNextTask`.
+- Do not expose the internal stage type to the implementer beyond the
+  `task_kind` field on the broker task itself. The implementer loop
+  is intentionally simple: `getNextTask` → work → reviewer (if
+  required) → `reviewTask` → `getNextTask`.
 
 ## Verification checklist
 
@@ -345,12 +284,13 @@ that time?"
       `blocked`.
 - [ ] `reviewTask` returns exactly one of `PASS`, `FAIL`,
       `NEEDS_CLARIFICATION`, `ERROR`.
-- [ ] `TASK` carries `task_id`, `instruction`, `allowed_scope`,
-      `required_evidence`, `independent_review_required`, `review_type`.
+- [ ] `TASK` carries `task_id`, `task_kind`, `instruction`,
+      `allowed_scope`, `required_evidence`,
+      `independent_review_required`, `review_type`.
+- [ ] `review_type` is `null` for capture tasks (`USER_INPUT`,
+      `SPEC_DRAFT`).
 - [ ] The emitted task is the earliest unmet mandatory workflow
       condition.
-- [ ] The implementer is not told which internal stage type the task
-      belongs to.
 - [ ] No task authorizes work based on uncommitted or unjournaled
       evidence.
 - [ ] The rationale names the journal state that made the task legal.

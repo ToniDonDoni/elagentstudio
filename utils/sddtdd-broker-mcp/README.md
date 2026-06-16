@@ -1,21 +1,21 @@
 # sddtdd-broker-mcp
 
 MCP task broker for Spec-Driven TDD broker mode. The broker reads the
-committed repository state, the SDDTDD journal, samples an LLM using the
-shared process skill, the in-folder orchestrator role file, and the
-stage-by-stage procedure, and answers two questions from the
-implementer: what is the next task, and was the current task actually
-completed correctly and within scope.
+committed repository state and the SDDTDD journal, and answers two
+questions from the implementer: what is the next task, and is the
+current task process-complete.
 
 The orchestrator role file (`skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md`)
-is the source of truth for the workflow order, the review rules, and
-the broker-level task verification policy. The implementer only needs
-the two decision tools and the self-contained broker task fields
-(`instruction`, `allowed_scope`, `required_evidence`,
+is the source of truth for the workflow order and the broker-level
+process-gate verification policy. The implementer only needs the two
+decision tools and the self-contained broker task fields
+(`task_kind`, `instruction`, `allowed_scope`, `required_evidence`,
 `independent_review_required`, `review_type`).
 
 The broker is configured with the role files at startup, not per call.
 The implementer does not hand the broker skill files on every call.
+The broker does not sample an LLM. The process-gate verification is
+enforced in code by the broker itself.
 
 ## Configuration
 
@@ -30,9 +30,12 @@ variables, with sensible fallbacks to the in-folder skill files:
 
 ## Tools
 
-### `init`
+There are exactly two tools. There is no `init`.
 
-Start or resume brokered work for a repository.
+### `getNextTask`
+
+The first call carries `user_input` and starts a new delivery.
+Subsequent calls carry `previous_task_id`.
 
 ```json
 {
@@ -41,59 +44,74 @@ Start or resume brokered work for a repository.
 }
 ```
 
-### `getNextTask`
-
-Ask the orchestrator for the next task, or for `complete` / `blocked`.
-
-```json
-{
-  "repo_path": "/path/to/project",
-  "previous_task_id": "B-000001"
-}
-```
-
-`previous_task_id` is optional. On the first call after `init`, omit it.
-On subsequent calls, pass the task id returned by the previously
-verified task.
-
 The response is one of:
 
-- `{"status": "TASK", "task_id": "...", "instruction": "...", "allowed_scope": [...], "required_evidence": [...], "independent_review_required": true, "review_type": "...", "rationale": "..."}`
+- `{"status": "TASK", "task_id": "...", "task_kind": "...", "instruction": "...", "allowed_scope": [...], "required_evidence": [...], "independent_review_required": true, "review_type": "SPEC_REVIEW | ... | null", "rationale": "..."}`
 - `{"status": "complete", ...}`
 - `{"status": "blocked", ...}`
 
 A `TASK` is self-contained. The implementer follows the `instruction`
 literally, stays within `allowed_scope`, produces the items in
 `required_evidence`, and only runs the independent reviewer when
-`independent_review_required` is true.
+`independent_review_required` is true. `task_kind` is the workflow
+stage; `review_type` is the type of independent reviewer verdict the
+implementer must obtain and journal, and is `null` for capture tasks
+(`USER_INPUT`, `SPEC_DRAFT`) that do not require a reviewer.
 
 ### `reviewTask`
 
-Ask the orchestrator to verify that the current task was actually
-completed correctly and within scope. This is a **semantic** task
-verification, not a presence-of-paperwork check.
+`reviewTask` performs process-gate verification. The broker itself
+reads the committed journal, the issued `task_kind`, the
+`work_journal_id`, and (when one is required) the
+`review_journal_id`, and decides whether the issued step is
+process-complete. The broker does not re-review the artifact's
+correctness — that is the independent reviewer's job.
 
 ```json
 {
   "repo_path": "/path/to/project",
   "task_id": "B-000001",
-  "claimed_result": "SPEC.md committed and journaled",
+  "task_kind": "RED",
+  "review_type": "RED_REVIEW",
+  "claimed_result": "RED evidence committed and reviewer passed",
+  "work_journal_id": "J-20260616-001",
   "evidence": {
+    "review_journal_id": "J-20260616-002",
     "commits": ["abc123"],
     "journal_ids": ["J-20260616-001", "J-20260616-002"],
     "review_request_id": "01HXX...",
     "test_commands": ["pytest -q"],
-    "files": ["SPEC.md", "JOURNAL_SDD_TDD_SKILL.log"]
+    "files": ["tests/test_foo.py"]
   }
 }
 ```
 
+For capture tasks (`USER_INPUT`, `SPEC_DRAFT`) the implementer passes
+`review_type: null` and omits `evidence.review_journal_id`.
+
 The response is one of:
 
-- `PASS` — the task is verified; call `getNextTask` again.
-- `FAIL` — fix the listed gaps and call `reviewTask` again.
+- `PASS` — the task is process-complete; call `getNextTask` again.
+- `FAIL` — fix the listed process gaps and call `reviewTask` again.
 - `NEEDS_CLARIFICATION` — supply the missing information.
 - `ERROR` — resolve tooling or repository state first.
+
+## Process-gate checks
+
+The broker applies these checks in order:
+
+1. Working tree is clean (`git status --porcelain` is empty).
+2. `JOURNAL_SDD_TDD_SKILL.log` exists at `HEAD`.
+3. `work_journal_id` exists in the committed journal.
+4. The work entry has `STATUS: COMPLETED`.
+5. Prerequisite reviewer verdicts exist (`RED_REVIEW: PASS` before
+   `GREEN`, `REGRESSION_REVIEW: PASS` before `FINAL`).
+6. When `review_type` is non-null, a reviewer-verdict journal entry
+   with the right `TYPE` and `STATUS: PASS` exists.
+7. The reviewer verdict's `PARENT` resolves in the journal.
+
+The broker does not check whether the artifact's content is correct,
+idiomatic, or appropriate. That is the reviewer's job.
 
 ## Broker access log
 
@@ -107,12 +125,11 @@ so the broker's checks can be investigated:
 Each call produces two events:
 
 - `task_review_started` — written at the start of `reviewTask`,
-  containing the request id, the broker task id, the claimed head SHA,
-  and a snapshot of the requested evidence.
+  containing the request id, the broker task id, the committed `HEAD`
+  SHA before, and the arguments the implementer passed.
 - `task_review_completed` — written at the end, containing the request
-  id, the broker task id, the actual head SHA, the verdict
-  (`PASS`, `FAIL`, `NEEDS_CLARIFICATION`, or `ERROR`), the findings,
-  and the duration in milliseconds.
+  id, the broker task id, the `HEAD` SHA before and after, the
+  verdict, the findings, and the duration in milliseconds.
 
 The broker writes both events for every call, including `FAIL`,
 `NEEDS_CLARIFICATION`, and `ERROR` calls. The implementer does not
@@ -129,11 +146,8 @@ mcp_servers:
       - "/path/to/elagentstudio/utils/sddtdd-broker-mcp"
       - "run"
       - "server.py"
-    sampling:
-      enabled: true
-      timeout: 120
     tools:
-      include: [init, getNextTask, reviewTask]
+      include: [getNextTask, reviewTask]
 ```
 
 ## Tests

@@ -89,60 +89,55 @@ This is the original mode.
 
 ### Broker mode
 
-There is an MCP task broker. The implementer does not select the next
-stage. The implementer reads `SKILL-IMPLEMENTER.md` (broker loop) and asks
-the broker for the next task via the broker MCP. The broker owns the
-workflow order and the broker-level task verification; it uses
-`SKILL-ORCHESTRATOR.md` plus `references/STAGES.md` as its decision policy.
-The implementer does not read `SKILL-ORCHESTRATOR.md`; the broker does.
+In broker mode there is an MCP task broker. The implementer asks the
+broker for the next task via the broker MCP and executes only the task
+the broker returns. The broker owns the workflow order and the
+process-gate verification; its decision policy lives in
+`SKILL-ORCHESTRATOR.md`. The implementer does not read
+`SKILL-ORCHESTRATOR.md`; the broker does.
 
-In both modes the independent reviewer is unchanged: it is still
+The independent reviewer is the same in both modes:
 `mcp_sddtdd_review_review`. There are two independent verifications:
 
-- `mcp_sddtdd_review_review` evaluates an artifact against requirements
-  and the previous reviewed inputs. It is invoked by the implementer when
-  the implementer is ready to present an artifact.
-- broker `reviewTask` checks whether a broker-issued task was actually
-  completed: scope, evidence, journal entries, reviewer verdicts, and
-  committed state. It is invoked by the implementer after the work and the
-  reviewer verdict are committed.
+- the independent reviewer evaluates the artifact's correctness and
+  returns `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`;
+- the broker checks the process state: are the right reviewer verdicts
+  in the committed journal in the right order with the right `PARENT`
+  chain. The broker does not re-review the artifact.
 
-These two verifications do not replace each other. The broker never
-replaces the reviewer, and the reviewer never replaces the broker.
+These two verifications do not replace each other.
 
 ## Roles
 
-There are three roles in the pipeline. A single agent may fill more than
-one role in standalone mode, but in broker mode the implementer and the
-broker are always different.
+There are three roles in the pipeline. A single agent may fill more
+than one role in standalone mode, but in broker mode the implementer
+and the broker are always different.
 
 ### Implementer
 
 The implementer creates and modifies artifacts, runs tests, requests
 reviews, updates the journal, commits, and reports task completion.
 
-In standalone mode the implementer selects the next stage from committed
-state.
+In standalone mode the implementer selects the next stage from
+committed state.
 
 In broker mode the implementer asks the broker for the next task and
-executes only that task. The implementer does not know the workflow order;
-the broker decides.
+executes only that task. The implementer does not know the workflow
+order; the broker decides.
 
 ### Independent reviewer
 
-Invoked through `mcp_sddtdd_review_review`. Reviews the committed artifact
-and returns `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`. Never modifies files,
-never implements, never writes the journal, never advances the pipeline.
-A reviewer that changes the artifact would be evaluating its own work.
+Invoked through `mcp_sddtdd_review_review`. Reviews the committed
+artifact and returns `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`. Never
+modifies files, never implements, never writes the journal, never
+advances the pipeline. A reviewer that changes the artifact would be
+evaluating its own work.
 
 ### Broker / orchestrator
 
-In broker mode only. Invoked through the broker MCP server. Reads
-committed state and the journal, returns the next task, verifies task
-completion, returns `complete` when the workflow is done or `blocked`
-when progress is impossible. Does not implement, does not review, does not
-edit files, does not update the journal. The orchestrator role file
-defines the decision policy.
+In broker mode only. Invoked through the broker MCP server. Owns the
+workflow process. The detailed broker policy is in
+`SKILL-ORCHESTRATOR.md`.
 
 ## Required invariants
 

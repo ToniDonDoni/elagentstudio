@@ -367,39 +367,44 @@ REGRESSION_REVIEW FAIL → REGRESSION or affected task
 FINAL_REVIEW FAIL → affected task or REGRESSION
 ```
 
-In broker mode, after every implementer task the broker `reviewTask` writes
-two journal entries: first `BROKER_TASK_SUBMITTED` to record that the
-implementer is handing the work over, then `BROKER_TASK_REVIEW` to record
-the broker's verdict.
+In broker mode, the implementer produces this sequence in the journal
+for every broker task. Capture tasks (`USER_INPUT`, `SPEC_DRAFT`) omit
+the reviewer verdict step.
 
 ```text
-work journal entry (e.g. SPEC_SPEC, RED, GREEN, REGRESSION)
-  → BROKER_TASK_SUBMITTED STATUS: COMPLETED
-       PARENT = work journal entry
-       DETAIL references broker task id, work entry, reviewer verdict
-  → independent reviewer verdict (when independent_review_required)
-       PARENT = work journal entry
-  → BROKER_TASK_REVIEW
-       STATUS = PASS                        → implementer calls getNextTask (or complete)
-       STATUS = FAIL                        → implementer fixes broker gaps, re-runs reviewer
-                                              if needed, re-append BROKER_TASK_SUBMITTED for the
-                                              rework, re-calls reviewTask; the next
-                                              BROKER_TASK_REVIEW entry is appended on the
-                                              next broker verdict
-       STATUS = NEEDS_CLARIFICATION         → blocked or user clarification
-       STATUS = ERROR                       → resolve tooling or repository state
+work journal entry (e.g. SPEC_SPEC, RED, GREEN, REGRESSION, DONE)
+   TYPE = the stage the task represents
+   STATUS = COMPLETED
+
+independent reviewer verdict (only when the task requires one)
+   TYPE = <review_type>_REVIEW
+   STATUS = PASS (or FAIL during rework)
+   PARENT = work journal entry
+
+BROKER_TASK_SUBMITTED
+   STATUS = COMPLETED
+   PARENT = reviewer verdict (or work journal entry for capture tasks)
+   DETAIL references broker task id, work entry, reviewer verdict
+
+broker.process-gate verification (reviewTask, no journal entry)
+
+BROKER_TASK_REVIEW
+   STATUS = PASS                       → implementer calls getNextTask
+   STATUS = FAIL                       → implementer fixes the process gaps the
+                                          broker listed, re-calls reviewTask
+   STATUS = NEEDS_CLARIFICATION        → implementer asks the user
+   STATUS = ERROR                      → implementer resolves state
 ```
 
-`BROKER_TASK_SUBMITTED` records the fact of submission; the broker verdict
-goes into `BROKER_TASK_REVIEW`. They are two distinct journal events
-because submission and verdict happen at different points in time and
-should be reconstructable independently.
+`BROKER_TASK_SUBMITTED` records the hand-off. `BROKER_TASK_REVIEW`
+records the broker's process-gate verdict. The two events are
+distinct because submission and verdict happen at different points in
+time and should be reconstructable independently.
 
-`BROKER_TASK_REVIEW` is the broker's verdict on whether a submitted
-broker task was completed correctly and within scope. It is distinct
-from the reviewer `*_REVIEW` entries, which record the verdict of the
-independent reviewer MCP. Both chains must pass for the workflow to
-advance.
+`BROKER_TASK_REVIEW` is the broker's process-gate verdict. It is
+distinct from the reviewer `*_REVIEW` entries, which record the
+independent reviewer MCP's verdict on the artifact. Both chains must
+exist and pass for the workflow to advance.
 
 An escalation is recorded when the configured review limit is exceeded:
 
