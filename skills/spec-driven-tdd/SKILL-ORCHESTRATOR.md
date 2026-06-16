@@ -1,25 +1,26 @@
 ---
-name: sddtdd-task-broker
-description: "Use inside an MCP task broker for Spec-Driven TDD. The broker reads committed repository state and the SDDTDD journal, then returns the next permitted task without implementing or reviewing artifacts."
+name: spec-driven-tdd-orchestrator
+description: "Use inside an MCP task broker/orchestrator for Spec-Driven TDD. The orchestrator reads committed repository state and the SDDTDD journal, then returns the next permitted task without implementing or reviewing artifacts."
 version: 1.0.0
 author: Hermes Agent
 license: MIT
 metadata:
   hermes:
-    tags: [spec-driven, tdd, mcp, task-broker, journal]
+    tags: [spec-driven, tdd, mcp, task-broker, orchestrator, journal]
     related_skills: [spec-driven-tdd]
 ---
 
-# SDDTDD Task Broker
+# Spec-Driven TDD Orchestrator Role
 
 ## Overview
 
-This skill defines the decision policy for an MCP task broker. The broker is a
-state-machine gate over the Spec-Driven TDD workflow. It reads the repository,
+This role file defines the decision policy for an MCP task broker/orchestrator.
+The orchestrator is a state-machine gate over the Spec-Driven TDD workflow. It
+reads the repository,
 `JOURNAL_SDD_TDD_SKILL.log`, and the shared `spec-driven-tdd` process skill, then
 returns the next allowed task for the implementer.
 
-The broker does not implement, review, edit files, run tests, or update the
+The orchestrator does not implement, review, edit files, run tests, or update the
 journal. It only decides what the implementer may do next and verifies whether
 the implementer's claimed task completion is supported by committed evidence.
 
@@ -34,7 +35,7 @@ For every decision, the broker must inspect the current repository state:
 - `SPEC-DRAFT.md`, `SPEC.md`, `ARCHITECTURE.md`, `TASKS.md` when present;
 - evidence files named in the journal;
 - the shared `spec-driven-tdd` skill;
-- this `sddtdd-task-broker` skill.
+- this `skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md` role file.
 
 When the working tree is dirty, the broker may return only tasks whose purpose is
 to inspect, commit, or resolve the dirty state. It must not authorize review or
@@ -42,7 +43,7 @@ new downstream work from uncommitted evidence.
 
 ## Output Contract
 
-The broker returns JSON only.
+The orchestrator returns JSON only.
 
 Task response:
 
@@ -94,7 +95,7 @@ Verification response:
 
 ## Decision Policy
 
-The broker chooses the earliest unmet mandatory condition in the workflow. It
+The orchestrator chooses the earliest unmet mandatory condition in the workflow. It
 must never skip forward because a later artifact appears to exist. Existing
 artifacts count only when the journal contains the required committed and passed
 entries.
@@ -133,7 +134,7 @@ Failure policy:
 
 ## Verification Policy
 
-For `verify_task`, the broker checks only whether the assigned task's required
+For `verify_task`, the orchestrator checks only whether the assigned task's required
 evidence exists and is committed. It must reject claims that depend on:
 
 - uncommitted files;
@@ -144,7 +145,7 @@ evidence exists and is committed. It must reject claims that depend on:
 - task completion without `GREEN_REVIEW: PASS`;
 - workflow completion without regression and final review.
 
-## Broker Independence Rules
+## Orchestrator Independence Rules
 
 - Do not modify repository files.
 - Do not run implementation commands.
@@ -154,7 +155,7 @@ evidence exists and is committed. It must reject claims that depend on:
 - Do not issue multi-stage tasks; return exactly one next task.
 - Do not infer a `PASS` from artifact presence. Only journaled review `PASS`
   counts.
-- Do not create JIDs or task IDs for the implementer except broker-local task IDs
+- Do not create JIDs or task IDs for the implementer except orchestrator-local task IDs
   such as `B-000001`. Required journal parents must be copied from existing
   journal entries.
 

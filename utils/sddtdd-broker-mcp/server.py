@@ -2,7 +2,8 @@
 
 The server exposes a broker contract around three tools: init_task, verify_task,
 and next_task. It reads repository state and asks the MCP sampling model to act
-as a task broker using the shared SDDTDD process skill plus the broker skill.
+as a task broker using the shared SDDTDD process skill plus the in-folder
+orchestrator role file.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ app = mcp_server.Server("sddtdd-broker-mcp")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROCESS_SKILL = REPO_ROOT / "skills" / "spec-driven-tdd" / "SKILL.md"
-BROKER_SKILL = REPO_ROOT / "skills" / "sddtdd-task-broker" / "SKILL.md"
+BROKER_SKILL = REPO_ROOT / "skills" / "spec-driven-tdd" / "SKILL-ORCHESTRATOR.md"
 
 
 def _git(repo_path: str, *args: str) -> str:
@@ -169,7 +170,7 @@ def build_broker_prompt(tool_name: str, arguments: dict[str, Any], repo_state: d
         "# Process skill: spec-driven-tdd",
         _read_skill(PROCESS_SKILL),
         "",
-        "# Broker skill: sddtdd-task-broker",
+        "# Orchestrator role: spec-driven-tdd/SKILL-ORCHESTRATOR.md",
         _read_skill(BROKER_SKILL),
         "",
         "# Repository state",

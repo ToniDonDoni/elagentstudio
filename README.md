@@ -6,8 +6,6 @@ Reusable agent skills, workflows, and installation bundles for Codex, OpenCode, 
 
 - [Spec-Driven TDD](#spec-driven-tdd)
 - [TriAgent-Driven Development](#triagent-driven-development-trdd)
-- [SDDTDD Broker Implementer](#sddtdd-broker-implementer)
-- [SDDTDD Task Broker](#sddtdd-task-broker)
 
 ## Available Skills
 
@@ -18,6 +16,7 @@ A spec-driven development test-driven development (TDD) pipeline with review at 
 - **Path:** `skills/spec-driven-tdd/`
 - **Platform:** Hermes Agent
 - **Requires:** pytest, Hermes Agent with `delegate_task`; optional SDDTDD reviewer and broker MCP servers
+- **Broker role files:** `SKILL-IMPLEMENTER.md` and `SKILL-ORCHESTRATOR.md` live inside this same skill directory. They are not separate installable skills.
 
 #### Install Spec-Driven TDD
 
@@ -35,6 +34,12 @@ hermes skills list | grep spec-driven-tdd
 
 ```prompt
 Use the spec-driven-tdd skill for <your task description>
+```
+
+For broker mode, install only `spec-driven-tdd` and use its in-folder role files:
+
+```prompt
+Use spec-driven-tdd broker mode. The implementer follows skills/spec-driven-tdd/SKILL-IMPLEMENTER.md, and the MCP task broker/orchestrator follows skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md.
 ```
 
 ---
@@ -62,49 +67,3 @@ cat skills/triagent-driven-development/README_OPENCODE_INSTALL.md
 cat skills/triagent-driven-development/README_CODEX_INSTALL.md
 ```
 
-
----
-
-### SDDTDD Broker Implementer
-
-Implementer-side skill for Spec-Driven TDD broker mode. The primary agent asks a
-task-broker MCP server for initialization, verification, and the next task instead
-of choosing workflow stages itself.
-
-- **Path:** `skills/sddtdd-broker-implementer/`
-- **Platform:** Hermes Agent
-- **Requires:** `spec-driven-tdd`, SDDTDD task-broker MCP server
-
-#### Install SDDTDD Broker Implementer
-
-```bash
-hermes skills install ToniDonDoni/elagentstudio/skills/sddtdd-broker-implementer
-```
-
-#### Use SDDTDD Broker Implementer
-
-```prompt
-Use spec-driven-tdd in broker mode with sddtdd-broker-implementer for <your task>.
-```
-
----
-
-### SDDTDD Task Broker
-
-Broker-side decision skill for an MCP server. It reads committed repository state
-and `JOURNAL_SDD_TDD_SKILL.log`, then returns the next legal Spec-Driven TDD task
-without implementing or reviewing artifacts.
-
-- **Path:** `skills/sddtdd-task-broker/`
-- **Platform:** MCP sampling server for Hermes Agent
-- **Requires:** `spec-driven-tdd`, `utils/sddtdd-broker-mcp/`
-
-#### Install SDDTDD Task Broker
-
-```bash
-hermes skills install ToniDonDoni/elagentstudio/skills/sddtdd-task-broker
-```
-
-#### Configure Broker MCP
-
-See `utils/sddtdd-broker-mcp/README.md`.

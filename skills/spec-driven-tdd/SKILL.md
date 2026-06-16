@@ -7,7 +7,6 @@ license: MIT
 metadata:
   hermes:
     tags: [spec-driven, tdd, requirements, architecture, testing, review, traceability, audit]
-    related_skills: [sddtdd-broker-implementer, sddtdd-task-broker]
 ---
 
 # Spec-Driven TDD
@@ -74,26 +73,30 @@ Every arrow means that the next artifact is derived only from reviewed inputs.
 
 When an MCP task broker is available, the primary implementer MUST NOT select the
 next workflow stage by interpreting this whole skill directly. Instead, the
-implementer loads `sddtdd-broker-implementer` and asks the task broker for the
-next task.
+implementer follows the in-folder implementer role file and asks the task broker
+for the next task.
+
+Broker mode is still one shared skill: `skills/spec-driven-tdd/` is the only
+installable skill directory. The role files are part of that skill, not separate
+top-level skills:
+
+- `SKILL.md` — shared process contract;
+- `SKILL-IMPLEMENTER.md` — implementer MCP interaction loop;
+- `SKILL-ORCHESTRATOR.md` — broker/orchestrator decision contract.
 
 In broker mode:
 
-- this skill remains the shared process contract;
-- `sddtdd-broker-implementer` defines the implementer's MCP interaction loop;
-- `sddtdd-task-broker` defines how the broker reads the journal and emits the
-  next allowed task;
 - independent review still uses `mcp_sddtdd_review_review`;
 - the implementer creates artifacts, runs commands, updates the journal, and
   commits work only for the broker-issued task;
-- the broker decides the next allowed task from committed repository state and
-  `JOURNAL_SDD_TDD_SKILL.log`;
-- the implementer reports task completion back to the broker before asking for
-  another task.
+- the orchestrator decides the next allowed task from committed repository state
+  and `JOURNAL_SDD_TDD_SKILL.log`;
+- the implementer reports task completion back to the orchestrator before asking
+  for another task.
 
-The broker is an orchestration gate, not a reviewer and not an implementer. It
-never replaces RED-GREEN, journal commits, independent review, or user
-clarification.
+The broker/orchestrator is an orchestration gate, not a reviewer and not an
+implementer. It never replaces RED-GREEN, journal commits, independent review,
+or user clarification.
 
 ---
 
@@ -1250,6 +1253,6 @@ The workflow is complete only when:
 
 - [JOURNAL.md](references/JOURNAL.md) — journal entry format, task relationships, parent/root rules, and required invariants.
 - [SPEC-EXAMPLE.md](references/SPEC-EXAMPLE.md) — canonical walkthrough of the complete reviewed artifact and RED-GREEN workflow.
-- [sddtdd-broker-implementer](../sddtdd-broker-implementer/SKILL.md) — implementer loop for task-broker MCP mode.
-- [sddtdd-task-broker](../sddtdd-task-broker/SKILL.md) — broker decision contract for MCP task orchestration.
+- [SKILL-IMPLEMENTER.md](SKILL-IMPLEMENTER.md) — implementer loop for task-broker MCP mode.
+- [SKILL-ORCHESTRATOR.md](SKILL-ORCHESTRATOR.md) — broker/orchestrator decision contract for MCP task orchestration.
 

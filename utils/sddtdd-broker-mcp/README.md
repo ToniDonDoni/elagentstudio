@@ -2,7 +2,8 @@
 
 MCP task broker for Spec-Driven TDD broker mode. The broker reads the repository
 state and SDDTDD journal, samples an LLM using the shared process skill plus the
-broker skill, and returns the next allowed implementer task as JSON.
+in-folder orchestrator role file, and returns the next allowed implementer task as
+JSON.
 
 ## Tools
 
@@ -15,8 +16,8 @@ Initializes or resumes brokered work.
   "repo_path": "/path/to/project",
   "user_input": "original user request",
   "process_skill": "spec-driven-tdd",
-  "implementer_skill": "sddtdd-broker-implementer",
-  "broker_skill": "sddtdd-task-broker"
+  "implementer_skill": "skills/spec-driven-tdd/SKILL-IMPLEMENTER.md",
+  "broker_skill": "skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md"
 }
 ```
 

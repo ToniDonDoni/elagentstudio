@@ -1,5 +1,5 @@
 ---
-name: sddtdd-broker-implementer
+name: spec-driven-tdd-implementer
 description: "Use when implementing Spec-Driven TDD through an MCP task broker. The implementer asks the broker for initialization, verification, and next-task decisions instead of self-selecting workflow stages."
 version: 1.0.0
 author: Hermes Agent
@@ -7,14 +7,14 @@ license: MIT
 metadata:
   hermes:
     tags: [spec-driven, tdd, mcp, task-broker, implementer]
-    related_skills: [spec-driven-tdd, sddtdd-task-broker]
+    related_skills: [spec-driven-tdd]
 ---
 
-# SDDTDD Broker Implementer
+# Spec-Driven TDD Implementer Role
 
 ## Overview
 
-This skill is the implementer-side contract for Spec-Driven TDD broker mode.
+This role file is the implementer-side contract for Spec-Driven TDD broker mode.
 The implementer still performs the work: writing artifacts, running tests,
 requesting independent review, updating the journal, and committing changes.
 The implementer does **not** decide which workflow stage comes next. A task
@@ -27,26 +27,27 @@ task after the required evidence is committed.
 
 ## When to Use
 
-Use this skill when:
+Use this role file when:
 
 - the user asks for Spec-Driven TDD with a task broker;
 - an MCP server exposes task-broker tools for SDDTDD;
 - the primary `spec-driven-tdd` skill says broker mode is active;
 - the implementer is tempted to infer or skip the next stage.
 
-Do not use this skill when no task-broker MCP server exists. In that case, use
+Do not use this role file when no task-broker MCP server exists. In that case, use
 `spec-driven-tdd` directly and record any deviation explicitly.
 
-## Required Skills
+## Required Role Files
 
-The implementer MUST load both:
+The implementer MUST load the single shared `spec-driven-tdd` skill and follow
+this in-folder role file:
 
-- `spec-driven-tdd` — shared process and artifact contract;
-- `sddtdd-broker-implementer` — this implementer-side MCP loop.
+- `skills/spec-driven-tdd/SKILL.md` — shared process and artifact contract;
+- `skills/spec-driven-tdd/SKILL-IMPLEMENTER.md` — this implementer-side MCP loop.
 
-The implementer MUST NOT load `sddtdd-task-broker` as executable instructions for
-itself. That skill is supplied to the broker MCP server so the broker can decide
-tasks independently.
+The implementer MUST NOT follow `SKILL-ORCHESTRATOR.md` as executable
+instructions for itself. That file is supplied to the broker MCP server so the
+orchestrator can decide tasks independently.
 
 ## MCP Tool Contract
 
@@ -64,8 +65,8 @@ Input:
 {
   "repo_path": "/absolute/path/to/repo",
   "user_input": "original user request or a pointer to it",
-  "implementer_skill": "sddtdd-broker-implementer",
-  "broker_skill": "sddtdd-task-broker",
+  "implementer_skill": "skills/spec-driven-tdd/SKILL-IMPLEMENTER.md",
+  "broker_skill": "skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md",
   "process_skill": "spec-driven-tdd"
 }
 ```
@@ -129,7 +130,7 @@ Output statuses:
 
 ## Implementer Loop
 
-1. Load `spec-driven-tdd` and this skill.
+1. Load `spec-driven-tdd` and this implementer role file.
 2. Call broker `init_task` with the repository path and user input.
 3. Execute only the returned task's `allowed_actions`.
 4. Commit every required artifact and journal update before verification when
@@ -161,7 +162,7 @@ and commits the journal update before reporting completion to the broker.
 
 ## Verification Checklist
 
-- [ ] `spec-driven-tdd` and this skill are loaded.
+- [ ] `spec-driven-tdd` and `SKILL-IMPLEMENTER.md` are loaded.
 - [ ] Every task came from the broker MCP server.
 - [ ] Every completed task was verified through `verify_task`.
 - [ ] Independent reviews still came from `mcp_sddtdd_review_review`.

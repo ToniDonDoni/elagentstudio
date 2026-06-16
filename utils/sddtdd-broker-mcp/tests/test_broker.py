@@ -39,7 +39,7 @@ def test_build_broker_prompt_contains_skills_and_repo_state():
         {"repo_path": "/tmp/repo", "head_sha": "abc", "files": {"JOURNAL_SDD_TDD_SKILL.log": ""}},
     )
     assert "spec-driven-tdd" in prompt
-    assert "sddtdd-task-broker" in prompt
+    assert "SKILL-ORCHESTRATOR" in prompt
     assert "next_task" in prompt
     assert "JOURNAL_SDD_TDD_SKILL.log" in prompt
 
