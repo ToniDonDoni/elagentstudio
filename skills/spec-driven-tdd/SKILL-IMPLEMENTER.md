@@ -78,7 +78,7 @@ the workflow order to execute it. A task carries:
 ```json
 {
   "task_id": "B-000001",
-  "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | REGRESSION | FINAL | DONE",
+  "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | FINAL | DONE",
   "instruction": "one concrete instruction in natural language",
   "allowed_scope": ["files, paths, or artifacts the task may touch"],
   "required_evidence": [
@@ -133,20 +133,32 @@ implementer executes the issued task exactly.
       required).
 4. The broker returns one of:
    - `PASS` — append a `BROKER_TASK_REVIEW` journal entry with
-     `STATUS: PASS`, commit, then call `getNextTask` for the next
-     task.
+     `STATUS: PASS`, **`TASK_ID: <the broker task id you were
+     verifying>`** (so the broker can match the verification to
+     the issued task on the next `getNextTask` call), and `PARENT`
+     pointing at the reviewer verdict (or the work journal entry
+     for capture tasks); commit; **then** call `getNextTask` for
+     the next task. The broker enforces this match — see rule 11
+     in `SKILL-ORCHESTRATOR.md`.
    - `FAIL` — append a `BROKER_TASK_REVIEW` journal entry with
-     `STATUS: FAIL` and the broker-listed findings in `DETAIL`,
-     commit, fix the process gaps exactly as the broker listed them
-     (e.g. commit the missing work entry, re-run the reviewer, fix a
-     broken journal `PARENT`), then call `reviewTask` again. Repeat
-     until `PASS`.
+     `STATUS: FAIL`, `TASK_ID: <the broker task id>`, and the
+     broker-listed findings in `DETAIL`; commit; fix the process
+     gaps exactly as the broker listed them (e.g. commit the
+     missing work entry, re-run the reviewer, fix a broken journal
+     `PARENT`); then call `reviewTask` again. Repeat until `PASS`.
    - `NEEDS_CLARIFICATION` — append `BROKER_TASK_REVIEW:
-     NEEDS_CLARIFICATION`, commit, ask the user or supply the missing
-     information, then continue.
+     NEEDS_CLARIFICATION` (with `TASK_ID` and `PARENT`),
+     commit, ask the user or supply the missing information,
+     then continue.
    - `ERROR` — resolve tooling or repository state first.
 5. Repeat until `getNextTask` returns `complete` (workflow finished) or
-   a blocker.
+   a blocker. The broker returns `blocked` if you call `getNextTask`
+   while a previous broker task is still unverified (no committed
+   `BROKER_TASK_REVIEW: PASS` with the matching `TASK_ID`). When that
+   happens, append nothing new — call `reviewTask` for the
+   outstanding broker task id (named in the `unverified_task_ids`
+   field of the `blocked` response) first, and only then call
+   `getNextTask` again.
 
 ### Broker task journal chain
 
@@ -164,6 +176,8 @@ independent reviewer verdict (only when the task requires one)
    PARENT = work journal entry
 
 BROKER_TASK_REVIEW
+   TYPE = BROKER_TASK_REVIEW
+   TASK_ID = <broker task id being verified>
    STATUS = PASS | FAIL | NEEDS_CLARIFICATION | ERROR
    PARENT = reviewer verdict (or work journal entry when no reviewer)
    DETAIL = broker verdict and findings
@@ -202,6 +216,16 @@ must succeed.
   from the current state.
 - Do not call `getNextTask` for the next task until `reviewTask` for
   the current task returned `PASS`.
+- Do not call `getNextTask` until you have appended a
+  `BROKER_TASK_REVIEW: PASS` journal entry carrying
+  `TASK_ID: <broker task id>` and committed it. The broker rejects
+  the next `getNextTask` call while a previous task is still
+  unverified; the response names the outstanding `task_id` in
+  `unverified_task_ids`.
+- Do not call `getNextTask` while a previous broker task is still
+  unverified, even if the work is already journaled. The broker
+  will return `blocked` until `reviewTask` confirms process
+  completion.
 - Do not treat a reviewer `PASS` as a broker `reviewTask PASS`; the
   broker must confirm process completion.
 - Do not execute work outside the broker task's `allowed_scope`.

@@ -119,7 +119,14 @@ committed state.
 
 In broker mode the implementer asks the broker for the next task and
 executes only that task. The implementer does not know the workflow
-order; the broker decides.
+order; the broker decides. The implementer must record the broker's
+verification in the journal — every completed broker task produces a
+`BROKER_TASK_REVIEW` entry with `TASK_ID` and `STATUS: PASS | FAIL |
+NEEDS_CLARIFICATION | ERROR`. The broker also enforces a process
+gate: while a previous broker task id has no committed
+`BROKER_TASK_REVIEW: PASS` with matching `TASK_ID`, the broker will
+not issue the next task; `getNextTask` returns `blocked` and names
+the outstanding `task_id` in `unverified_task_ids`.
 
 ### Independent reviewer
 

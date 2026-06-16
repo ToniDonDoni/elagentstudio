@@ -69,7 +69,7 @@ broker returns one of three shapes:
 {
   "status": "TASK",
   "task_id": "B-000001",
-  "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | REGRESSION | FINAL | DONE",
+  "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | FINAL | DONE",
   "instruction": "one concrete instruction in natural language",
   "allowed_scope": ["files, paths, or artifacts the task may touch"],
   "required_evidence": [
@@ -170,7 +170,7 @@ same procedure the broker enforces.
 The broker does not decide this dynamically. The mapping is fixed by
 this file:
 
-| `task_kind` | required `review_type` | prerequisite reviews | required artifacts |
+| `task_kind` | required `review_type` | prerequisites in the journal | required artifacts |
 |---|---|---|---|
 | `USER_INPUT_CAPTURE` | (none) | — | `SPEC-DRAFT.md` |
 | `SPEC_SPEC` | `SPEC_REVIEW` | — | `SPEC.md` |
@@ -178,7 +178,8 @@ this file:
 | `DECOMPOSE` | `TASK_REVIEW` | `SPEC_REVIEW`, `ARCHITECTURE_REVIEW` | `TASKS.md` |
 | `RED` | `RED_REVIEW` | `SPEC_REVIEW`, `ARCHITECTURE_REVIEW`, `TASK_REVIEW` | — |
 | `GREEN` | `GREEN_REVIEW` | `RED_REVIEW` (and the chain above) | — |
-| `REGRESSION` | `REGRESSION_REVIEW` | the per-task chain above | — |
+| `TASKS_COMPLETE` | (none) | `GREEN_REVIEW` (and the chain above) | — |
+| `REGRESSION` | `REGRESSION_REVIEW` | `TASKS_COMPLETE` (and the chain above) | — |
 | `FINAL` | `FINAL_REVIEW` | `REGRESSION_REVIEW` (and the chain above) | — |
 | `DONE` | (none) | all of the above | — |
 
@@ -221,11 +222,23 @@ the broker returns `FAIL` with the specific findings.
 6. **Work entry has `STATUS: COMPLETED`.** Anything else means the
    implementer is asking the broker to verify work that the
    implementer itself has not marked complete.
-7. **Prerequisite reviewer verdicts exist.** When `task_kind` is
-   `GREEN`, the broker requires `RED_REVIEW: PASS` to already be in
-   the committed journal. When `task_kind` is `FINAL`, the broker
-   requires `REGRESSION_REVIEW: PASS`. This is the process-order
-   check.
+7. **Stage prerequisites exist in the journal.** For each entry in the
+   stage's prerequisite list — currently:
+   - `GREEN` requires `RED_REVIEW: PASS` to already be in the committed
+     journal.
+   - `TASKS_COMPLETE` requires `GREEN_REVIEW: PASS` to already be in the
+     committed journal.
+   - `REGRESSION` requires `TASKS_COMPLETE: COMPLETED` to already be in
+     the committed journal.
+   - `FINAL` requires `REGRESSION_REVIEW: PASS` to already be in the
+     committed journal.
+
+   This is the process-order check. The broker generalises the rule
+   to "any prerequisite `(TYPE, STATUS)` pair must be present in the
+   committed journal before the issued stage can be verified"; the
+   concrete list lives in the `STAGE_PREREQUISITES` table in
+   `server.py` and is the source of truth, this rule names the
+   current entries.
 8. **Required reviewer verdict exists and is `PASS`.** When the
    issued `review_type` is non-null, the broker requires a
    reviewer-verdict journal entry whose `TYPE` matches the issued
@@ -241,6 +254,21 @@ the broker returns `FAIL` with the specific findings.
     reviewer verdict's `PARENT` JID is also required to be present in
     the committed journal. This catches a guessed or fabricated
     `PARENT`.
+11. **No outstanding unverified broker tasks (`getNextTask` gate).**
+    Before the broker hands out the next task on `getNextTask`, it
+    checks that every broker task id it has previously issued in this
+    delivery has a corresponding committed `BROKER_TASK_REVIEW:
+    PASS` journal entry whose `TASK_ID` matches. The broker
+    identifies issued task ids from the broker access log
+    (`<repo>/.git/sddtdd/broker-access.jsonl`), and identifies
+    verified task ids from committed journal entries of
+    `TYPE: BROKER_TASK_REVIEW, STATUS: PASS`. If any issued task id
+    is still unverified, the broker returns `status: "blocked"`
+    with a `required_action` naming the outstanding task id(s) and
+    instructing the implementer to call `reviewTask` and commit the
+    matching `BROKER_TASK_REVIEW: PASS` entry first. This is the
+    process gate that catches the implementer that does the work,
+    skips `reviewTask`, and asks for the next task anyway.
 
 The broker does not check:
 
@@ -303,7 +331,14 @@ need to look at this log; the broker uses it for investigation.
 
 - [ ] The response is JSON only.
 - [ ] `getNextTask` returns exactly one of `TASK`, `complete`, or
-      `blocked`.
+     `blocked`. The `blocked` shape can come from either of two
+     conditions: the implementer did not provide `user_input` for a
+     fresh delivery, or there are outstanding unverified broker task
+     ids (rule 11).
+- [ ] When `getNextTask` returns `blocked` because of rule 11, the
+     `unverified_task_ids` field names the outstanding broker task
+     id(s) the implementer must verify before the broker will issue
+     the next task.
 - [ ] `reviewTask` returns exactly one of `PASS`, `FAIL`,
       `NEEDS_CLARIFICATION`, `ERROR`.
 - [ ] `TASK` carries `task_id`, `task_kind`, `instruction`,
