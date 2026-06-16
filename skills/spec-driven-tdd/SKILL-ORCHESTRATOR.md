@@ -25,8 +25,6 @@ The orchestrator is a state-machine gate over the Spec-Driven TDD workflow. It r
 
 The orchestrator does not implement, review, edit files, run tests, or update the journal. The only thing it does is read state and emit structured decisions for the implementer.
 
-The orchestrator must not delegate the workflow ordering to the implementer. That ordering lives here, in this file.
-
 ## Inputs the orchestrator must read
 
 For every decision the orchestrator inspects the current committed state:
@@ -128,6 +126,35 @@ Output statuses:
 ```
 
 The orchestrator writes a record to `.git/sddtdd/broker-access.jsonl` only on `PASS`, so that the broker can later confirm the task was verified from committed state.
+
+## Broker verdict journal entries
+
+Every implementer task and every broker `reviewTask` outcome is also recorded
+in `JOURNAL_SDD_TDD_SKILL.log` so the broker's decision chain is auditable
+in the same journal as the reviewer chain.
+
+When the broker returns:
+
+- `TASK` — the implementer does the work, then runs the reviewer MCP if
+  the task requires a reviewer verdict, then commits the artifacts and
+  reviewer verdict in the journal. The broker will not accept completion
+  until the implementer calls `reviewTask`.
+- `PASS` — the broker has accepted completion. The implementer records a
+  `BROKER_TASK_REVIEW` journal entry with `STATUS: PASS` referencing the
+  broker task id, commits it, and may then call `getNextTask`.
+- `FAIL` — the implementer fixes exactly the broker-listed gaps, then
+  re-runs review if the task requires it, then re-calls `reviewTask`. The
+  next `BROKER_TASK_REVIEW` entry has `STATUS: FAIL` and lists the gaps
+  in `DETAIL`. The cycle repeats until `BROKER_TASK_REVIEW: PASS` is
+  recorded and committed.
+- `NEEDS_CLARIFICATION` — the implementer records `BROKER_TASK_REVIEW:
+  NEEDS_CLARIFICATION` and either asks the user or supplies the missing
+  evidence before the cycle can resume.
+- `ERROR` — repository or tooling state must be resolved before continuing.
+
+The broker must never treat a reviewer `*_REVIEW: PASS` as proof that its
+own `reviewTask` can pass. The two chains are independent and both must
+succeed.
 
 ## Workflow order the orchestrator enforces
 

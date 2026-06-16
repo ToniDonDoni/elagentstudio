@@ -84,15 +84,41 @@ top-level skills:
 - `SKILL-IMPLEMENTER.md` — implementer MCP interaction loop;
 - `SKILL-ORCHESTRATOR.md` — broker/orchestrator decision contract.
 
-In broker mode:
+The implementer drives the broker with three operations only: `init`,
+`getNextTask`, and `reviewTask`. The implementer does not know the workflow
+order; the orchestrator decides.
+
+A single broker task goes through these implementer actions:
+
+```text
+init or getNextTask returns TASK
+  → implementer does the work (artifacts, tests, commands)
+  → implementer runs the reviewer MCP if the task requires a reviewer verdict
+  → implementer appends a journal entry for the work and commits it
+  → implementer calls reviewTask with concrete evidence
+       PASS                       → implementer appends BROKER_TASK_REVIEW: PASS, commits, getNextTask
+       FAIL                       → implementer appends BROKER_TASK_REVIEW: FAIL with the broker gaps in DETAIL,
+                                    commits, fixes exactly those gaps, re-runs review if needed, reviewTask again
+       NEEDS_CLARIFICATION        → implementer appends BROKER_TASK_REVIEW: NEEDS_CLARIFICATION, commits, asks the user
+       ERROR                      → implementer resolves tooling or repository state first
+```
+
+The broker never skips a workflow stage. The broker may only return the
+earliest unmet mandatory condition based on the committed journal and
+artifacts.
+
+Independent review is unchanged in broker mode:
 
 - independent review still uses `mcp_sddtdd_review_review`;
 - the implementer creates artifacts, runs commands, updates the journal, and
   commits work only for the broker-issued task;
 - the orchestrator decides the next allowed task from committed repository state
   and `JOURNAL_SDD_TDD_SKILL.log`;
-- the implementer reports task completion back to the orchestrator before asking
-  for another task.
+- the implementer reports task completion back to the orchestrator through
+  `reviewTask` and only then asks for another task;
+- a reviewer `*_REVIEW: PASS` is not the same as a broker
+  `BROKER_TASK_REVIEW: PASS`; the broker's verdict is recorded and committed
+  separately.
 
 The broker/orchestrator is an orchestration gate, not a reviewer and not an
 implementer. It never replaces RED-GREEN, journal commits, independent review,

@@ -48,9 +48,14 @@ The implementer does **not** read `SKILL-ORCHESTRATOR.md` as instructions for it
 1. Load the shared `spec-driven-tdd` skill and this implementer role file.
 2. Call broker `init` with the repository path and the original user request. The broker returns the first task, `complete`, or a blocker.
 3. If the broker returned a task: do exactly what the task says, following the shared `spec-driven-tdd` process for the kind of work the task describes (artifacts, tests, journal entries, reviews, commits).
-4. When the task is done, call broker `reviewTask` with the task id, a short summary of what was done, and the concrete evidence (commits, journal ids, review verdicts, test commands) required to prove it.
-5. If `reviewTask` returns `PASS`, call `getNextTask` to get the next task. If it returns anything else, follow what it says: fix the listed gaps and re-ask, ask the user, or stop on a blocker.
-6. Repeat until `getNextTask` returns `complete` (workflow finished) or a blocker.
+4. When the work is done, append a `BROKER_TASK_REVIEW` journal entry to `JOURNAL_SDD_TDD_SKILL.log` with `STATUS: COMPLETED` and commit the journal update.
+5. Call broker `reviewTask` with the task id, a short summary, and the concrete evidence (commits, journal ids, reviewer request ids, test commands) required to prove the work.
+6. The broker returns one of:
+   - `PASS` — record `BROKER_TASK_REVIEW: PASS` in the journal, commit it, then call `getNextTask` for the next task.
+   - `FAIL` — record `BROKER_TASK_REVIEW: FAIL` in the journal with the broker-listed gaps in `DETAIL`, commit it, fix exactly those gaps, re-run the reviewer if the task requires it, then call `reviewTask` again. Repeat until `PASS`.
+   - `NEEDS_CLARIFICATION` — record `BROKER_TASK_REVIEW: NEEDS_CLARIFICATION`, commit it, ask the user or supply the missing information, then continue.
+   - `ERROR` — resolve the tooling or repository state first.
+7. Repeat until `getNextTask` returns `complete` (workflow finished) or a blocker.
 
 ## Review still uses the reviewer MCP
 

@@ -29,6 +29,7 @@ TODO: Align JOURNAL.md with the new architecture stage.
 - Update the complete journal example to include `ARCHITECTURE` and `ARCHITECTURE_REVIEW`.
 - Do not add new relationship fields. Continue using `JID`, `PARENT`, `ROOT`, `DEPENDS`, and the existing task-tree fields.
 - Store artifact paths, reviewed commit hashes, and review evidence in `DETAIL` unless a separate structured-field change is explicitly approved.
+- DONE: Added TYPE `BROKER_TASK_REVIEW` for the MCP task-broker verdict on whether the current broker task is complete. See section 10.
 
 
 This document defines the required format and content of `JOURNAL_SDD_TDD_SKILL.log`.
@@ -115,6 +116,7 @@ J-20260614-204500-001
 | `REGRESSION` | Regression test run |
 | `REGRESSION_REVIEW` | Regression review result |
 | `FINAL_REVIEW` | Final implementation review result |
+| `BROKER_TASK_REVIEW` | MCP task broker verdict on whether the current broker task is complete |
 | `ESCALATION` | Review limit exceeded or user decision required |
 | `DONE` | Pipeline completed |
 
@@ -313,6 +315,7 @@ All entries referring to the same logical task MUST use identical values for the
 | `REGRESSION` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `REGRESSION_REVIEW` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `FINAL_REVIEW` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
+| `BROKER_TASK_REVIEW` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `ESCALATION` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `DONE` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 
@@ -361,6 +364,24 @@ GREEN_REVIEW FAIL → GREEN
 REGRESSION_REVIEW FAIL → REGRESSION or affected task
 FINAL_REVIEW FAIL → affected task or REGRESSION
 ```
+
+In broker mode, after every implementer task the broker `reviewTask` writes a
+`BROKER_TASK_REVIEW` journal entry:
+
+```text
+implementer task
+→ BROKER_TASK_REVIEW PASS   → getNextTask returns the next task (or complete)
+→ BROKER_TASK_REVIEW FAIL   → implementer fixes the broker-listed gaps and the
+                              same broker task is reworked; another
+                              BROKER_TASK_REVIEW entry is appended when the
+                              implementer calls reviewTask again
+→ BROKER_TASK_REVIEW NEEDS_CLARIFICATION → blocked or user clarification
+```
+
+`BROKER_TASK_REVIEW` is the broker's verdict on the implementer's claim of
+task completion. It is distinct from the reviewer `*_REVIEW` entries, which
+record the verdict of the independent reviewer MCP. Both chains must pass
+for the workflow to advance.
 
 An escalation is recorded when the configured review limit is exceeded:
 
