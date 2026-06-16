@@ -1,30 +1,52 @@
 # sddtdd-broker-mcp
 
-MCP task broker for Spec-Driven TDD broker mode. The broker reads the repository
-state and SDDTDD journal, samples an LLM using the shared process skill plus the
-in-folder orchestrator role file, and returns the next allowed implementer task as
-JSON.
+MCP task broker for Spec-Driven TDD broker mode. The broker reads the
+committed repository state, the SDDTDD journal, samples an LLM using the
+shared process skill plus the in-folder orchestrator role file, and answers
+two questions from the implementer: what is the next task, and is the
+current task really complete.
+
+The orchestrator role file (`skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md`)
+is the source of truth for the workflow order and the review rules. The
+implementer only needs the two decision tools.
 
 ## Tools
 
-### `init_task`
+### `init`
 
-Initializes or resumes brokered work.
+Start or resume brokered work for a repository.
 
 ```json
 {
   "repo_path": "/path/to/project",
-  "user_input": "original user request",
-  "process_skill": "spec-driven-tdd",
-  "implementer_skill": "skills/spec-driven-tdd/SKILL-IMPLEMENTER.md",
-  "broker_skill": "skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md"
+  "user_input": "original user request"
 }
 ```
 
-### `verify_task`
+### `getNextTask`
 
-Checks whether the implementer's claimed task completion is supported by the
-current committed repository state and journal.
+Ask the orchestrator for the next task, or for `complete` / `blocked`.
+
+```json
+{
+  "repo_path": "/path/to/project",
+  "previous_task_id": "B-000001"
+}
+```
+
+`previous_task_id` is optional. On the first call after `init`, omit it.
+On subsequent calls, pass the task id returned by the previously verified
+task.
+
+The response is one of:
+
+- `{"status": "TASK", "task_id": "...", "summary": "...", "rationale": "..."}`
+- `{"status": "complete", ...}`
+- `{"status": "blocked", ...}`
+
+### `reviewTask`
+
+Ask the orchestrator to verify that the current task is genuinely complete.
 
 ```json
 {
@@ -35,16 +57,16 @@ current committed repository state and journal.
 }
 ```
 
-### `next_task`
+The response is one of:
 
-Returns the next legal task after `verify_task` passes.
+- `PASS` — the task is verified; call `getNextTask` again.
+- `FAIL` — fix the listed gaps and call `reviewTask` again.
+- `NEEDS_CLARIFICATION` — supply the missing information.
+- `ERROR` — resolve tooling or repository state first.
 
-```json
-{
-  "repo_path": "/path/to/project",
-  "previous_task_id": "B-000001"
-}
-```
+On `PASS` the broker writes a `task_verified` event to
+`<repo>/.git/sddtdd/broker-access.jsonl` so subsequent `getNextTask` calls
+can confirm the previous task was verified from committed state.
 
 ## Hermes Config
 
@@ -61,7 +83,7 @@ mcp_servers:
       enabled: true
       timeout: 120
     tools:
-      include: [init_task, verify_task, next_task]
+      include: [init, getNextTask, reviewTask]
 ```
 
 ## Tests

@@ -1,13 +1,16 @@
+import asyncio
 import json
 import subprocess
 
 from server import (
+    BROKER_TOOLS,
     _append_broker_event,
     _candidate_evidence_paths,
-    _verify_next_task_gate,
+    _verify_get_next_task_gate,
     app,
     build_broker_prompt,
     capture_repo_state,
+    list_tools,
     parse_json_response,
 )
 
@@ -22,36 +25,55 @@ def test_tool_handlers_registered():
     assert CallToolRequest in app.request_handlers
 
 
+def test_broker_tool_names():
+    tool_defs = asyncio.run(list_tools())
+    names = {tool.name for tool in tool_defs}
+    assert names == {"init", "getNextTask", "reviewTask"}
+    assert names == BROKER_TOOLS
+
+
+def test_get_next_task_schema_optional_previous_task_id():
+    tool_defs = asyncio.run(list_tools())
+    next_tool = [tool for tool in tool_defs if tool.name == "getNextTask"][0]
+    # previous_task_id is optional; the implementer is allowed to omit it on the first call.
+    assert "previous_task_id" not in next_tool.inputSchema["required"]
+    assert "repo_path" in next_tool.inputSchema["required"]
+
+
+def test_review_task_schema_requires_task_id():
+    tool_defs = asyncio.run(list_tools())
+    review_tool = [tool for tool in tool_defs if tool.name == "reviewTask"][0]
+    assert "repo_path" in review_tool.inputSchema["required"]
+    assert "task_id" in review_tool.inputSchema["required"]
+    assert "claimed_result" in review_tool.inputSchema["required"]
+
+
+def test_init_schema_requires_user_input():
+    tool_defs = asyncio.run(list_tools())
+    init_tool = [tool for tool in tool_defs if tool.name == "init"][0]
+    assert init_tool.inputSchema["required"] == ["repo_path", "user_input"]
+
+
 def test_parse_json_response_plain_object():
-    assert parse_json_response('{"status":"DONE"}') == {"status": "DONE"}
+    assert parse_json_response('{"status":"complete"}') == {"status": "complete"}
 
 
 def test_parse_json_response_invalid_returns_error():
-    result = parse_json_response('not json')
+    result = parse_json_response("not json")
     assert result["status"] == "ERROR"
     assert "raw_response" in result
 
 
 def test_build_broker_prompt_contains_skills_and_repo_state():
     prompt = build_broker_prompt(
-        "next_task",
+        "getNextTask",
         {"repo_path": "/tmp/repo"},
         {"repo_path": "/tmp/repo", "head_sha": "abc", "files": {"JOURNAL_SDD_TDD_SKILL.log": ""}},
     )
     assert "spec-driven-tdd" in prompt
     assert "SKILL-ORCHESTRATOR" in prompt
-    assert "next_task" in prompt
+    assert "getNextTask" in prompt
     assert "JOURNAL_SDD_TDD_SKILL.log" in prompt
-
-
-def test_next_task_schema_requires_previous_task_id():
-    import asyncio
-
-    from server import list_tools
-
-    tool_defs = asyncio.run(list_tools())
-    next_tool = [tool for tool in tool_defs if tool.name == "next_task"][0]
-    assert "previous_task_id" in next_tool.inputSchema["required"]
 
 
 def test_candidate_evidence_paths_from_journal_and_explicit():
@@ -92,13 +114,35 @@ def test_capture_repo_state_reads_committed_head_not_dirty_worktree(tmp_path):
     assert state["files"]["JOURNAL_SDD_TDD_SKILL.log"] == "DETAIL: committed journal\n"
 
 
-def test_next_task_gate_requires_verified_task(tmp_path):
-    git_dir = tmp_path / ".git" / "sddtdd"
-    git_dir.mkdir(parents=True)
+def test_get_next_task_gate_no_previous_task_is_allowed(tmp_path):
+    # No previous task: first call to getNextTask is allowed (the gate only fires
+    # when a previous_task_id is given and not yet verified).
+    assert _verify_get_next_task_gate(str(tmp_path), None) is None
 
-    blocked = _verify_next_task_gate(str(tmp_path), "B-000001")
+
+def test_get_next_task_gate_requires_verified_previous_task(tmp_path):
+    (tmp_path / ".git" / "sddtdd").mkdir(parents=True)
+
+    blocked = _verify_get_next_task_gate(str(tmp_path), "B-000001")
     assert blocked is not None
-    assert blocked["status"] == "BLOCKED"
+    assert blocked["status"] == "blocked"
 
-    _append_broker_event(str(tmp_path), {"event": "task_verified", "task_id": "B-000001", "status": "PASS"})
-    assert _verify_next_task_gate(str(tmp_path), "B-000001") is None
+    _append_broker_event(str(tmp_path), {
+        "event": "task_verified",
+        "task_id": "B-000001",
+        "status": "PASS",
+    })
+    assert _verify_get_next_task_gate(str(tmp_path), "B-000001") is None
+
+
+def test_broker_log_event_roundtrip(tmp_path):
+    (tmp_path / ".git" / "sddtdd").mkdir(parents=True)
+    _append_broker_event(str(tmp_path), {
+        "event": "task_verified",
+        "task_id": "B-000002",
+        "status": "PASS",
+    })
+    log_path = tmp_path / ".git" / "sddtdd" / "broker-access.jsonl"
+    lines = log_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0])["task_id"] == "B-000002"

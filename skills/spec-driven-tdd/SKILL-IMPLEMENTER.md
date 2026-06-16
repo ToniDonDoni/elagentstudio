@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-implementer
-description: "Use when implementing Spec-Driven TDD through an MCP task broker. The implementer asks the broker for initialization, verification, and next-task decisions instead of self-selecting workflow stages."
-version: 1.0.0
+description: "Use when implementing Spec-Driven TDD through an MCP task broker. The implementer only asks the broker for the next task and asks the broker to review a completed task. The implementer does not know the workflow stage order."
+version: 1.1.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -15,156 +15,63 @@ metadata:
 ## Overview
 
 This role file is the implementer-side contract for Spec-Driven TDD broker mode.
-The implementer still performs the work: writing artifacts, running tests,
-requesting independent review, updating the journal, and committing changes.
-The implementer does **not** decide which workflow stage comes next. A task
-broker MCP server reads the repository state and returns the next permitted
-task.
 
-The goal is to prevent shortcutting. The implementer executes only the broker
-task currently assigned, reports the result, and asks the broker for the next
-task after the required evidence is committed.
+The implementer performs the work. The implementer does **not** know or choose the workflow stage order. A task broker MCP server reads the repository state and the SDDTDD journal, decides what the next permitted task is, and verifies whether the implementer actually completed it.
 
-## When to Use
+The point of the broker is exactly to stop the implementer from cutting corners: the implementer cannot decide on its own that "this step is obvious, let's skip review" or "the next artifact is clearly X". It must always ask the broker.
 
-Use this role file when:
+The implementer does **not** read the orchestrator role file as instructions for itself. That file exists so the broker MCP server can reason about the workflow independently.
 
-- the user asks for Spec-Driven TDD with a task broker;
-- an MCP server exposes task-broker tools for SDDTDD;
-- the primary `spec-driven-tdd` skill says broker mode is active;
-- the implementer is tempted to infer or skip the next stage.
+## What the implementer must do
 
-Do not use this role file when no task-broker MCP server exists. In that case, use
-`spec-driven-tdd` directly and record any deviation explicitly.
+The implementer only needs to know how to drive a broker. That is it.
 
-## Required Role Files
+There are exactly three broker operations the implementer uses:
 
-The implementer MUST load the single shared `spec-driven-tdd` skill and follow
-this in-folder role file:
+1. `init` — start (or resume) brokered work for a repository.
+2. `getNextTask` — ask the broker for the next task to work on, or for `complete` / a blocker.
+3. `reviewTask` — when the implementer thinks the current task is done, ask the broker to verify it.
 
-- `skills/spec-driven-tdd/SKILL.md` — shared process and artifact contract;
-- `skills/spec-driven-tdd/SKILL-IMPLEMENTER.md` — this implementer-side MCP loop.
+That is the entire loop. There is no fourth operation the implementer needs to know about.
 
-The implementer MUST NOT follow `SKILL-ORCHESTRATOR.md` as executable
-instructions for itself. That file is supplied to the broker MCP server so the
-orchestrator can decide tasks independently.
+## Required skill files
 
-## MCP Tool Contract
+The implementer must load the shared process skill and this implementer role file. Nothing else.
 
-The broker MCP server is expected to provide three logical operations. Tool names
-may be prefixed by the MCP integration, but their semantics must match this
-contract.
+- `skills/spec-driven-tdd/SKILL.md` — shared process and artifact contract.
+- `skills/spec-driven-tdd/SKILL-IMPLEMENTER.md` — this file, the implementer-side broker loop.
 
-### `init_task`
+The implementer does **not** read `SKILL-ORCHESTRATOR.md` as instructions for itself.
 
-Starts or resumes brokered work for a repository.
+## Broker loop
 
-Input:
+1. Load the shared `spec-driven-tdd` skill and this implementer role file.
+2. Call broker `init` with the repository path and the original user request. The broker returns the first task, `complete`, or a blocker.
+3. If the broker returned a task: do exactly what the task says, following the shared `spec-driven-tdd` process for the kind of work the task describes (artifacts, tests, journal entries, reviews, commits).
+4. When the task is done, call broker `reviewTask` with the task id, a short summary of what was done, and the concrete evidence (commits, journal ids, review verdicts, test commands) required to prove it.
+5. If `reviewTask` returns `PASS`, call `getNextTask` to get the next task. If it returns anything else, follow what it says: fix the listed gaps and re-ask, ask the user, or stop on a blocker.
+6. Repeat until `getNextTask` returns `complete` (workflow finished) or a blocker.
 
-```json
-{
-  "repo_path": "/absolute/path/to/repo",
-  "user_input": "original user request or a pointer to it",
-  "implementer_skill": "skills/spec-driven-tdd/SKILL-IMPLEMENTER.md",
-  "broker_skill": "skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md",
-  "process_skill": "spec-driven-tdd"
-}
-```
+## Review still uses the reviewer MCP
 
-Output:
+The task broker is not a reviewer. When a task requires review, the implementer calls the reviewer MCP (`mcp_sddtdd_review_review`) exactly as the shared `spec-driven-tdd` skill requires, records the verdict in `JOURNAL_SDD_TDD_SKILL.log`, commits the journal entry, and only then asks the broker to review the task.
 
-```json
-{
-  "status": "TASK",
-  "task_id": "broker-assigned id",
-  "kind": "INITIALIZE | CREATE_ARTIFACT | REQUEST_REVIEW | FIX_ARTIFACT | RUN_TESTS | UPDATE_JOURNAL | COMMIT | ASK_USER | DONE_CHECK",
-  "summary": "what to do now",
-  "allowed_actions": ["explicit action list"],
-  "required_evidence": ["paths, commands, review verdicts, or commits expected before verification"],
-  "blocking_conditions": ["conditions that forbid starting this task"],
-  "journal_parent": "required existing JID or null"
-}
-```
+A reviewer `PASS` is **not** the same as a broker `reviewTask PASS`. The implementer must still call `reviewTask` and let the broker confirm that all required evidence (including the journaled review) is committed.
 
-### `verify_task`
+## Hard rules
 
-Checks whether the current broker task is actually complete.
+- Do not choose the next workflow stage yourself. Always ask the broker via `getNextTask`.
+- Do not skip the broker even if the next artifact "looks obvious" from the current state.
+- Do not call `getNextTask` for the next task until `reviewTask` for the current task returned `PASS`.
+- Do not treat a reviewer `PASS` as a broker `reviewTask PASS`; the broker must confirm completion.
+- Do not let the broker modify files. All repository changes are the implementer's responsibility.
+- Do not continue when the broker returns `blocked` or `ERROR`; resolve the issue first.
+- Do not read or follow `SKILL-ORCHESTRATOR.md` as instructions for the implementer. That file is for the broker MCP server.
 
-Input:
+## Verification checklist
 
-```json
-{
-  "repo_path": "/absolute/path/to/repo",
-  "task_id": "broker-assigned id",
-  "claimed_result": "brief implementer summary",
-  "evidence": ["commit hashes", "journal entries", "test commands", "review request ids"]
-}
-```
-
-Output statuses:
-
-- `PASS` — the broker accepts completion; ask for `next_task`;
-- `FAIL` — fix only the listed gaps, then call `verify_task` again;
-- `NEEDS_CLARIFICATION` — ask the user or provide missing evidence;
-- `ERROR` — resolve tooling or repository state before continuing.
-
-### `next_task`
-
-Returns the next allowed task after a verified task.
-
-Input:
-
-```json
-{
-  "repo_path": "/absolute/path/to/repo",
-  "previous_task_id": "broker-assigned id returned by the verified task"
-}
-```
-
-Output statuses:
-
-- `TASK` — execute the returned task exactly;
-- `DONE` — no more tasks remain; prepare the final user report;
-- `BLOCKED` — stop and report the blocker;
-- `ERROR` — resolve tooling or repository state before continuing.
-
-## Implementer Loop
-
-1. Load `spec-driven-tdd` and this implementer role file.
-2. Call broker `init_task` with the repository path and user input.
-3. Execute only the returned task's `allowed_actions`.
-4. Commit every required artifact and journal update before verification when
-   the task requires committed evidence.
-5. Call `verify_task` with concrete evidence.
-6. If verification fails, fix only the broker-listed gaps and verify again.
-7. After verification passes, call `next_task`.
-8. Repeat until the broker returns `DONE` or `BLOCKED`.
-
-## Review Still Uses the Reviewer MCP
-
-The task broker does not review artifacts. When a broker task requires review,
-the implementer calls `mcp_sddtdd_review_review` exactly as required by
-`spec-driven-tdd`, records the reviewer verdict in `JOURNAL_SDD_TDD_SKILL.log`,
-and commits the journal update before reporting completion to the broker.
-
-## Hard Rules
-
-- Do not choose the next workflow stage yourself in broker mode.
-- Do not execute work that is outside the broker task's `allowed_actions`.
-- Do not treat a broker `PASS` as an independent review `PASS`.
-- Do not treat reviewer `PASS` as broker task completion until the journal entry
-  is written and committed.
-- Do not ask `next_task` until `verify_task` returns `PASS`.
-- Do not let the broker modify files; all repository changes are implementer
-  responsibility.
-- Do not continue when the broker returns `BLOCKED`, `ERROR`, or
-  `NEEDS_CLARIFICATION`; resolve the blocker first.
-
-## Verification Checklist
-
-- [ ] `spec-driven-tdd` and `SKILL-IMPLEMENTER.md` are loaded.
-- [ ] Every task came from the broker MCP server.
-- [ ] Every completed task was verified through `verify_task`.
-- [ ] Independent reviews still came from `mcp_sddtdd_review_review`.
-- [ ] Review verdicts were journaled and committed before later work.
-- [ ] The final report includes broker `DONE` or a clear blocker.
+- [ ] `spec-driven-tdd` and this implementer role file are loaded.
+- [ ] Every task came from the broker via `init` or `getNextTask`.
+- [ ] Every completed task was confirmed by the broker via `reviewTask`.
+- [ ] Independent reviews came from the reviewer MCP and were journaled and committed before `reviewTask`.
+- [ ] The final report says the broker returned `complete` or describes the blocker.

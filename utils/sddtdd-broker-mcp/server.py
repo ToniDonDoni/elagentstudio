@@ -1,9 +1,13 @@
 """sddtdd-broker-mcp — MCP task broker for Spec-Driven TDD.
 
-The server exposes a broker contract around three tools: init_task, verify_task,
-and next_task. It reads repository state and asks the MCP sampling model to act
-as a task broker using the shared SDDTDD process skill plus the in-folder
-orchestrator role file.
+The server exposes a two-step broker contract around two decision tools:
+``getNextTask`` and ``reviewTask``. An ``init`` tool is also provided for
+explicit start/resume of brokered work. The broker reads the committed
+repository state, the SDDTDD journal, and the shared process skill plus the
+in-folder orchestrator role file, then samples the LLM to make the decision.
+
+The orchestrator role file is the source of truth for the workflow order and
+review rules. The implementer only needs to know the two decision tools.
 """
 
 from __future__ import annotations
@@ -24,7 +28,9 @@ app = mcp_server.Server("sddtdd-broker-mcp")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROCESS_SKILL = REPO_ROOT / "skills" / "spec-driven-tdd" / "SKILL.md"
-BROKER_SKILL = REPO_ROOT / "skills" / "spec-driven-tdd" / "SKILL-ORCHESTRATOR.md"
+ORCHESTRATOR_ROLE = REPO_ROOT / "skills" / "spec-driven-tdd" / "SKILL-ORCHESTRATOR.md"
+
+BROKER_TOOLS = {"init", "getNextTask", "reviewTask"}
 
 
 def _git(repo_path: str, *args: str) -> str:
@@ -77,28 +83,25 @@ def _verified_task_ids(repo_path: str) -> set[str]:
     return verified
 
 
-def _verify_next_task_gate(repo_path: str, previous_task_id: str | None) -> dict[str, Any] | None:
-    if not previous_task_id:
-        return {
-            "status": "BLOCKED",
-            "summary": "next_task requires previous_task_id from a broker task that passed verify_task",
-            "required_action": "Call verify_task for the current broker task and pass its task_id as previous_task_id",
-        }
-    if previous_task_id not in _verified_task_ids(repo_path):
-        return {
-            "status": "BLOCKED",
-            "summary": f"Task {previous_task_id} has not passed broker verify_task",
-            "required_action": "Complete the assigned task and obtain verify_task PASS before asking for next_task",
-        }
-    return None
+def _verify_get_next_task_gate(repo_path: str, previous_task_id: str | None) -> dict[str, Any] | None:
+    """Block getNextTask if the previous broker task has not been reviewTask-PASSed."""
+    if previous_task_id is None:
+        return None
+    if previous_task_id in _verified_task_ids(repo_path):
+        return None
+    return {
+        "status": "blocked",
+        "summary": f"Task {previous_task_id} has not passed broker reviewTask",
+        "required_action": "Complete the assigned task and obtain reviewTask PASS before asking for the next task",
+    }
 
 
 def _candidate_evidence_paths(journal: str | None, explicit: list[str] | None = None) -> list[str]:
     """Extract conservative repo-relative evidence path candidates.
 
     The journal DETAIL field is free text, so this intentionally recognizes only
-    path-like tokens. The broker receives these file contents as evidence context
-    but still decides whether they are sufficient.
+    path-like tokens. The orchestrator receives these file contents as evidence
+    context but still decides whether they are sufficient.
     """
     candidates: list[str] = []
     for source in [*(explicit or []), *(journal or "").replace("`", " ").split()]:
@@ -160,9 +163,9 @@ def _read_skill(path: Path) -> str:
 
 def build_broker_prompt(tool_name: str, arguments: dict[str, Any], repo_state: dict[str, Any]) -> str:
     return "\n".join([
-        "You are the SDDTDD MCP task broker.",
+        "You are the SDDTDD MCP task broker/orchestrator.",
         "Return JSON only. Do not implement, edit files, run tests, or review artifacts.",
-        "Decide according to the provided skills and current repository state.",
+        "Use the orchestrator role file to decide the workflow order and review rules.",
         "",
         "# Tool call",
         json.dumps({"tool": tool_name, "arguments": arguments}, ensure_ascii=False, indent=2),
@@ -171,7 +174,7 @@ def build_broker_prompt(tool_name: str, arguments: dict[str, Any], repo_state: d
         _read_skill(PROCESS_SKILL),
         "",
         "# Orchestrator role: spec-driven-tdd/SKILL-ORCHESTRATOR.md",
-        _read_skill(BROKER_SKILL),
+        _read_skill(ORCHESTRATOR_ROLE),
         "",
         "# Repository state",
         json.dumps(repo_state, ensure_ascii=False, indent=2),
@@ -187,7 +190,7 @@ def parse_json_response(text: str) -> dict[str, Any]:
     try:
         data = json.loads(stripped)
     except json.JSONDecodeError:
-        data = {
+        return {
             "status": "ERROR",
             "summary": "Broker sampling response was not valid JSON",
             "raw_response": text,
@@ -197,21 +200,45 @@ def parse_json_response(text: str) -> dict[str, Any]:
     return data
 
 
-def _tool_schema(required: list[str]) -> dict[str, Any]:
+def _init_schema() -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {
             "repo_path": {"type": "string", "description": "Absolute path to the Git repository"},
             "user_input": {"type": "string", "description": "Original user request or pointer to it"},
-            "task_id": {"type": "string", "description": "Broker-assigned task id"},
-            "previous_task_id": {"type": "string", "description": "Previously verified broker task id"},
-            "claimed_result": {"type": "string", "description": "Implementer completion summary"},
-            "evidence": {"type": "array", "items": {"type": "string"}},
-            "process_skill": {"type": "string"},
-            "implementer_skill": {"type": "string"},
-            "broker_skill": {"type": "string"},
         },
-        "required": required,
+        "required": ["repo_path", "user_input"],
+    }
+
+
+def _get_next_task_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "repo_path": {"type": "string", "description": "Absolute path to the Git repository"},
+            "previous_task_id": {
+                "type": "string",
+                "description": "Task id returned by a previous getNextTask that passed reviewTask; omit on first call",
+            },
+        },
+        "required": ["repo_path"],
+    }
+
+
+def _review_task_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "repo_path": {"type": "string", "description": "Absolute path to the Git repository"},
+            "task_id": {"type": "string", "description": "Broker-assigned task id being verified"},
+            "claimed_result": {"type": "string", "description": "Implementer completion summary"},
+            "evidence": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Commit hashes, journal entries, test commands, review request ids",
+            },
+        },
+        "required": ["repo_path", "task_id", "claimed_result"],
     }
 
 
@@ -219,33 +246,34 @@ def _tool_schema(required: list[str]) -> dict[str, Any]:
 async def list_tools() -> list[types.Tool]:
     return [
         types.Tool(
-            name="init_task",
-            description="Initialize or resume brokered Spec-Driven TDD work and return the first legal task",
-            inputSchema=_tool_schema(["repo_path", "user_input"]),
+            name="init",
+            description="Start or resume brokered Spec-Driven TDD work for a repository",
+            inputSchema=_init_schema(),
         ),
         types.Tool(
-            name="verify_task",
-            description="Verify that the implementer completed the currently assigned broker task",
-            inputSchema=_tool_schema(["repo_path", "task_id", "claimed_result"]),
+            name="getNextTask",
+            description="Ask the orchestrator for the next task, or for 'complete' / 'blocked'",
+            inputSchema=_get_next_task_schema(),
         ),
         types.Tool(
-            name="next_task",
-            description="Return the next legal Spec-Driven TDD task after a verified task",
-            inputSchema=_tool_schema(["repo_path", "previous_task_id"]),
+            name="reviewTask",
+            description="Ask the orchestrator to verify that the current task is genuinely complete",
+            inputSchema=_review_task_schema(),
         ),
     ]
 
 
 @app.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
-    if name not in {"init_task", "verify_task", "next_task"}:
+    if name not in BROKER_TOOLS:
         raise ValueError(f"Unknown tool: {name}")
 
     request_id = uuid.uuid4().hex
     try:
         repo_path = str(Path(arguments["repo_path"]).resolve())
-        if name == "next_task":
-            blocked = _verify_next_task_gate(repo_path, arguments.get("previous_task_id"))
+
+        if name == "getNextTask":
+            blocked = _verify_get_next_task_gate(repo_path, arguments.get("previous_task_id"))
             if blocked is not None:
                 blocked["request_id"] = request_id
                 return [types.TextContent(type="text", text=json.dumps(blocked, ensure_ascii=False, indent=2))]
@@ -268,7 +296,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         result = parse_json_response(response_text)
         result.setdefault("request_id", request_id)
         result.setdefault("repo_head", repo_state["head_sha"])
-        if name == "verify_task" and result.get("status") == "PASS" and arguments.get("task_id"):
+        if name == "reviewTask" and result.get("status") == "PASS" and arguments.get("task_id"):
             _append_broker_event(repo_path, {
                 "event": "task_verified",
                 "request_id": request_id,
@@ -293,7 +321,7 @@ async def main():
             write_stream,
             InitializationOptions(
                 server_name="sddtdd-broker-mcp",
-                server_version="1.0.0",
+                server_version="1.1.0",
                 capabilities=types.ServerCapabilities(),
             ),
         )
