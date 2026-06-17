@@ -46,7 +46,7 @@ Current issues observed:
     * Reviewer still requested file contents instead of loading them from the repository.
     Possible rootcause: sampling imp,ementaion in the revieer mcp doesnt support tools to access fs?
     Possible solution:
-    ```
+```
     Feature name: MCP "Tool-Enabled Sampling" — the MCP client (Hermes) passes tools requested by the server into the sampled LLM call.
 
 In Hermes spec: sampling.tools in create_message params (MCP spec 2024-11-05 § Sampling). Hermes implements it at mcp_tool.py:856-871.
