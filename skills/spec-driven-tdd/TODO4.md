@@ -44,7 +44,39 @@ Current issues observed:
     * repo_path=/work/sddtdd_broker_test was provided.
     * SPEC.md and SPEC-DRAFT.md were already committed.
     * Reviewer still requested file contents instead of loading them from the repository.
-    Possible rootcause: sampling doesnt support tools to access fs?
+    Possible rootcause: sampling imp,ementaion in the revieer mcp doesnt support tools to access fs?
+    Possible solution:
+    ```
+    Feature name: MCP "Tool-Enabled Sampling" — the MCP client (Hermes) passes tools requested by the server into the sampled LLM call.
+
+In Hermes spec: sampling.tools in create_message params (MCP spec 2024-11-05 § Sampling). Hermes implements it at mcp_tool.py:856-871.
+
+What to add to sddtdd_review/server.py
+
+Change ctx.session.create_message(...) from:
+sampling_result = await ctx.session.create_message(
+    messages=[...],
+    max_tokens=4096,
+)
+To:
+sampling_result = await ctx.session.create_message(
+    messages=[...],
+    max_tokens=4096,
+    tools=[
+        types.Tool(name="shell_command", description="Run a shell command in the repo", inputSchema={
+            "type": "object",
+            "properties": {"command": {"type": "string"}},
+            "required": ["command"]
+        }),
+        types.Tool(name="read_file", description="Read a file from the repo", inputSchema={
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"]
+        }),
+    ],
+)
+That's it. The reviewer LLM will then get these tools in its sampling call and can read repo files itself instead of relying on injected prompt content.
+```
 2. Independent review can currently be bypassed by prompt shaping.
     Evidence:
     * Multiple review attempts returned NEEDS_CLARIFICATION.
