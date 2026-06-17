@@ -85,3 +85,5 @@ After reviewTask returns FAIL, the implementer must:
 3. only then fix the process violation and call reviewTask again.
 
 The broker should enforce this by refusing a repeated reviewTask call until the previous broker verdict has been found in the committed journal.
+
+5. Add new tasks to the completed spec repo.
