@@ -44,6 +44,7 @@ Current issues observed:
     * repo_path=/work/sddtdd_broker_test was provided.
     * SPEC.md and SPEC-DRAFT.md were already committed.
     * Reviewer still requested file contents instead of loading them from the repository.
+    Possible rootcause: sampling doesnt support tools to access fs?
 2. Independent review can currently be bypassed by prompt shaping.
     Evidence:
     * Multiple review attempts returned NEEDS_CLARIFICATION.
@@ -87,3 +88,5 @@ After reviewTask returns FAIL, the implementer must:
 The broker should enforce this by refusing a repeated reviewTask call until the previous broker verdict has been found in the committed journal.
 
 5. Add new tasks to the completed spec repo.
+
+6. Consider making  broker llm based
