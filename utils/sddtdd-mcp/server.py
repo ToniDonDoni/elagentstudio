@@ -253,6 +253,20 @@ def _execute_tool(name: str, args: dict, repo_path: str) -> str:
     return f"ERROR: unknown tool: {name}"
 
 
+def _extract_verdict(text: str) -> str:
+    """Extract verdict from reviewer response text.
+
+    Scans the entire text (case-insensitive) for known verdict keywords.
+    Returns the first match: PASS > FAIL > NEEDS_CLARIFICATION.
+    Defaults to NEEDS_CLARIFICATION if none found.
+    """
+    upper = text.strip().upper()
+    for keyword in ("PASS", "FAIL", "NEEDS_CLARIFICATION"):
+        if keyword in upper:
+            return keyword
+    return "NEEDS_CLARIFICATION"
+
+
 async def _sample_with_tools(
     ctx,
     initial_prompt: str,
@@ -377,15 +391,11 @@ async def call_tool(
             max_rounds=5,
         )
 
-        # Extract verdict from response if it starts with a known keyword
-        verdict = "NEEDS_CLARIFICATION"
-        stripped = response_text.strip().upper()
-        if stripped.startswith("PASS"):
-            verdict = "PASS"
-        elif stripped.startswith("FAIL"):
-            verdict = "FAIL"
-        elif stripped.startswith("NEEDS_CLARIFICATION"):
-            verdict = "NEEDS_CLARIFICATION"
+        # Extract verdict from response.
+        # The LLM may place PASS/FAIL/NEEDS_CLARIFICATION at the start,
+        # middle, or end of its response. Search the whole text for the
+        # first known verdict keyword.
+        verdict = _extract_verdict(response_text)
 
         # 5: Capture Git state after
         head_after = git.head_sha()
