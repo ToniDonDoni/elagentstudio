@@ -47,7 +47,11 @@ class MCPClient:
 
         result = self._rpc("initialize", {
             "protocolVersion": "2024-11-05",
-            "capabilities": {"sampling": {}},
+            "capabilities": {
+                "sampling": {
+                    "tools": {}  # advertise sampling tools capability
+                },
+            },
             "clientInfo": {"name": "e2e-test", "version": "1.0"},
         })
         assert "result" in result, (
@@ -310,6 +314,8 @@ class TestReviewToolCall:
 
         content = resp.get("result", {}).get("content", [])
         result = json.loads(content[0].get("text", "{}"))
+        if result.get("status") == "ERROR":
+            print(f"\n[DEBUG] result.response: {result.get('response', '')[:2000]}\n")
 
         assert result["status"] == "COMPLETED", \
             f"Expected COMPLETED, got {result['status']}"

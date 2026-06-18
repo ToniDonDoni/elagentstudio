@@ -218,3 +218,11 @@ STATUS: COMPLETED
 PARENT: J-20260614-203000-022
 ROOT: J-20260614-203000-001
 DETAIL: sddtdd-mcp implementation complete.
+
+=== J-20260618-220000-024 ===
+TYPE: AGENT_DECISION
+SPEC: S-SDDTDD-MCP-01
+STATUS: PASS
+PARENT: J-20260614-203000-023
+ROOT: J-20260614-203000-001
+DETAIL: TODO4 issue #1 fixed. Reviewer MCP server (utils/sddtdd-mcp/server.py) now passes tools=[read_file, shell_command] to ctx.session.create_message() and runs the tool-use loop. Tests: 15/15 in test_sampling_tools.py (RED→GREEN: 4 AST/introspection tests + 11 tool-executor unit tests), 55/56 in e2e suite (1 pre-existing test_log_working_tree_dirty_false fails only because uncommitted edits make the working tree dirty — it passes after commit). Behavior change: review prompts no longer need to inline full file contents; the reviewer LLM can inspect committed artifacts directly.

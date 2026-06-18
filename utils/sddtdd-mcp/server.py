@@ -9,6 +9,7 @@ import subprocess
 import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 import mcp.server as mcp_server
 import mcp.types as types
@@ -130,6 +131,199 @@ async def list_tools() -> list[types.Tool]:
     ]
 
 
+# ---------------------------------------------------------------------------
+# Sampling tools — filesystem access for the reviewer LLM
+# ---------------------------------------------------------------------------
+# TODO4 issue #1: the reviewer LLM could only see the prompt text and had
+# no way to read committed files. These tools give the sampled LLM access
+# to read_file and shell_command. Hermes (mcp_tool.py:855-871) already
+# forwards tools to the LLM call and returns CreateMessageResultWithTools
+# when the LLM emits tool_calls. The loop in _sample_with_tools drives the
+# tool-use round trip.
+
+REVIEWER_TOOLS: list[types.Tool] = [
+    types.Tool(
+        name="read_file",
+        description=(
+            "Read a text file from the repository under review. "
+            "Use absolute or repo-relative paths. Returns the file contents "
+            "(truncated to 8000 chars if large)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": (
+                        "Path to the file, absolute or relative to the "
+                        "repository root."
+                    ),
+                },
+            },
+            "required": ["path"],
+        },
+    ),
+    types.Tool(
+        name="shell_command",
+        description=(
+            "Run a shell command inside the repository. Use for `git log`, "
+            "`git show`, `git diff`, `ls`, `cat`, etc. The working directory "
+            "is the repository root. Output is truncated to 8000 chars."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "Shell command to run.",
+                },
+            },
+            "required": ["command"],
+        },
+    ),
+]
+
+
+def _resolve_path(repo_path: str, raw: str) -> Path:
+    """Resolve a user-supplied path to an absolute path inside repo_path.
+
+    Rejects absolute paths outside repo_path and parent traversals.
+    """
+    repo = Path(repo_path).resolve()
+    p = Path(raw)
+    if not p.is_absolute():
+        p = repo / p
+    p = p.resolve()
+    # Containment check: must be inside repo
+    if repo not in p.parents and p != repo:
+        raise ValueError(f"path escapes repository: {raw}")
+    return p
+
+
+def _execute_tool(name: str, args: dict, repo_path: str) -> str:
+    """Execute a reviewer tool call. Returns the text result."""
+    if name == "read_file":
+        try:
+            path = _resolve_path(repo_path, args["path"])
+        except (KeyError, ValueError) as exc:
+            return f"ERROR: {exc}"
+        if not path.exists():
+            return f"ERROR: file not found: {path}"
+        if path.is_dir():
+            # ls -la for directories
+            try:
+                result = subprocess.run(
+                    ["ls", "-la", str(path)],
+                    capture_output=True, text=True, timeout=10,
+                )
+                return (result.stdout or "") + (result.stderr or "")
+            except subprocess.TimeoutExpired:
+                return "ERROR: ls timed out"
+        try:
+            text = path.read_text(errors="replace")
+        except UnicodeDecodeError:
+            return f"ERROR: not a text file: {path}"
+        if len(text) > 8000:
+            return text[:8000] + "\n... [truncated at 8000 chars]"
+        return text
+
+    if name == "shell_command":
+        cmd = args.get("command", "")
+        if not cmd:
+            return "ERROR: empty command"
+        # Run from repo root
+        try:
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            out = (result.stdout or "") + (result.stderr or "")
+            if len(out) > 8000:
+                out = out[:8000] + "\n... [truncated at 8000 chars]"
+            return out if out else f"(no output, exit={result.returncode})"
+        except subprocess.TimeoutExpired:
+            return "ERROR: command timed out after 15s"
+        except Exception as exc:
+            return f"ERROR: {exc}"
+
+    return f"ERROR: unknown tool: {name}"
+
+
+async def _sample_with_tools(
+    ctx,
+    initial_prompt: str,
+    repo_path: str,
+    max_rounds: int = 5,
+) -> tuple[str, str]:
+    """Call create_message with tool-use loop.
+
+    Sends the initial prompt, then handles any tool_use blocks the LLM
+    returns by executing them and resending tool_result blocks. Loops
+    up to ``max_rounds`` times or until the LLM returns text.
+
+    Returns ``(response_text, stop_reason)``. ``response_text`` is the
+    final assistant text (empty if the LLM never produced a final text
+    answer, e.g. it kept calling tools until max_rounds).
+    """
+    messages = [
+        types.SamplingMessage(
+            role="user",
+            content=types.TextContent(type="text", text=initial_prompt),
+        )
+    ]
+
+    last_text = ""
+    for _round in range(max_rounds):
+        result = await ctx.session.create_message(
+            messages=messages,
+            max_tokens=4096,
+            tools=REVIEWER_TOOLS,
+        )
+
+        # Extract any text in the content blocks
+        for block in (result.content if isinstance(result.content, list) else [result.content]):
+            if isinstance(block, types.TextContent):
+                last_text = block.text
+
+        # If the LLM didn't ask for tools, we're done
+        stop_reason = getattr(result, "stopReason", None) or "endTurn"
+        if stop_reason != "toolUse":
+            return last_text, stop_reason
+
+        # Tool use: execute each tool call and resend results
+        tool_uses = [
+            b for b in (result.content if isinstance(result.content, list) else [result.content])
+            if isinstance(b, types.ToolUseContent)
+        ]
+        if not tool_uses:
+            return last_text, stop_reason
+
+        tool_results = []
+        for tu in tool_uses:
+            output = _execute_tool(tu.name, tu.input, repo_path)
+            tool_results.append(
+                types.ToolResultContent(
+                    type="tool_result",
+                    toolUseId=tu.id,
+                    content=[types.TextContent(type="text", text=output)],
+                )
+            )
+
+        # Append the assistant tool_use and the user tool_results to messages
+        messages.append(
+            types.SamplingMessage(role="assistant", content=result.content)
+        )
+        messages.append(
+            types.SamplingMessage(role="user", content=tool_results)
+        )
+
+    return last_text, "maxRoundsExceeded"
+
+
 @app.call_tool()
 async def call_tool(
     name: str,
@@ -173,26 +367,15 @@ async def call_tool(
         }
         log.append(started_event)
 
-        # 4: Perform review via MCP sampling
+        # 4: Perform review via MCP sampling (with tool-use loop so the
+        # reviewer LLM can read files via read_file / shell_command).
         ctx = app.request_context
-        sampling_result = await ctx.session.create_message(
-            messages=[
-                types.SamplingMessage(
-                    role="user",
-                    content=types.TextContent(
-                        type="text",
-                        text=prompt,
-                    ),
-                )
-            ],
-            max_tokens=4096,
+        response_text, stop_reason = await _sample_with_tools(
+            ctx=ctx,
+            initial_prompt=prompt,
+            repo_path=repo_path,
+            max_rounds=5,
         )
-
-        verdict = sampling_result.role.name if hasattr(sampling_result.role, 'name') else str(sampling_result.role)
-        response_text = ""
-        content = sampling_result.content
-        if hasattr(content, 'text'):
-            response_text += content.text
 
         # Extract verdict from response if it starts with a known keyword
         verdict = "NEEDS_CLARIFICATION"
