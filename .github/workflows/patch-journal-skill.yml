@@ -1,0 +1,150 @@
+name: Patch journal skill
+
+on:
+  push:
+    branches:
+      - journal-required
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/journal-required'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: journal-required
+      - name: Patch SKILL.md
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('skills/spec-driven-tdd/SKILL.md')
+          text = path.read_text()
+
+          old = '''The cycle is complete when:
+- The goal from the spec is fully solved
+- All code passes all tests
+- Every commit along the chain has a **PASS** verdict from review
+'''
+          new = '''The cycle is complete when:
+- The goal from the spec is fully solved
+- All code passes all tests
+- Every commit along the chain has a **PASS** verdict from review
+- `JOURNAL.log` exists at the project root
+- `JOURNAL.log` is updated for every completed step and review result
+- `JOURNAL.log` contains an unbroken `PARENT` chain from `USER_INPUT` to `DONE`
+
+A missing or incomplete `JOURNAL.log` means the target state has not been reached.
+'''
+          if old not in text:
+              raise SystemExit('Target State block not found')
+          text = text.replace(old, new, 1)
+
+          old = 'Every `-> journal ->` means JOURNAL.log entry + commit (Rule 3, 5).'
+          new = 'Every `-> journal ->` means a required `JOURNAL.log` artifact update + commit (Rule 3, 5). The journal is part of the deliverable state, not an optional note.'
+          if old not in text:
+              raise SystemExit('journal arrow line not found')
+          text = text.replace(old, new, 1)
+
+          old = '### Rule 3 -- Every review updates the journal\n\nAfter every review result, append a record to JOURNAL.log.\n\nReview outcomes: PASS, FAIL, NEEDS_CLARIFICATION, CANCELLED.\n'
+          new = '''### Rule 3 -- Every completed step updates the journal
+
+`JOURNAL.log` is a required state artifact, not a logging recommendation.
+
+Every completed step produces two required artifacts:
+1. the primary artifact of the step (spec, task file, test, evidence, implementation, review result, etc.)
+2. the corresponding `JOURNAL.log` entry with the expected TYPE, STATUS, SPEC, and PARENT fields
+
+Both artifacts are REQUIRED. If either artifact is missing, the step is NOT complete.
+The next step MUST NOT start until both artifacts exist and are committed.
+
+After every review result, append a record to JOURNAL.log.
+
+Review outcomes: PASS, FAIL, NEEDS_CLARIFICATION, CANCELLED.
+'''
+          if old not in text:
+              raise SystemExit('Rule 3 block not found')
+          text = text.replace(old, new, 1)
+
+          old = 'Every transition between stages, review results, and returns for rework is journaled to the `JOURNAL.log` file at the project root.\n'
+          new = '''Every transition between stages, review results, and returns for rework is journaled to the `JOURNAL.log` file at the project root.
+
+`JOURNAL.log` is one of the pipeline output artifacts, on the same level as `SPEC-DRAFT.md`, tests, and implementation code. It describes the current completed state of the pipeline. Treating it as a side note or best-effort log is a failure.
+
+A step is complete only when its primary artifact and its `JOURNAL.log` entry both exist. The journal entry is not post-work documentation; it is part of the completed step artifact set.
+
+Generic step contract:
+
+```text
+Artifacts produced by this step:
+  1. <primary artifact>
+  2. JOURNAL.log entry with the required TYPE and STATUS
+
+Both artifacts are REQUIRED.
+If either is missing, the step is NOT complete.
+The next step MUST NOT start until both artifacts exist and are committed.
+```
+'''
+          if old not in text:
+              raise SystemExit('Journaling intro not found')
+          text = text.replace(old, new, 1)
+
+          old = '** ->  JOURNAL:** After writing the test -- create a `TEST_WRITE` entry, STATUS=COMPLETED, SPEC=current spec ID, PARENT=JID of the decomposition step.\n'
+          new = '''Artifacts produced by this step:
+1. The test file itself.
+2. `JOURNAL.log` entry: `TEST_WRITE`, STATUS=COMPLETED, SPEC=current spec ID, PARENT=JID of the decomposition step.
+
+Both artifacts are REQUIRED. If either the test file or the journal entry is missing, WRITE TEST is NOT complete and REVIEW TEST MUST NOT start.
+'''
+          if old not in text:
+              raise SystemExit('Step 3.1 journal line not found')
+          text = text.replace(old, new, 1)
+
+          old = '** ->  JOURNAL:** After RED -- entry `RED`, STATUS=COMPLETED (if it failed correctly) or FAIL (if it failed for another reason).\n'
+          new = '''Artifacts produced by this step:
+1. RED evidence showing the test failed for the expected reason.
+2. `JOURNAL.log` entry: `RED`, STATUS=COMPLETED if it failed correctly, or FAIL if it failed for another reason.
+
+Both artifacts are REQUIRED. If either RED evidence or the journal entry is missing, RED is NOT complete and REVIEW RED MUST NOT start.
+'''
+          if old not in text:
+              raise SystemExit('Step 3.3 journal line not found')
+          text = text.replace(old, new, 1)
+
+          old = '** ->  JOURNAL:** After GREEN -- entry `GREEN`, STATUS=COMPLETED, PARENT=JID of RED_REVIEW.\n'
+          new = '''Artifacts produced by this step:
+1. Minimal implementation code and passing test evidence.
+2. `JOURNAL.log` entry: `GREEN`, STATUS=COMPLETED, PARENT=JID of RED_REVIEW.
+
+Both artifacts are REQUIRED. If either implementation/evidence or the journal entry is missing, GREEN is NOT complete and REVIEW GREEN MUST NOT start.
+'''
+          if old not in text:
+              raise SystemExit('Step 3.5 journal line not found')
+          text = text.replace(old, new, 1)
+
+          old = '- ✅ JOURNAL.log contains the full trail of all steps\n'
+          new = '- ✅ JOURNAL.log exists, is updated for every completed step, and contains an unbroken PARENT chain from USER_INPUT to DONE\n'
+          if old not in text:
+              raise SystemExit('final verification journal bullet not found')
+          text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+      - name: Remove one-shot workflow
+        run: |
+          rm -f .github/workflows/patch-journal-skill.yml
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add skills/spec-driven-tdd/SKILL.md .github/workflows/patch-journal-skill.yml
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "spec-driven-tdd: require journal artifact per step"
+            git push origin journal-required
+          fi
