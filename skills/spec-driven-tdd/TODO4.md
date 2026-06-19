@@ -126,3 +126,21 @@ The broker should enforce this by refusing a repeated reviewTask call until the 
 7. all sill related files including logs specs and journal and tasks to <repo root>.sddtdd_skill
 
 8. mcp review requires 5555 max tool calls so the hermes mcp config must be updated accodingly during the installation, also timeout,max_rpm: 5555
+```
+  sddtdd_review:
+    command: uv
+    args:
+    - --directory
+    - /work/elagentstudio/utils/sddtdd-mcp
+    - run
+    - server.py
+    env:
+      PATH: /root/.local/bin:/usr/bin:/bin
+    sampling:
+      enabled: true
+      timeout: 300 
+      max_rpm: 5555
+      max_tool_rounds: 5555
+    timeout: 180
+    connect_timeout: 30
+```
