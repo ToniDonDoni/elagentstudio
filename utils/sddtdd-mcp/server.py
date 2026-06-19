@@ -294,7 +294,7 @@ async def _sample_with_tools(
     for _round in range(max_rounds):
         result = await ctx.session.create_message(
             messages=messages,
-            max_tokens=4096,
+            max_tokens=128000,
             tools=REVIEWER_TOOLS,
         )
 
@@ -388,7 +388,7 @@ async def call_tool(
             ctx=ctx,
             initial_prompt=prompt,
             repo_path=repo_path,
-            max_rounds=5,
+            max_rounds=5555,
         )
 
         # Extract verdict from response.
