@@ -125,4 +125,4 @@ The broker should enforce this by refusing a repeated reviewTask call until the 
 
 7. all sill related files including logs specs and journal and tasks to <repo root>.sddtdd_skill
 
-8. mcp review requires 5555 max tool calls so the hermes mcp config must be updated accodingly during the instllation
+8. mcp review requires 5555 max tool calls so the hermes mcp config must be updated accodingly during the installation, also timeout,max_rpm: 5555
