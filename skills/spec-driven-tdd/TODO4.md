@@ -122,3 +122,5 @@ The broker should enforce this by refusing a repeated reviewTask call until the 
 5. Add new tasks to the completed spec repo.
 
 6. Consider making  broker llm based
+
+7. all sill related files including logs specs and journal and tasks to <repo root>.sddtdd_skill
