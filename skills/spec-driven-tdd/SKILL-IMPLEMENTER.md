@@ -109,7 +109,63 @@ implementer executes the issued task exactly.
 1. Load the shared `spec-driven-tdd` skill, this implementer role
    file, and `references/JOURNAL.md`. Do not load
    `SKILL-ORCHESTRATOR.md` or `references/STAGES.md`.
-2. Call `getNextTask` with `repo_path` and `user_input` (the very
+2. **Existing-delivery check.** Before calling the broker, inspect
+   `.sddtdd_skill/`. If `SPEC-DRAFT.md`, `SPEC.md`, and `TASKS.md`
+   already exist in the committed tree (i.e. the repo already
+   carries a finished or in-progress SDDTDD delivery), a new user
+   request is a *new iteration*, not a continuation. The
+   implementer MUST ask the user before doing anything else. Use
+   this exact phrasing (substitute the real identifier if visible
+   in the journal):
+
+   > A previous SDDTDD delivery is already committed in this repo
+   > (`.sddtdd_skill/SPEC.md`, `.sddtdd_skill/TASKS.md`, etc.).
+   > Your new request is a new iteration.
+   >
+   > How would you like to proceed?
+   >
+   > 1. **Archive the previous delivery and start fresh** (recommended).
+   >    I will rename the old `.sddtdd_skill/SPEC-DRAFT.md`,
+   >    `.sddtdd_skill/SPEC.md`, and `.sddtdd_skill/TASKS.md` to
+   >    `<NAME>_old_v<N>.md` where `<N>` is one greater than the
+   >    highest existing `_old_v<N>` suffix for that name (so the
+   >    first archive is `_v1`, the next `_v2`, and so on).
+   >    `ARCHITECTURE.md` is **kept as-is** because the
+   >    architecture is still valid for the new iteration; the
+   >    broker will require a reviewed `SPEC.md` and `TASKS.md`
+   >    that match the new request before any new work is issued.
+   > 2. **Continue with the current spec** (no archiving). The
+   >    new request will be applied to the existing `SPEC.md` and
+   >    `TASKS.md`. Pick this only if the new request is a small
+   >    amendment to the current delivery.
+   > 3. **Cancel** — I will stop without making any changes.
+
+   If the user picks 1: do the archive, commit it, and continue
+   to step 3. If the user picks 2: skip the archive and continue
+   to step 3 (the broker will see the existing committed
+   artifacts and decide what to do). If the user picks 3: stop.
+
+   The archive itself is a single commit produced by the
+   implementer, not by the broker. Pick `<N>` by listing existing
+   files:
+
+   ```bash
+   git ls-files '.sddtdd_skill/SPEC_old_v*.md' \
+     | sed -E 's/.*_old_v([0-9]+)\.md/\1/' \
+     | sort -n | tail -1
+   ```
+
+   If no `*_old_v*.md` files exist, the next `<N>` is `1`. Rename
+   exactly these three files (leave `ARCHITECTURE.md` and
+   `JOURNAL_SDD_TDD_SKILL.log` untouched), stage the renames, and
+   commit with a message of the form
+   `archive previous SDDTDD delivery as _v<N>`. After the commit,
+   `.sddtdd_skill/` contains the archived files plus the
+   unchanged `ARCHITECTURE.md`; the implementer then writes a
+   fresh `SPEC-DRAFT.md` for the new request (the broker's first
+   task will do this in the normal `USER_INPUT_CAPTURE` step
+   below).
+3. Call `getNextTask` with `repo_path` and `user_input` (the very
    first call of a delivery). On subsequent calls pass
    `previous_task_id`. The broker returns the first task,
    `complete`, or a blocker.
