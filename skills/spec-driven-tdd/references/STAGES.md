@@ -14,9 +14,9 @@ here. The journal format and entry types are defined in `JOURNAL.md`.
 
 ## Stage 0 — Capture User Input
 
-### Artifact: `SPEC-DRAFT.md`
+### Artifact: `.sddtdd_skill/SPEC-DRAFT.md`
 
-`SPEC-DRAFT.md` preserves the original user request exactly as received.
+`.sddtdd_skill/SPEC-DRAFT.md` preserves the original user request exactly as received.
 
 It is a source record, not an agent-authored interpretation.
 
@@ -39,24 +39,24 @@ It MUST NOT:
 - be edited after the first commit.
 
 Later clarifications are recorded in the journal and incorporated into
-`SPEC.md`. They do not rewrite historical user input.
+`.sddtdd_skill/SPEC.md`. They do not rewrite historical user input.
 
-Because `SPEC-DRAFT.md` is raw user input rather than an agent-generated
+Because `.sddtdd_skill/SPEC-DRAFT.md` is raw user input rather than an agent-generated
 solution artifact, it is exempt from semantic review. Its capture and
 commit are still journaled.
 
 ## Stage 1 — Requirements
 
-### Artifact: `SPEC.md`
+### Artifact: `.sddtdd_skill/SPEC.md`
 
-`SPEC.md` is the editable working specification derived from
-`SPEC-DRAFT.md`. It defines what the system must do.
+`.sddtdd_skill/SPEC.md` is the editable working specification derived from
+`.sddtdd_skill/SPEC-DRAFT.md`. It defines what the system must do.
 
 ### Required content
 
-`SPEC.md` SHOULD contain:
+`.sddtdd_skill/SPEC.md` SHOULD contain:
 
-- reference to `SPEC-DRAFT.md`;
+- reference to `.sddtdd_skill/SPEC-DRAFT.md`;
 - system goal;
 - functional requirements;
 - non-functional requirements;
@@ -74,7 +74,7 @@ Every requirement MUST have a stable identifier, e.g. `FR-001`, `NFR-001`.
 
 The independent reviewer checks:
 
-- fidelity to `SPEC-DRAFT.md` and recorded clarifications;
+- fidelity to `.sddtdd_skill/SPEC-DRAFT.md` and recorded clarifications;
 - completeness;
 - internal consistency;
 - absence of unsupported assumptions;
@@ -85,26 +85,26 @@ The independent reviewer checks:
 
 ### Gate
 
-Architecture work MUST NOT begin until `SPEC.md` receives `PASS`.
+Architecture work MUST NOT begin until `.sddtdd_skill/SPEC.md` receives `PASS`.
 
-On `FAIL`, the primary agent edits `SPEC.md`, commits it, updates the
+On `FAIL`, the primary agent edits `.sddtdd_skill/SPEC.md`, commits it, updates the
 journal, and requests a fresh review.
 
 On `NEEDS_CLARIFICATION`, the primary agent asks the user, records the
-answer, updates `SPEC.md`, commits it, and requests a fresh review.
+answer, updates `.sddtdd_skill/SPEC.md`, commits it, and requests a fresh review.
 
-`SPEC-DRAFT.md` remains unchanged.
+`.sddtdd_skill/SPEC-DRAFT.md` remains unchanged.
 
 ## Stage 2 — Technical and Architectural Design
 
-### Artifact: `ARCHITECTURE.md`
+### Artifact: `.sddtdd_skill/ARCHITECTURE.md`
 
-`ARCHITECTURE.md` defines how the reviewed requirements will be
-implemented. It is derived from reviewed `SPEC.md`.
+`.sddtdd_skill/ARCHITECTURE.md` defines how the reviewed requirements will be
+implemented. It is derived from reviewed `.sddtdd_skill/SPEC.md`.
 
 ### Required content
 
-`ARCHITECTURE.md` SHOULD contain:
+`.sddtdd_skill/ARCHITECTURE.md` SHOULD contain:
 
 - architecture overview;
 - major components;
@@ -142,13 +142,13 @@ The independent reviewer checks:
 
 ### Gate
 
-Task decomposition MUST NOT begin until `ARCHITECTURE.md` receives `PASS`.
+Task decomposition MUST NOT begin until `.sddtdd_skill/ARCHITECTURE.md` receives `PASS`.
 
 ## Stage 3 — Task Decomposition
 
-### Artifact: `TASKS.md`
+### Artifact: `.sddtdd_skill/TASKS.md`
 
-`TASKS.md` decomposes reviewed requirements and architecture into
+`.sddtdd_skill/TASKS.md` decomposes reviewed requirements and architecture into
 implementable tasks.
 
 ### Required task fields
@@ -194,7 +194,7 @@ The independent reviewer checks:
 
 ### Gate
 
-Per-task implementation work MUST NOT begin until `TASKS.md` receives
+Per-task implementation work MUST NOT begin until `.sddtdd_skill/TASKS.md` receives
 `PASS`.
 
 ## Stage 4 — Per-Task RED-GREEN Cycle
@@ -342,10 +342,10 @@ Final review MUST NOT begin until regression evidence receives `PASS`.
 The final review evaluates the complete committed solution and its
 artifact chain. The reviewer checks:
 
-- `SPEC-DRAFT.md` preserves the original user input;
-- `SPEC.md` has `PASS`;
-- `ARCHITECTURE.md` has `PASS`;
-- `TASKS.md` has `PASS`;
+- `.sddtdd_skill/SPEC-DRAFT.md` preserves the original user input;
+- `.sddtdd_skill/SPEC.md` has `PASS`;
+- `.sddtdd_skill/ARCHITECTURE.md` has `PASS`;
+- `.sddtdd_skill/TASKS.md` has `PASS`;
 - every requirement maps to tasks;
 - every automatically testable behavior has reviewed RED-GREEN evidence;
 - every task implementation has `PASS`;
@@ -407,10 +407,10 @@ ordinary reviewer `PASS`.
 
 The workflow is complete only when:
 
-- `SPEC-DRAFT.md` preserves the original request unchanged;
-- `SPEC.md` has independent review `PASS`;
-- `ARCHITECTURE.md` has independent review `PASS`;
-- `TASKS.md` has independent review `PASS`;
+- `.sddtdd_skill/SPEC-DRAFT.md` preserves the original request unchanged;
+- `.sddtdd_skill/SPEC.md` has independent review `PASS`;
+- `.sddtdd_skill/ARCHITECTURE.md` has independent review `PASS`;
+- `.sddtdd_skill/TASKS.md` has independent review `PASS`;
 - every agent-generated test artifact has independent review `PASS`;
 - every automatically testable behavior has valid reviewed RED evidence;
 - every implementation artifact has independent review `PASS`;

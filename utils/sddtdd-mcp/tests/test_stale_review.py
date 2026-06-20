@@ -23,9 +23,9 @@ def test_error_result_format():
 
 
 def test_get_log_path_default():
-    """Default log path is under .git/sddtdd/."""
+    """Default log path is under <repo>/.sddtdd_skill/."""
     path = _get_log_path("/work/gorillas-game")
-    assert path.endswith(".git/sddtdd/review-access.jsonl")
+    assert path.endswith(".sddtdd_skill/review-access.jsonl")
 
 
 def test_get_log_path_env_override(monkeypatch):

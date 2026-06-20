@@ -17,9 +17,9 @@ def test_tool_registered():
 
 
 def test_get_log_path_default_under_git():
-    """Access log path defaults under .git/sddtdd/."""
+    """Access log path defaults under <repo>/.sddtdd_skill/."""
     path = _get_log_path("/work/gorillas-game")
-    assert ".git/sddtdd/review-access.jsonl" in path
+    assert ".sddtdd_skill/review-access.jsonl" in path
 
 
 def test_get_log_path_env_var(monkeypatch):

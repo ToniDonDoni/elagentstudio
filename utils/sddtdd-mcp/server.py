@@ -85,11 +85,17 @@ class LogWriter:
 
 
 def _get_log_path(repo_path: str) -> str:
-    """Return log path: env var override or default under .git/sddtdd/."""
+    """Return log path: env var override or default under <repo>/.sddtdd_skill/.
+
+    The reviewer access log is a runtime artifact, not a committed
+    artifact. It is expected to be ignored by .gitignore via the
+    `.sddtdd_skill/*.jsonl` pattern shipped with the spec-driven-tdd
+    skill. Override with the ``SDDTDD_LOG_PATH`` env var.
+    """
     env = os.environ.get("SDDTDD_LOG_PATH")
     if env:
         return env
-    return os.path.join(repo_path, ".git", "sddtdd", "review-access.jsonl")
+    return os.path.join(repo_path, ".sddtdd_skill", "review-access.jsonl")
 
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,8 @@ import asyncio
 import json
 import subprocess
 
+from pathlib import Path
+
 from server import (
     BROKER_TOOLS,
     _append_broker_event,
@@ -123,6 +125,19 @@ def _make_repo(tmp_path):
     return tmp_path
 
 
+def _skill_path(tmp_path, *parts: str):
+    """Return a path under the per-repo ``.sddtdd_skill/`` directory.
+
+    All SDDTDD artifacts (SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md,
+    TASKS.md, JOURNAL_SDD_TDD_SKILL.log) live under this directory
+    per the v3+ file layout. Tests build their fixtures through this
+    helper so the path only changes in one place.
+    """
+    return tmp_path / ".sddtdd_skill" / Path(*parts)
+
+
+
+
 def test_get_next_task_empty_repo_requires_user_input(tmp_path):
     _make_repo(tmp_path)
     state = _read_repo_state(str(tmp_path))
@@ -142,8 +157,10 @@ def test_get_next_task_empty_repo_with_user_input_starts_with_user_input(tmp_pat
 
 def test_get_next_task_with_user_input_asks_for_spec_spec(tmp_path):
     _make_repo(tmp_path)
-    (tmp_path / "SPEC-DRAFT.md").write_text("build a thing")
-    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text(
+    (tmp_path / ".sddtdd_skill").mkdir(parents=True, exist_ok=True)
+    (_skill_path(tmp_path, "SPEC-DRAFT.md")).write_text("build a thing")
+    (tmp_path / ".sddtdd_skill").mkdir(parents=True, exist_ok=True)
+    (_skill_path(tmp_path, "JOURNAL_SDD_TDD_SKILL.log")).write_text(
         "=== J-20260616-001 ===\nTYPE: USER_INPUT\nSTATUS: COMPLETED\nPARENT: --\nROOT: J-20260616-001\nTASK_ID: T-000001\nPARENT_TASK_ID: --\nROOT_USER_INPUT_ID: T-000001\nDETAIL: original user request\n"
     )
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
@@ -160,7 +177,8 @@ def test_get_next_task_with_user_input_asks_for_spec_spec(tmp_path):
 
 def test_get_next_task_returns_complete_when_done(tmp_path):
     _make_repo(tmp_path)
-    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text(
+    (tmp_path / ".sddtdd_skill").mkdir(parents=True, exist_ok=True)
+    (_skill_path(tmp_path, "JOURNAL_SDD_TDD_SKILL.log")).write_text(
         "=== J-1 ===\nTYPE: USER_INPUT\nSTATUS: COMPLETED\nDETAIL: x\n"
         "\n=== J-2 ===\nTYPE: SPEC_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
         "\n=== J-3 ===\nTYPE: ARCHITECTURE_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
@@ -187,7 +205,8 @@ def test_get_next_task_returns_complete_when_done(tmp_path):
 
 
 def _commit_journal(tmp_path, text: str) -> None:
-    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text(text)
+    (tmp_path / ".sddtdd_skill").mkdir(parents=True, exist_ok=True)
+    (_skill_path(tmp_path, "JOURNAL_SDD_TDD_SKILL.log")).write_text(text)
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-m", "journal update"], cwd=tmp_path, check=True, capture_output=True)
 
@@ -206,7 +225,8 @@ def test_review_task_pass_when_capture_task_no_reviewer_required(tmp_path):
         tmp_path,
         "=== J-1 ===\nTYPE: USER_INPUT\nSTATUS: COMPLETED\nDETAIL: original user request\n",
     )
-    (tmp_path / "SPEC-DRAFT.md").write_text("the original user request")
+    (tmp_path / ".sddtdd_skill").mkdir(parents=True, exist_ok=True)
+    (_skill_path(tmp_path, "SPEC-DRAFT.md")).write_text("the original user request")
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-m", "draft"], cwd=tmp_path, check=True, capture_output=True)
     result = _check_process_gate(
@@ -227,7 +247,8 @@ def test_review_task_fail_when_working_tree_dirty(tmp_path):
         tmp_path,
         "=== J-1 ===\nTYPE: USER_INPUT\nSTATUS: COMPLETED\nDETAIL: original user request\n",
     )
-    (tmp_path / "SPEC-DRAFT.md").write_text("dirty uncommitted draft")
+    (tmp_path / ".sddtdd_skill").mkdir(parents=True, exist_ok=True)
+    (_skill_path(tmp_path, "SPEC-DRAFT.md")).write_text("dirty uncommitted draft")
     result = _check_process_gate(
         repo_path=str(tmp_path),
         task_id="B-000001",
@@ -301,7 +322,7 @@ def test_review_task_fail_when_required_artifact_missing(tmp_path):
         head_sha_before=_head_sha(tmp_path),
     )
     assert result["status"] == "FAIL"
-    assert any("SPEC.md" in f and "absent" in f for f in result["findings"])
+    assert any("SPEC.md" in f and "absent" in f and ".sddtdd_skill" in f for f in result["findings"])
 
 
 def test_review_task_pass_when_red_review_passes(tmp_path):
@@ -485,7 +506,8 @@ def test_get_next_task_emits_tasks_complete_after_green_review(tmp_path):
     artifact; it is a pure journal convergence event.
     """
     _make_repo(tmp_path)
-    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text(
+    (tmp_path / ".sddtdd_skill").mkdir(parents=True, exist_ok=True)
+    (_skill_path(tmp_path, "JOURNAL_SDD_TDD_SKILL.log")).write_text(
         "=== J-1 ===\nTYPE: USER_INPUT\nSTATUS: COMPLETED\nDETAIL: x\n"
         "\n=== J-2 ===\nTYPE: SPEC_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
         "\n=== J-3 ===\nTYPE: ARCHITECTURE_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
@@ -511,7 +533,8 @@ def test_get_next_task_does_not_emit_regression_before_tasks_complete(tmp_path):
     This is the process-order check on REGRESSION's prerequisite.
     """
     _make_repo(tmp_path)
-    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text(
+    (tmp_path / ".sddtdd_skill").mkdir(parents=True, exist_ok=True)
+    (_skill_path(tmp_path, "JOURNAL_SDD_TDD_SKILL.log")).write_text(
         "=== J-1 ===\nTYPE: USER_INPUT\nSTATUS: COMPLETED\nDETAIL: x\n"
         "\n=== J-2 ===\nTYPE: SPEC_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
         "\n=== J-3 ===\nTYPE: ARCHITECTURE_REVIEW\nSTATUS: PASS\nDETAIL: x\n"
@@ -605,7 +628,8 @@ def test_get_next_task_blocked_when_previous_broker_task_unverified(tmp_path):
     entry with matching TASK_ID.
     """
     _make_repo(tmp_path)
-    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text(
+    (tmp_path / ".sddtdd_skill").mkdir(parents=True, exist_ok=True)
+    (_skill_path(tmp_path, "JOURNAL_SDD_TDD_SKILL.log")).write_text(
         "=== J-1 ===\nTYPE: USER_INPUT\nSTATUS: COMPLETED\nDETAIL: x\n"
     )
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
@@ -630,7 +654,8 @@ def test_get_next_task_passes_when_unverified_task_becomes_verified(tmp_path):
     carrying the matching TASK_ID, the broker no longer blocks.
     """
     _make_repo(tmp_path)
-    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text(
+    (tmp_path / ".sddtdd_skill").mkdir(parents=True, exist_ok=True)
+    (_skill_path(tmp_path, "JOURNAL_SDD_TDD_SKILL.log")).write_text(
         "=== J-1 ===\nTYPE: USER_INPUT\nSTATUS: COMPLETED\nDETAIL: x\n"
         "\n=== J-2 ===\nTYPE: BROKER_TASK_REVIEW\nTASK_ID: B-000001\nSTATUS: PASS\nPARENT: J-1\nDETAIL: verified\n"
     )
@@ -656,7 +681,8 @@ def test_get_next_task_does_not_match_broker_pass_with_wrong_task_id(tmp_path):
     any issued task id does not unblock the broker.
     """
     _make_repo(tmp_path)
-    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text(
+    (tmp_path / ".sddtdd_skill").mkdir(parents=True, exist_ok=True)
+    (_skill_path(tmp_path, "JOURNAL_SDD_TDD_SKILL.log")).write_text(
         "=== J-1 ===\nTYPE: USER_INPUT\nSTATUS: COMPLETED\nDETAIL: x\n"
         "\n=== J-2 ===\nTYPE: BROKER_TASK_REVIEW\nTASK_ID: B-999999\nSTATUS: PASS\nPARENT: J-1\nDETAIL: unrelated pass\n"
     )
@@ -701,19 +727,23 @@ def test_working_tree_dirty_false_on_clean_repo(tmp_path):
 
 def test_working_tree_dirty_true_after_uncommitted_change(tmp_path):
     tmp_path = _make_repo(tmp_path)
-    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text("DETAIL: x\n")
+    (tmp_path / ".sddtdd_skill").mkdir(parents=True, exist_ok=True)
+    (_skill_path(tmp_path, "JOURNAL_SDD_TDD_SKILL.log")).write_text("DETAIL: x\n")
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
-    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text("DETAIL: y\n")
+    (tmp_path / ".sddtdd_skill").mkdir(parents=True, exist_ok=True)
+    (_skill_path(tmp_path, "JOURNAL_SDD_TDD_SKILL.log")).write_text("DETAIL: y\n")
     assert _working_tree_dirty(str(tmp_path)) is True
 
 
 def test_committed_journal_returns_committed_text_not_dirty(tmp_path):
     tmp_path = _make_repo(tmp_path)
-    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text("DETAIL: committed journal\n")
+    (tmp_path / ".sddtdd_skill").mkdir(parents=True, exist_ok=True)
+    (_skill_path(tmp_path, "JOURNAL_SDD_TDD_SKILL.log")).write_text("DETAIL: committed journal\n")
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
-    (tmp_path / "JOURNAL_SDD_TDD_SKILL.log").write_text("DETAIL: dirty uncommitted journal\n")
+    (tmp_path / ".sddtdd_skill").mkdir(parents=True, exist_ok=True)
+    (_skill_path(tmp_path, "JOURNAL_SDD_TDD_SKILL.log")).write_text("DETAIL: dirty uncommitted journal\n")
     content = _committed_journal(str(tmp_path))
     assert content == "DETAIL: committed journal\n"
 
@@ -726,7 +756,7 @@ def test_committed_journal_returns_committed_text_not_dirty(tmp_path):
 def test_broker_log_path_is_under_dot_git_sddtdd(tmp_path):
     tmp_path = _make_repo(tmp_path)
     path = _broker_log_path(str(tmp_path))
-    assert path == tmp_path / ".git" / "sddtdd" / "broker-access.jsonl"
+    assert path == _skill_path(tmp_path, "broker-access.jsonl")
 
 
 def test_broker_log_records_both_started_and_completed_for_every_verdict(tmp_path):
@@ -745,7 +775,7 @@ def test_broker_log_records_both_started_and_completed_for_every_verdict(tmp_pat
             "status": verdict,
             "duration_ms": 1,
         })
-    log_path = tmp_path / ".git" / "sddtdd" / "broker-access.jsonl"
+    log_path = _skill_path(tmp_path, "broker-access.jsonl")
     lines = log_path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 8
     statuses = [

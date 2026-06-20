@@ -41,7 +41,7 @@ spec-driven-tdd: record initial user input for S-DEMO-01
 
 ## 2. Capture Immutable Raw User Input
 
-Create `SPEC-DRAFT.md` by copying the user request exactly as received:
+Create `.sddtdd_skill/SPEC-DRAFT.md` by copying the user request exactly as received:
 
 ```markdown
 # Raw User Input
@@ -58,19 +58,19 @@ Commit:
 spec: capture immutable raw input for S-DEMO-01
 ```
 
-`SPEC-DRAFT.md` is now immutable. It is not reviewed and must never be edited.
+`.sddtdd_skill/SPEC-DRAFT.md` is now immutable. It is not reviewed and must never be edited.
 
 ---
 
 ## 3. Derive and Review the Working Specification
 
-Create editable `SPEC.md` from `SPEC-DRAFT.md`:
+Create editable `.sddtdd_skill/SPEC.md` from `.sddtdd_skill/SPEC-DRAFT.md`:
 
 ```markdown
 # Counter API Specification
 
 Spec ID: S-DEMO-01
-Source: SPEC-DRAFT.md
+Source: .sddtdd_skill/SPEC-DRAFT.md
 Parent: --
 
 ## S-DEMO-01.01 — Initial value
@@ -105,16 +105,16 @@ SPEC: S-DEMO-01
 STATUS: COMPLETED
 PARENT: J-20260614-100000-001
 ROOT: J-20260614-100000-001
-DETAIL: Editable SPEC.md derived from immutable SPEC-DRAFT.md.
+DETAIL: Editable .sddtdd_skill/SPEC.md derived from immutable .sddtdd_skill/SPEC-DRAFT.md.
 ```
 
-Review the committed `SPEC.md`.
+Review the committed `.sddtdd_skill/SPEC.md`.
 
-`SPEC-DRAFT.md` is not reviewed.
+`.sddtdd_skill/SPEC-DRAFT.md` is not reviewed.
 
 Review scope:
 
-- `SPEC.md` remains faithful to `SPEC-DRAFT.md`;
+- `.sddtdd_skill/SPEC.md` remains faithful to `.sddtdd_skill/SPEC-DRAFT.md`;
 - both acceptance criteria are observable;
 - the behavior is unambiguous;
 - each acceptance criterion can be tested independently;
@@ -129,30 +129,30 @@ SPEC: S-DEMO-01
 STATUS: PASS
 PARENT: J-20260614-100000-002
 ROOT: J-20260614-100000-001
-DETAIL: SPEC.md is faithful to SPEC-DRAFT.md, complete, unambiguous, and testable. Reviewed commit <hash>.
+DETAIL: .sddtdd_skill/SPEC.md is faithful to .sddtdd_skill/SPEC-DRAFT.md, complete, unambiguous, and testable. Reviewed commit <hash>.
 ```
 
 Commit:
 
 ```text
-journal: record SPEC.md review for S-DEMO-01
+journal: record .sddtdd_skill/SPEC.md review for S-DEMO-01
 ```
 
 If the review returns `FAIL` or `NEEDS_CLARIFICATION`:
 
-1. keep `SPEC-DRAFT.md` unchanged;
-2. edit `SPEC.md`;
-3. commit the corrected `SPEC.md`;
+1. keep `.sddtdd_skill/SPEC-DRAFT.md` unchanged;
+2. edit `.sddtdd_skill/SPEC.md`;
+3. commit the corrected `.sddtdd_skill/SPEC.md`;
 4. update and commit the journal;
-5. request a fresh review of `SPEC.md`.
+5. request a fresh review of `.sddtdd_skill/SPEC.md`.
 
-Task decomposition starts only after `SPEC.md` receives `PASS`.
+Task decomposition starts only after `.sddtdd_skill/SPEC.md` receives `PASS`.
 
 ---
 
-## 4. Decompose Reviewed SPEC.md into Tasks
+## 4. Decompose Reviewed .sddtdd_skill/SPEC.md into Tasks
 
-After `SPEC.md` receives `PASS`, create `TASKS.md` from its acceptance criteria:
+After `.sddtdd_skill/SPEC.md` receives `PASS`, create `.sddtdd_skill/TASKS.md` from its acceptance criteria:
 
 ```markdown
 # Counter API Tasks
@@ -193,7 +193,7 @@ SPEC: S-DEMO-01
 STATUS: COMPLETED
 PARENT: J-20260614-100000-003
 ROOT: J-20260614-100000-001
-DETAIL: Reviewed SPEC.md decomposed into T-DEMO-01-001 and T-DEMO-01-002.
+DETAIL: Reviewed .sddtdd_skill/SPEC.md decomposed into T-DEMO-01-001 and T-DEMO-01-002.
 ```
 
 Review the committed task decomposition.
@@ -675,7 +675,7 @@ Review the complete committed feature.
 
 Review scope:
 
-- both acceptance criteria from reviewed `SPEC.md` are implemented;
+- both acceptance criteria from reviewed `.sddtdd_skill/SPEC.md` are implemented;
 - both task branches have reviewed RED and GREEN stages;
 - all tests pass;
 - journal and commit history are complete;
@@ -728,10 +728,10 @@ journal: mark S-DEMO-01 complete
 The completed example contains:
 
 ```text
-SPEC-DRAFT.md
-SPEC.md
-TASKS.md
-JOURNAL_SDD_TDD_SKILL.log
+.sddtdd_skill/SPEC-DRAFT.md
+.sddtdd_skill/SPEC.md
+.sddtdd_skill/TASKS.md
+.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log
 tests/test_counter.py
 counter.py
 ```
@@ -775,7 +775,7 @@ class Counter:
 
 ## 12. Traceability
 
-`SPEC-DRAFT.md` preserves the original request. `SPEC.md` defines the reviewed requirements used by the tasks and tests.
+`.sddtdd_skill/SPEC-DRAFT.md` preserves the original request. `.sddtdd_skill/SPEC.md` defines the reviewed requirements used by the tasks and tests.
 
 | Requirement | Task | Test | Implementation | Terminal task entry |
 |---|---|---|---|---|

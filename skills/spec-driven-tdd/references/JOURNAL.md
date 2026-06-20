@@ -2,7 +2,7 @@
 
 TODO update to the skill v2
 TODO: Align JOURNAL.md with the new architecture stage.
-- Add TYPE `ARCHITECTURE` for creation or revision of `ARCHITECTURE.md`.
+- Add TYPE `ARCHITECTURE` for creation or revision of `.sddtdd_skill/ARCHITECTURE.md`.
 - Add TYPE `ARCHITECTURE_REVIEW` for architecture review verdicts.
 - Allow `ARCHITECTURE` to use STATUS `COMPLETED`.
 - Allow `ARCHITECTURE_REVIEW` to use `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`.
@@ -23,16 +23,16 @@ TODO: Align JOURNAL.md with the new architecture stage.
   -> DONE
 - Add the failure transition:
   ARCHITECTURE_REVIEW FAIL -> ARCHITECTURE
-- Clarify that `SPEC_SPEC` records creation or revision of editable `SPEC.md`.
-- Clarify that `SPEC_REVIEW` reviews committed `SPEC.md`, not immutable `SPEC-DRAFT.md`.
-- Clarify that `DECOMPOSE` uses reviewed `SPEC.md` and reviewed `ARCHITECTURE.md`.
+- Clarify that `SPEC_SPEC` records creation or revision of editable `.sddtdd_skill/SPEC.md`.
+- Clarify that `SPEC_REVIEW` reviews committed `.sddtdd_skill/SPEC.md`, not immutable `.sddtdd_skill/SPEC-DRAFT.md`.
+- Clarify that `DECOMPOSE` uses reviewed `.sddtdd_skill/SPEC.md` and reviewed `.sddtdd_skill/ARCHITECTURE.md`.
 - Update the complete journal example to include `ARCHITECTURE` and `ARCHITECTURE_REVIEW`.
 - Do not add new relationship fields. Continue using `JID`, `PARENT`, `ROOT`, `DEPENDS`, and the existing task-tree fields.
 - Store artifact paths, reviewed commit hashes, and review evidence in `DETAIL` unless a separate structured-field change is explicitly approved.
 - DONE: Added TYPE `BROKER_TASK_REVIEW` for the broker's process-gate verdict on whether a broker-issued task is process-complete. See section 10.
 
 
-This document defines the required format and content of `JOURNAL_SDD_TDD_SKILL.log`.
+This document defines the required format and content of `.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log`.
 
 The journal records:
 
@@ -51,7 +51,19 @@ The journal file MUST be named:
 JOURNAL_SDD_TDD_SKILL.log
 ```
 
-It MUST be stored at the project root.
+It MUST be stored under the per-repo SDDTDD skill directory:
+
+```text
+<repo_root>/.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log
+```
+
+The directory `.sddtdd_skill/` holds every committed SDDTDD artifact
+for the delivery: `SPEC-DRAFT.md`, `SPEC.md`, `ARCHITECTURE.md`,
+`TASKS.md`, and the journal. It also holds the runtime access logs
+(`review-access.jsonl` from the reviewer MCP and
+`broker-access.jsonl` from the broker MCP), which are NOT committed
+and MUST be ignored by `.gitignore` via the pattern
+`.sddtdd_skill/*.jsonl`.
 
 ---
 

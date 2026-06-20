@@ -94,10 +94,10 @@ STAGE_PREREQUISITES: dict[str, list[tuple[str, str]]] = {
 # reviewer's job — but it does verify that the artifact that the
 # reviewer allegedly reviewed actually exists in the committed tree.
 STAGE_REQUIRED_ARTIFACTS: dict[str, list[str]] = {
-    "USER_INPUT_CAPTURE": ["SPEC-DRAFT.md"],
-    "SPEC_SPEC": ["SPEC.md"],
-    "ARCHITECTURE": ["ARCHITECTURE.md"],
-    "DECOMPOSE": ["TASKS.md"],
+    "USER_INPUT_CAPTURE": [".sddtdd_skill/SPEC-DRAFT.md"],
+    "SPEC_SPEC": [".sddtdd_skill/SPEC.md"],
+    "ARCHITECTURE": [".sddtdd_skill/ARCHITECTURE.md"],
+    "DECOMPOSE": [".sddtdd_skill/TASKS.md"],
 }
 
 
@@ -131,7 +131,10 @@ def _git_show(repo_path: str, ref: str, file_path: str) -> str | None:
 
 
 def _broker_log_path(repo_path: str) -> Path:
-    return Path(repo_path) / ".git" / "sddtdd" / "broker-access.jsonl"
+    # Runtime access log (not committed). Sibling of review-access.jsonl;
+    # both are ignored by .gitignore via the `.sddtdd_skill/*.jsonl`
+    # pattern shipped with the spec-driven-tdd skill.
+    return Path(repo_path) / ".sddtdd_skill" / "broker-access.jsonl"
 
 
 def _append_broker_event(repo_path: str, event: dict[str, Any]) -> None:
@@ -203,7 +206,7 @@ def _committed_journal(repo_path: str, ref: str | None = None) -> str | None:
             ref = _git(repo_path, "rev-parse", "HEAD")
         except Exception:
             return None
-    return _git_show(repo_path, ref, "JOURNAL_SDD_TDD_SKILL.log")
+    return _git_show(repo_path, ref, ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log")
 
 
 def _file_exists_at_ref(repo_path: str, ref: str, file_path: str) -> bool:
@@ -380,7 +383,7 @@ def _check_process_gate(
         return {
             "status": "ERROR",
             "findings": [
-                f"JOURNAL_SDD_TDD_SKILL.log is absent at HEAD {head_sha_before[:12]}; cannot verify process state."
+                f".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log is absent at HEAD {head_sha_before[:12]}; cannot verify process state."
             ],
         }
 
@@ -396,7 +399,7 @@ def _check_process_gate(
         return {
             "status": "FAIL",
             "findings": [
-                f"work_journal_id {work_journal_id} not found in committed JOURNAL_SDD_TDD_SKILL.log at HEAD {head_sha_before[:12]}; "
+                f"work_journal_id {work_journal_id} not found in committed .sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log at HEAD {head_sha_before[:12]}; "
                 "the implementer must commit the work journal entry before calling reviewTask."
             ],
         }
@@ -429,7 +432,7 @@ def _check_process_gate(
             review_entry = _find_entry(entries, review_journal_id)
             if review_entry is None:
                 findings.append(
-                    f"review_journal_id {review_journal_id} not found in committed JOURNAL_SDD_TDD_SKILL.log at HEAD {head_sha_before[:12]}."
+                    f"review_journal_id {review_journal_id} not found in committed .sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log at HEAD {head_sha_before[:12]}."
                 )
             else:
                 if review_entry.get("TYPE") != required_review:
@@ -467,14 +470,15 @@ def _check_process_gate(
 
 
 def _read_broker_log(repo_path: str) -> list[dict[str, Any]]:
-    """Read the broker access log (a JSONL file under ``.git/sddtdd/``).
+    """Read the broker access log (a JSONL file under ``.sddtdd_skill/``).
 
     The access log records every ``getNextTask`` issuance and every
     ``reviewTask`` verdict. It is **not** committed to the working
-    tree — it lives under ``.git/sddtdd/`` and is therefore writable
-    by the broker but not by the implementer through a normal
-    commit. The broker uses it to remember which task ids it has
-    issued in this delivery.
+    tree — it lives under ``.sddtdd_skill/`` (next to the committed
+    artifacts) and is expected to be ignored by ``.gitignore`` via
+    the ``.sddtdd_skill/*.jsonl`` pattern shipped with the
+    spec-driven-tdd skill. The broker uses it to remember which
+    task ids it has issued in this delivery.
     """
     path = _broker_log_path(repo_path)
     if not path.exists():
@@ -496,7 +500,7 @@ def _read_repo_state(repo_path: str) -> dict[str, Any]:
         head_sha = _git(repo_path, "rev-parse", "HEAD")
     except Exception:
         return {"exists": False}
-    journal_text = _git_show(repo_path, head_sha, "JOURNAL_SDD_TDD_SKILL.log")
+    journal_text = _git_show(repo_path, head_sha, ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log")
     entries = _parse_journal(journal_text or "")
 
     # Identify broker task ids the broker has issued in this delivery
@@ -593,10 +597,10 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
             "task_id": "B-000001",
             "task_kind": "USER_INPUT_CAPTURE",
             "instruction": (
-                "Preserve the original user request as SPEC-DRAFT.md, create the USER_INPUT journal entry, "
+                "Preserve the original user request as .sddtdd_skill/SPEC-DRAFT.md, create the USER_INPUT journal entry, "
                 "and commit both. Do not translate, summarize, or normalize the user request."
             ),
-            "allowed_scope": ["SPEC-DRAFT.md", "JOURNAL_SDD_TDD_SKILL.log"],
+            "allowed_scope": [".sddtdd_skill/SPEC-DRAFT.md", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
             "required_evidence": ["commit hash", "USER_INPUT journal JID"],
             "independent_review_required": False,
             "review_type": None,
@@ -609,7 +613,7 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
             "task_id": "B-000002",
             "task_kind": "USER_INPUT_CAPTURE",
             "instruction": "The committed journal lacks a USER_INPUT entry. Create the USER_INPUT journal entry and commit it.",
-            "allowed_scope": ["JOURNAL_SDD_TDD_SKILL.log"],
+            "allowed_scope": [".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
             "required_evidence": ["USER_INPUT journal JID"],
             "independent_review_required": False,
             "review_type": None,
@@ -621,8 +625,8 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
             "status": "TASK",
             "task_id": "B-000003",
             "task_kind": "SPEC_SPEC",
-            "instruction": "Create SPEC.md from committed SPEC-DRAFT.md. Create the SPEC_SPEC and SPEC_REVIEW journal entries.",
-            "allowed_scope": ["SPEC.md", "JOURNAL_SDD_TDD_SKILL.log"],
+            "instruction": "Create .sddtdd_skill/SPEC.md from committed .sddtdd_skill/SPEC-DRAFT.md. Create the SPEC_SPEC and SPEC_REVIEW journal entries.",
+            "allowed_scope": [".sddtdd_skill/SPEC.md", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
             "required_evidence": ["commit hash", "SPEC_SPEC journal JID", "SPEC_REVIEW journal JID with STATUS: PASS"],
             "independent_review_required": True,
             "review_type": "SPEC_REVIEW",
@@ -634,8 +638,8 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
             "status": "TASK",
             "task_id": "B-000004",
             "task_kind": "ARCHITECTURE",
-            "instruction": "Create ARCHITECTURE.md from reviewed SPEC.md. Create the ARCHITECTURE and ARCHITECTURE_REVIEW journal entries.",
-            "allowed_scope": ["ARCHITECTURE.md", "JOURNAL_SDD_TDD_SKILL.log"],
+            "instruction": "Create .sddtdd_skill/ARCHITECTURE.md from reviewed .sddtdd_skill/SPEC.md. Create the ARCHITECTURE and ARCHITECTURE_REVIEW journal entries.",
+            "allowed_scope": [".sddtdd_skill/ARCHITECTURE.md", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
             "required_evidence": ["commit hash", "ARCHITECTURE journal JID", "ARCHITECTURE_REVIEW journal JID with STATUS: PASS"],
             "independent_review_required": True,
             "review_type": "ARCHITECTURE_REVIEW",
@@ -647,8 +651,8 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
             "status": "TASK",
             "task_id": "B-000005",
             "task_kind": "DECOMPOSE",
-            "instruction": "Create TASKS.md from reviewed SPEC.md and reviewed ARCHITECTURE.md. Create the DECOMPOSE and TASK_REVIEW journal entries.",
-            "allowed_scope": ["TASKS.md", "JOURNAL_SDD_TDD_SKILL.log"],
+            "instruction": "Create .sddtdd_skill/TASKS.md from reviewed .sddtdd_skill/SPEC.md and reviewed .sddtdd_skill/ARCHITECTURE.md. Create the DECOMPOSE and TASK_REVIEW journal entries.",
+            "allowed_scope": [".sddtdd_skill/TASKS.md", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
             "required_evidence": ["commit hash", "DECOMPOSE journal JID", "TASK_REVIEW journal JID with STATUS: PASS"],
             "independent_review_required": True,
             "review_type": "TASK_REVIEW",
@@ -665,7 +669,7 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
             "task_id": "B-000006",
             "task_kind": "RED",
             "instruction": "Create the failing test that defines the work. Journal the RED entry and request the RED_REVIEW verdict.",
-            "allowed_scope": ["tests/", "JOURNAL_SDD_TDD_SKILL.log"],
+            "allowed_scope": ["tests/", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
             "required_evidence": ["commit hash", "RED journal JID", "RED_REVIEW journal JID with STATUS: PASS"],
             "independent_review_required": True,
             "review_type": "RED_REVIEW",
@@ -678,7 +682,7 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
             "task_id": "B-000007",
             "task_kind": "GREEN",
             "instruction": "Implement the production code that makes the failing test pass. Journal the GREEN entry and request the GREEN_REVIEW verdict.",
-            "allowed_scope": ["src/", "tests/", "JOURNAL_SDD_TDD_SKILL.log"],
+            "allowed_scope": ["src/", "tests/", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
             "required_evidence": ["commit hash", "GREEN journal JID", "GREEN_REVIEW journal JID with STATUS: PASS"],
             "independent_review_required": True,
             "review_type": "GREEN_REVIEW",
@@ -695,7 +699,7 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
                 "Record the TASKS_COMPLETE convergence event in the journal with STATUS: COMPLETED, "
                 "and commit. There is no independent reviewer verdict for this stage."
             ),
-            "allowed_scope": ["JOURNAL_SDD_TDD_SKILL.log"],
+            "allowed_scope": [".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
             "required_evidence": ["commit hash", "TASKS_COMPLETE journal JID with STATUS: COMPLETED"],
             "independent_review_required": False,
             "review_type": None,
@@ -708,7 +712,7 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
             "task_id": "B-000009",
             "task_kind": "REGRESSION",
             "instruction": "Run the full required test suite and capture regression evidence. Create the REGRESSION and REGRESSION_REVIEW journal entries.",
-            "allowed_scope": ["JOURNAL_SDD_TDD_SKILL.log", "regression evidence files"],
+            "allowed_scope": [".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log", "regression evidence files"],
             "required_evidence": ["commit hash", "REGRESSION journal JID", "REGRESSION_REVIEW journal JID with STATUS: PASS"],
             "independent_review_required": True,
             "review_type": "REGRESSION_REVIEW",
@@ -721,7 +725,7 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
             "task_id": "B-000010",
             "task_kind": "FINAL",
             "instruction": "Final review of the complete committed solution and its artifact chain. Create the FINAL_REVIEW journal entry.",
-            "allowed_scope": ["JOURNAL_SDD_TDD_SKILL.log"],
+            "allowed_scope": [".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
             "required_evidence": ["FINAL_REVIEW journal JID with STATUS: PASS"],
             "independent_review_required": True,
             "review_type": "FINAL_REVIEW",
@@ -734,7 +738,7 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
             "task_id": "B-000011",
             "task_kind": "DONE",
             "instruction": "Record the DONE journal entry with STATUS: COMPLETED.",
-            "allowed_scope": ["JOURNAL_SDD_TDD_SKILL.log"],
+            "allowed_scope": [".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
             "required_evidence": ["DONE journal JID"],
             "independent_review_required": False,
             "review_type": None,

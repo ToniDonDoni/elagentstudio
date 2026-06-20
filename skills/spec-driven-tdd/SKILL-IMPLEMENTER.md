@@ -200,7 +200,7 @@ status, the right `TYPE`, and a valid `PARENT`.
 
 The implementer calls the reviewer MCP
 (`mcp_sddtdd_review_review`) exactly as the shared `spec-driven-tdd`
-skill requires, records the verdict in `JOURNAL_SDD_TDD_SKILL.log`,
+skill requires, records the verdict in `.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log`,
 commits the journal entry, and only then asks the broker to verify the
 task.
 

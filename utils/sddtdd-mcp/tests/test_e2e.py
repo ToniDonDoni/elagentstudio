@@ -199,7 +199,9 @@ class MCPClient:
 
 @pytest.fixture
 def log_path(tmp_path):
-    return str(tmp_path / "review-access.jsonl")
+    skill_dir = tmp_path / ".sddtdd_skill"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    return str(skill_dir / "review-access.jsonl")
 
 
 @pytest.fixture

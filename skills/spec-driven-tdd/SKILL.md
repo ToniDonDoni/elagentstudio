@@ -23,6 +23,37 @@ The pipeline is one skill: `skills/spec-driven-tdd/`. The installable
 artifact is this directory. The role files inside it are part of the same
 skill; they are not separate top-level skills.
 
+## File layout
+
+The skill uses a single per-repo directory for all of its artifacts
+and runtime logs:
+
+```text
+<repo_root>/
+├── .sddtdd_skill/                       # SDDTDD working area
+│   ├── SPEC-DRAFT.md                    # immutable, user input (committed)
+│   ├── SPEC.md                          # editable spec (committed)
+│   ├── ARCHITECTURE.md                  # architecture (committed)
+│   ├── TASKS.md                         # task decomposition (committed)
+│   ├── JOURNAL_SDD_TDD_SKILL.log        # workflow journal (committed)
+│   ├── review-access.jsonl              # reviewer MCP log (NOT committed)
+│   └── broker-access.jsonl              # broker MCP log (NOT committed)
+└── ... (the project being built)
+```
+
+The two `.jsonl` files are runtime artifacts and MUST be excluded
+by `.gitignore` in every project that uses the skill. Add the
+following to the project's `.gitignore`:
+
+```text
+# spec-driven-tdd runtime logs
+.sddtdd_skill/*.jsonl
+```
+
+The committed artifacts and the journal MUST be tracked in git
+so the broker can read the journal at a pinned `HEAD` and verify
+the journal chain (race protection).
+
 ## Files in this skill
 
 - `SKILL.md` — this file. Overview, principles, roles, invariants, references.
@@ -49,7 +80,7 @@ These are invariants. They do not replace each other.
    a reviewed RED-GREEN test-driven cycle.** Passing tests do not replace
    independent review.
 3. **Every completed step, review result, correction, and dependency is
-   recorded in `JOURNAL_SDD_TDD_SKILL.log` and committed.** The journal does
+   recorded in `.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log` and committed.** The journal does
    not replace artifacts, reviews, or test evidence.
 4. **The result is not only working software but also the reviewed, tested,
    and journaled artifacts that explain how it was produced.** The process
@@ -57,12 +88,19 @@ These are invariants. They do not replace each other.
 
 ## Core artifact chain
 
+All SDDTDD artifacts live under a single per-repo directory,
+`.sddtdd_skill/`, which is the working area for the spec-driven
+pipeline. Committed artifacts and the journal go under that
+directory; runtime access logs from the reviewer and broker MCPs
+also live there but are excluded by `.gitignore` (see
+`File layout` below).
+
 ```text
 USER INPUT
-→ SPEC-DRAFT.md
-→ SPEC.md
-→ ARCHITECTURE.md
-→ TASKS.md
+→ .sddtdd_skill/SPEC-DRAFT.md
+→ .sddtdd_skill/SPEC.md
+→ .sddtdd_skill/ARCHITECTURE.md
+→ .sddtdd_skill/TASKS.md
 → per-task RED-GREEN cycles
 → TASKS_COMPLETE
 → REGRESSION
@@ -148,7 +186,7 @@ These rules are not optional. Any deliberate deviation must be journaled
 as `AGENT_DECISION` with the skipped stage, the accepted risk, and the
 mitigation.
 
-1. Do not edit `SPEC-DRAFT.md`.
+1. Do not edit `.sddtdd_skill/SPEC-DRAFT.md`.
 2. Do not use an unreviewed agent-generated artifact as input to a later
    stage.
 3. Do not begin a stage before the previous stage's review entry is

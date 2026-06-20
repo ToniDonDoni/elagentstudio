@@ -15,6 +15,25 @@ identical in both.
   returns. The broker's policy lives in `SKILL-ORCHESTRATOR.md` and is
   loaded only by the broker, not by the implementer.
 
+## File layout (project side)
+
+In every project that uses the skill, all SDDTDD artifacts and runtime
+logs live under a single directory `<project-dir>/.sddtdd_skill/`:
+
+- **Committed** (in git): `SPEC-DRAFT.md`, `SPEC.md`, `ARCHITECTURE.md`,
+  `TASKS.md`, `JOURNAL_SDD_TDD_SKILL.log`.
+- **Runtime** (NOT in git): `review-access.jsonl`, `broker-access.jsonl`.
+
+Add this to the project's `.gitignore` once, before the first run:
+
+```text
+# spec-driven-tdd runtime logs
+.sddtdd_skill/*.jsonl
+```
+
+The implementer creates `.sddtdd_skill/` (via the broker's first
+task) on the first run; you do not need to `mkdir` it manually.
+
 The rest of this README is mostly about broker mode, because that is the
 mode that needs a user prompt. Standalone mode is straightforward:
 read `SKILL.md`, read `SKILL-IMPLEMENTER.md`, walk the chain.
@@ -78,12 +97,12 @@ Be specific. The implementer will not invent requirements.>
    task).
 6. When `getNextTask` returns `complete`, write a short final report
    listing every commit, every JID, and the contents of
-   `.git/sddtdd/broker-access.jsonl`.
+   `.sddtdd_skill/broker-access.jsonl`.
 
 ## What I will check afterwards
 
-- `JOURNAL_SDD_TDD_SKILL.log` is committed and shows the full chain.
-- `.git/sddtdd/broker-access.jsonl` shows broker activity
+- `.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log` is committed and shows the full chain.
+- `.sddtdd_skill/broker-access.jsonl` shows broker activity
   (`task_issued` + `task_review_started` + `task_review_completed`
   events).
 - The tests you specified actually run via the command you specified
@@ -128,7 +147,7 @@ or commit hygiene.
 
 The skill ships a canonical worked example at
 [`references/SPEC-EXAMPLE.md`](references/SPEC-EXAMPLE.md). It shows a
-real `SPEC.md`, `ARCHITECTURE.md`, `TASKS.md`, journal, and commits for
+real `.sddtdd_skill/SPEC.md`, `.sddtdd_skill/ARCHITECTURE.md`, `.sddtdd_skill/TASKS.md`, journal, and commits for
 a small in-memory counter API. Read it before writing your first
 prompt — it shows the shape of a good spec.
 
@@ -138,12 +157,12 @@ After the implementer reports `complete`, verify all of the following
 in `<project-dir>`:
 
 1. **Journal is committed and complete.** `git log --oneline` includes
-   a commit for `JOURNAL_SDD_TDD_SKILL.log` and the journal shows the
+   a commit for `.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log` and the journal shows the
    full chain: `SPEC_DRAFT` → `SPEC` → `ARCHITECTURE` → `TASKS` → per-
    task `WORK` / `TEST` / `RED` / `GREEN` / `REVIEW` → `REGRESSION` →
    `FINAL_REVIEW` → `DONE`. No gaps.
 2. **Broker access log exists and is sane.** Run
-   `cat .git/sddtdd/broker-access.jsonl | jq .` (or
+   `cat .sddtdd_skill/broker-access.jsonl | jq .` (or
    `python3 -m json.tool` if you do not have `jq`). Every broker task
    should appear as three events: `task_issued`,
    `task_review_started`, `task_review_completed`. Every
@@ -161,7 +180,7 @@ in `<project-dir>`:
 5. **Final report is in the journal or as a final commit.** The
    implementer should have produced a short summary listing every
    commit, every JID, and the contents of
-   `.git/sddtdd/broker-access.jsonl`.
+   `.sddtdd_skill/broker-access.jsonl`.
 6. **No unreviewed artifacts.** Every `*_REVIEW` journal entry must
    have `STATUS: PASS` and a `PARENT` pointing to the matching work
    entry.

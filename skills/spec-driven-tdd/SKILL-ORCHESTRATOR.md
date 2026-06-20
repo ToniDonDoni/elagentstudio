@@ -143,7 +143,7 @@ are journaled and committed.
 The order is:
 
 ```text
-USER_INPUT_CAPTURE (no reviewer; creates SPEC-DRAFT.md and the USER_INPUT journal entry)
+USER_INPUT_CAPTURE (no reviewer; creates .sddtdd_skill/SPEC-DRAFT.md and the USER_INPUT journal entry)
 → SPEC_SPEC
 → SPEC_REVIEW          (independent reviewer)
 → ARCHITECTURE
@@ -172,10 +172,10 @@ this file:
 
 | `task_kind` | required `review_type` | prerequisites in the journal | required artifacts |
 |---|---|---|---|
-| `USER_INPUT_CAPTURE` | (none) | — | `SPEC-DRAFT.md` |
-| `SPEC_SPEC` | `SPEC_REVIEW` | — | `SPEC.md` |
-| `ARCHITECTURE` | `ARCHITECTURE_REVIEW` | `SPEC_REVIEW` | `ARCHITECTURE.md` |
-| `DECOMPOSE` | `TASK_REVIEW` | `SPEC_REVIEW`, `ARCHITECTURE_REVIEW` | `TASKS.md` |
+| `USER_INPUT_CAPTURE` | (none) | — | `.sddtdd_skill/SPEC-DRAFT.md` |
+| `SPEC_SPEC` | `SPEC_REVIEW` | — | `.sddtdd_skill/SPEC.md` |
+| `ARCHITECTURE` | `ARCHITECTURE_REVIEW` | `SPEC_REVIEW` | `.sddtdd_skill/ARCHITECTURE.md` |
+| `DECOMPOSE` | `TASK_REVIEW` | `SPEC_REVIEW`, `ARCHITECTURE_REVIEW` | `.sddtdd_skill/TASKS.md` |
 | `RED` | `RED_REVIEW` | `SPEC_REVIEW`, `ARCHITECTURE_REVIEW`, `TASK_REVIEW` | — |
 | `GREEN` | `GREEN_REVIEW` | `RED_REVIEW` (and the chain above) | — |
 | `TASKS_COMPLETE` | (none) | `GREEN_REVIEW` (and the chain above) | — |
@@ -204,16 +204,16 @@ the broker returns `FAIL` with the specific findings.
 3. **Stage-required artifacts exist at `head_sha_before`.** For
    document-producing stages, the broker verifies the artifact the
    reviewer allegedly reviewed actually exists in the committed tree:
-   - `USER_INPUT_CAPTURE` requires `SPEC-DRAFT.md`.
-   - `SPEC_SPEC` requires `SPEC.md`.
-   - `ARCHITECTURE` requires `ARCHITECTURE.md`.
-   - `DECOMPOSE` requires `TASKS.md`.
+   - `USER_INPUT_CAPTURE` requires `.sddtdd_skill/SPEC-DRAFT.md`.
+   - `SPEC_SPEC` requires `.sddtdd_skill/SPEC.md`.
+   - `ARCHITECTURE` requires `.sddtdd_skill/ARCHITECTURE.md`.
+   - `DECOMPOSE` requires `.sddtdd_skill/TASKS.md`.
    For code-producing stages (`RED`, `GREEN`, `REGRESSION`, `FINAL`,
    `DONE`) the broker does not check artifact existence — the broker
    does not decide which code files belong to a task, the reviewer
    does.
 4. **Committed journal exists at `head_sha_before`.**
-   `JOURNAL_SDD_TDD_SKILL.log` must exist at the recorded ref. If
+   `.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log` must exist at the recorded ref. If
    not, the broker returns `ERROR`.
 5. **`work_journal_id` exists in the committed journal.** The
    implementer must commit the work journal entry for the issued
@@ -260,7 +260,7 @@ the broker returns `FAIL` with the specific findings.
     delivery has a corresponding committed `BROKER_TASK_REVIEW:
     PASS` journal entry whose `TASK_ID` matches. The broker
     identifies issued task ids from the broker access log
-    (`<repo>/.git/sddtdd/broker-access.jsonl`), and identifies
+    (`<repo>/.sddtdd_skill/broker-access.jsonl`), and identifies
     verified task ids from committed journal entries of
     `TYPE: BROKER_TASK_REVIEW, STATUS: PASS`. If any issued task id
     is still unverified, the broker returns `status: "blocked"`
@@ -290,7 +290,7 @@ clean working tree, with the right artifacts in the tree.
 The broker writes every `reviewTask` call to an append-only access log:
 
 ```text
-<repo>/.git/sddtdd/broker-access.jsonl
+<repo>/.sddtdd_skill/broker-access.jsonl
 ```
 
 Each call produces two events:
