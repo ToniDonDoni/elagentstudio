@@ -157,7 +157,7 @@ implementer executes the issued task exactly.
    ```
 
    If no `*_old_v*.md` files exist, the next `<N>` is `1`. Rename
-   exactly these three files (leave `ARCHITECTURE.md` untouched), stage the renames, and
+   exactly these four files (leave `ARCHITECTURE.md` untouched), stage the renames, and
    commit with a message of the form
    `archive previous SDDTDD delivery as _v<N>`. After the commit,
    `.sddtdd_skill/` contains the archived files plus the
