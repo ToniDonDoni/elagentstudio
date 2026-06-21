@@ -270,6 +270,12 @@ A reviewer `*_REVIEW: PASS` is **not** the same as a broker
 `BROKER_TASK_REVIEW: PASS`. The two chains are independent and both
 must succeed.
 
+The implementer must not bypass the reviewer
+The implementer must either:
+* resolve the reviewer issues and retry the review; or
+* escalate to the user if the issue cannot be resolved or reviewer is unavailable
+Any solution produced after bypassing the reviewer is not acceptable to the user and will be rejected, regardless of its technical quality, completeness, or correctness.
+
 ## Hard rules
 
 - Do not choose the next workflow stage yourself in broker mode.
