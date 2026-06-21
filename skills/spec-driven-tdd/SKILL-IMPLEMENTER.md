@@ -110,10 +110,10 @@ implementer executes the issued task exactly.
    file, and `references/JOURNAL.md`. Do not load
    `SKILL-ORCHESTRATOR.md` or `references/STAGES.md`.
 2. **Existing-delivery check.** Before calling the broker, inspect
-   `.sddtdd_skill/`. If `SPEC-DRAFT.md`, `SPEC.md`, and `TASKS.md`
-   already exist in the committed tree (i.e. the repo already
-   carries a finished or in-progress SDDTDD delivery), a new user
-   request is a *new iteration*, not a continuation. The
+   `.sddtdd_skill/`. If `SPEC-DRAFT.md`, `SPEC.md`, and `TASKS.md`, 
+   and `JOURNAL_SDD_TDD_SKILL.log` already exist in the committed tree 
+   (i.e. the repo already carries a finished or in-progress SDDTDD delivery), 
+   a new user request is a *new iteration*, not a continuation. The
    implementer MUST ask the user before doing anything else. Use
    this exact phrasing (substitute the real identifier if visible
    in the journal):
@@ -156,8 +156,7 @@ implementer executes the issued task exactly.
    ```
 
    If no `*_old_v*.md` files exist, the next `<N>` is `1`. Rename
-   exactly these three files (leave `ARCHITECTURE.md` and
-   `JOURNAL_SDD_TDD_SKILL.log` untouched), stage the renames, and
+   exactly these three files (leave `ARCHITECTURE.md` untouched), stage the renames, and
    commit with a message of the form
    `archive previous SDDTDD delivery as _v<N>`. After the commit,
    `.sddtdd_skill/` contains the archived files plus the
