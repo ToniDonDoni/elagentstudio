@@ -33,7 +33,7 @@ Current issues observed:
       * .DS_Store and TODO4.md itself were intentionally left
         untracked (TODO4 is the working note, not a user-facing file).
 
-1. Reviewer MCP does not appear to read committed repository files from repo_path.
+1. DONE - Reviewer MCP does not appear to read committed repository files from repo_path.
     Evidence:
     * review-access.jsonl:
         request_id=3d8ace77986144edb1c6160b485e7079
@@ -119,7 +119,7 @@ After reviewTask returns FAIL, the implementer must:
 
 The broker should enforce this by refusing a repeated reviewTask call until the previous broker verdict has been found in the committed journal.
 
-5. Add new tasks to the completed spec repo.
+5. Add new tasks to the completed spec repo. - DONE
 
 6. Consider making  broker llm based
 
@@ -144,3 +144,5 @@ The broker should enforce this by refusing a repeated reviewTask call until the 
     timeout: 180
     connect_timeout: 30
 ```
+
+9. revewer log has no timestamps
