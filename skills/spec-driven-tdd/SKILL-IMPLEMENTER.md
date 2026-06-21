@@ -222,6 +222,8 @@ The implementer must either:
 * escalate to the user if the error cannot be resolved.
 Any solution produced after bypassing the broker in broker mode is not acceptable to the user and will be rejected, regardless of its technical quality, completeness, or correctness.
 
+Never remove or rename broker log file broker-access.jsonl.
+
 ### Broker task journal chain
 
 The implementer produces this sequence in the journal for every broker
@@ -275,6 +277,8 @@ The implementer must either:
 * resolve the reviewer issues and retry the review; or
 * escalate to the user if the issue cannot be resolved or reviewer is unavailable
 Any solution produced after bypassing the reviewer is not acceptable to the user and will be rejected, regardless of its technical quality, completeness, or correctness.
+
+Never remove or rename reviewer log file review-access.jsonl.
 
 ## Hard rules
 
