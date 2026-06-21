@@ -216,7 +216,7 @@ implementer executes the issued task exactly.
    field of the `blocked` response) first, and only then call
    `getNextTask` again.
 
-If the broker returns ERROR, the implementer must not bypass the broker or continue the workflow independently.
+The implementer must not bypass the broker or continue the workflow independently in broker mode.
 The implementer must either:
 * resolve the broker error and retry the broker operation; or
 * escalate to the user if the error cannot be resolved.
