@@ -220,7 +220,7 @@ The implementer must not bypass the broker or continue the workflow independentl
 The implementer must either:
 * resolve the broker error and retry the broker operation; or
 * escalate to the user if the error cannot be resolved.
-Any solution produced after bypassing the broker in broker mode is not acceptable to the user and will be rejected, regardless of its technical quality, completeness, or correctness.
+Any solution produced after bypassing the broker in broker mode is not acceptable to the user and rejected autonatically, regardless of its technical quality, completeness, or correctness.
 
 Never remove or rename broker log file broker-access.jsonl.
 
@@ -276,7 +276,7 @@ The implementer must not bypass the reviewer
 The implementer must either:
 * resolve the reviewer issues and retry the review; or
 * escalate to the user if the issue cannot be resolved or reviewer is unavailable
-Any solution produced after bypassing the reviewer is not acceptable to the user and will be rejected, regardless of its technical quality, completeness, or correctness.
+Any solution produced after bypassing the reviewer is not acceptable to the user and rejected autonatically, regardless of its technical quality, completeness, or correctness.
 
 Never remove or rename reviewer log file review-access.jsonl.
 
