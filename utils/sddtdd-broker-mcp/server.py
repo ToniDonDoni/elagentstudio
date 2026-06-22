@@ -21,7 +21,9 @@ Python.
 
 from __future__ import annotations
 
+import datetime
 import json
+import logging
 import os
 import re
 import subprocess
@@ -37,6 +39,13 @@ from mcp.server.stdio import stdio_server
 
 
 app = mcp_server.Server("sddtdd-broker-mcp")
+
+logger = logging.getLogger("sddtdd-broker-mcp")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+    force=True,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -139,6 +148,8 @@ def _broker_log_path(repo_path: str) -> Path:
 
 def _append_broker_event(repo_path: str, event: dict[str, Any]) -> None:
     path = _broker_log_path(repo_path)
+    event.setdefault("timestamp_utc", datetime.datetime.now(datetime.timezone.utc).isoformat())
+    logger.info("_append_broker_event: path=%s exists=%s", path, path.exists())
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, ensure_ascii=False) + "\n")
@@ -481,6 +492,7 @@ def _read_broker_log(repo_path: str) -> list[dict[str, Any]]:
     task ids it has issued in this delivery.
     """
     path = _broker_log_path(repo_path)
+    logger.info("_read_broker_log: path=%s exists=%s", path, path.exists())
     if not path.exists():
         return []
     events: list[dict[str, Any]] = []
@@ -782,13 +794,27 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
     task_id = arguments.get("task_id") if name == "reviewTask" else None
 
-    if name == "reviewTask":
+    if name == "getNextTask":
+        _append_broker_event(repo_path, {
+            "event": "get_next_task_started",
+            "request_id": request_id,
+            "head_sha_before": head_sha_before,
+            "arguments": arguments,
+        })
+    elif name == "reviewTask":
         _append_broker_event(repo_path, {
             "event": "task_review_started",
             "request_id": request_id,
             "task_id": task_id,
             "head_sha_before": head_sha_before,
             "arguments": arguments,
+        })
+    else:
+        _append_broker_event(repo_path, {
+            "event": "unknown_tool",
+            "request_id": request_id,
+            "tool_name": name,
+            "head_sha_before": head_sha_before,
         })
 
     try:
@@ -799,15 +825,16 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             result = _select_next_task(repo_state, previous_task_id, user_input)
             result["request_id"] = request_id
             result.setdefault("repo_head", repo_state.get("head_sha", ""))
-            if result.get("status") == "TASK":
-                _append_broker_event(repo_path, {
-                    "event": "task_issued",
-                    "request_id": request_id,
-                    "task_id": result.get("task_id"),
-                    "task_kind": result.get("task_kind"),
-                    "head_sha_before": head_sha_before,
-                    "previous_task_id": previous_task_id,
-                })
+            _append_broker_event(repo_path, {
+                "event": "get_next_task_completed",
+                "request_id": request_id,
+                "status": result.get("status"),
+                "task_id": result.get("task_id"),
+                "task_kind": result.get("task_kind"),
+                "summary": result.get("summary"),
+                "head_sha_before": head_sha_before,
+                "previous_task_id": previous_task_id,
+            })
         elif name == "reviewTask":
             evidence = _normalize_evidence(arguments)
             result = _check_process_gate(
