@@ -513,6 +513,9 @@ def _read_repo_state(repo_path: str) -> dict[str, Any]:
     except Exception:
         return {"exists": False}
     journal_text = _git_show(repo_path, head_sha, ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log")
+    journal_path = f"{repo_path}/.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"
+    logger.info("_read_repo_state: journal_path=%s head_sha=%s lines=%d",
+                 journal_path, head_sha, len((journal_text or "").splitlines()))
     entries = _parse_journal(journal_text or "")
 
     # Identify broker task ids the broker has issued in this delivery
@@ -536,6 +539,8 @@ def _read_repo_state(repo_path: str) -> dict[str, Any]:
             if isinstance(tid, str) and tid:
                 broker_passed_task_ids.add(tid)
     unverified_task_ids = issued_task_ids - broker_passed_task_ids
+    logger.info("_read_repo_state: issued=%s passed=%s unverified=%s",
+                 sorted(issued_task_ids), sorted(broker_passed_task_ids), sorted(unverified_task_ids))
 
     return {
         "exists": True,
@@ -581,6 +586,7 @@ def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, 
     # catches the implementer that does the work, never calls
     # reviewTask, and asks the broker for the next task anyway.
     unverified = sorted(repo_state.get("unverified_task_ids", set()))
+    logger.info("_select_next_task: gate_check unverified=%s", unverified)
     if unverified:
         return {
             "status": "blocked",

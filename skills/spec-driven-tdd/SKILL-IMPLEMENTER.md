@@ -111,7 +111,8 @@ implementer executes the issued task exactly.
    `SKILL-ORCHESTRATOR.md` or `references/STAGES.md`.
 2. **Existing-delivery check.** Before calling the broker, inspect
    `.sddtdd_skill/`. If `SPEC-DRAFT.md`, `SPEC.md`, `TASKS.md`, 
-   and `JOURNAL_SDD_TDD_SKILL.log` already exist in the committed tree 
+   `JOURNAL_SDD_TDD_SKILL.log`, `broker-access.jsonl`, and `review-access.jsonl`
+   already exist in the committed tree 
    (i.e. the repo already carries a finished or in-progress SDDTDD delivery), 
    a new user request is a *new iteration*, not a continuation. The
    implementer MUST ask the user before doing anything else. Use
@@ -126,9 +127,11 @@ implementer executes the issued task exactly.
    >
    > 1. **Archive the previous delivery and start fresh** (recommended).
    >    I will rename the old `.sddtdd_skill/SPEC-DRAFT.md`,
-   >    `.sddtdd_skill/SPEC.md`, `.sddtdd_skill/TASKS.md`, and
-        `.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log` to
-   >    `<NAME>_old_v<N>.md` where `<N>` is one greater than the
+   >    `.sddtdd_skill/SPEC.md`, `.sddtdd_skill/TASKS.md`,
+        `.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log`, 
+        `.sddtdd_skill/broker-access.jsonl`, 
+        and `.sddtdd_skill/review-access.jsonl` 
+        to `<NAME>_old_v<N>.md` where `<N>` is one greater than the
    >    highest existing `_old_v<N>` suffix for that name (so the
    >    first archive is `_v1`, the next `_v2`, and so on).
    >    `ARCHITECTURE.md` is **kept as-is** because the
@@ -157,7 +160,7 @@ implementer executes the issued task exactly.
    ```
 
    If no `*_old_v*.md` files exist, the next `<N>` is `1`. Rename
-   exactly these four files (leave `ARCHITECTURE.md` untouched), stage the renames, and
+   exactly these six files (leave `ARCHITECTURE.md` untouched), stage the renames, and
    commit with a message of the form
    `archive previous SDDTDD delivery as _v<N>`. After the commit,
    `.sddtdd_skill/` contains the archived files plus the
