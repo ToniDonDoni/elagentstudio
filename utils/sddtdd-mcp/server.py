@@ -4,12 +4,23 @@ Single tool: review. Captures Git state, delegates to LLM via MCP sampling,
 records everything in an append-only JSON Lines access log.
 """
 import json
+import logging
 import os
 import subprocess
+import sys
 import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+# Logger for our own lifecycle tracing (goes to stderr → mcp-stderr.log)
+logger = logging.getLogger("sddtdd-mcp")
+logging.basicConfig(
+    level=logging.DEBUG,
+    force=True,
+    format='%(asctime)s %(levelname)s:%(name)s:%(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
 
 import mcp.server as mcp_server
 import mcp.types as types
@@ -245,7 +256,7 @@ def _execute_tool(name: str, args: dict, repo_path: str) -> str:
                 cwd=repo_path,
                 capture_output=True,
                 text=True,
-                timeout=15,
+                timeout=228,
             )
             out = (result.stdout or "") + (result.stderr or "")
             if len(out) > 8000:
@@ -298,11 +309,17 @@ async def _sample_with_tools(
 
     last_text = ""
     for _round in range(max_rounds):
-        result = await ctx.session.create_message(
-            messages=messages,
-            max_tokens=128000,
-            tools=REVIEWER_TOOLS,
-        )
+        logger.info("SAMPLING: round %d of %d, messages=%d",
+                     _round + 1, max_rounds, len(messages))
+        try:
+            result = await ctx.session.create_message(
+                messages=messages,
+                max_tokens=128000,
+                tools=REVIEWER_TOOLS,
+            )
+        except Exception as exc:
+            logger.error("SAMPLING: create_message() raised: %s", exc, exc_info=True)
+            raise
 
         # Extract any text in the content blocks
         for block in (result.content if isinstance(result.content, list) else [result.content]):
@@ -311,6 +328,8 @@ async def _sample_with_tools(
 
         # If the LLM didn't ask for tools, we're done
         stop_reason = getattr(result, "stopReason", None) or "endTurn"
+        logger.info("SAMPLING: round %d stop_reason=%s text_len=%d",
+                     _round + 1, stop_reason, len(last_text))
         if stop_reason != "toolUse":
             return last_text, stop_reason
 
@@ -320,8 +339,11 @@ async def _sample_with_tools(
             if isinstance(b, types.ToolUseContent)
         ]
         if not tool_uses:
+            logger.info("SAMPLING: stop_reason=toolUse but no tool_uses found, returning")
             return last_text, stop_reason
 
+        logger.info("SAMPLING: executing %d tool(s) in round %d",
+                     len(tool_uses), _round + 1)
         tool_results = []
         for tu in tool_uses:
             output = _execute_tool(tu.name, tu.input, repo_path)
@@ -341,6 +363,7 @@ async def _sample_with_tools(
             types.SamplingMessage(role="user", content=tool_results)
         )
 
+    logger.warning("SAMPLING: exhausted max_rounds=%d", max_rounds)
     return last_text, "maxRoundsExceeded"
 
 
@@ -349,6 +372,14 @@ async def call_tool(
     name: str,
     arguments: dict,
 ) -> list[types.TextContent]:
+    # Log the full incoming tool call for debugging
+    log_args = dict(arguments)
+    prompt = log_args.get("prompt", "")
+    if prompt and len(prompt) > 200:
+        log_args["prompt"] = prompt[:200] + f"... ({len(prompt)} chars total)"
+    logger.info("call_tool: name=%s args=%s",
+                 name, json.dumps(log_args, ensure_ascii=False, default=str))
+
     if name != "review":
         raise ValueError(f"Unknown tool: {name}")
 
@@ -386,6 +417,7 @@ async def call_tool(
             "prompt": prompt,
         }
         log.append(started_event)
+        logger.info("call_tool: review_started logged, starting sampling")
 
         # 4: Perform review via MCP sampling (with tool-use loop so the
         # reviewer LLM can read files via read_file / shell_command).
@@ -396,6 +428,7 @@ async def call_tool(
             repo_path=repo_path,
             max_rounds=5555,
         )
+        logger.info("call_tool: sampling returned stop_reason=%s", stop_reason)
 
         # Extract verdict from response.
         # The LLM may place PASS/FAIL/NEEDS_CLARIFICATION at the start,
@@ -431,6 +464,8 @@ async def call_tool(
             "duration_ms": duration_ms,
         }
         log.append(completed_event)
+        logger.info("call_tool: review_completed verdict=%s status=%s duration_ms=%d",
+                     verdict, status, duration_ms)
 
         result = {
             "request_id": request_id,
@@ -439,12 +474,15 @@ async def call_tool(
             "response": response_text,
             "stale": stale,
         }
+        logger.info("call_tool: SUCCESS — returning result to Hermes")
 
     except GitError as exc:
+        logger.error("call_tool: GitError — %s", exc, exc_info=True)
         result = _error_result(request_id, f"Git error: {exc}")
         if log:
             log.append(_error_event(request_id, repo_path, review_type, task_id, result["response"]))
     except Exception as exc:
+        logger.error("call_tool: EXCEPTION (%s) — %s", type(exc).__name__, exc, exc_info=True)
         result = _error_result(request_id, str(exc))
         if log:
             log.append(_error_event(request_id, repo_path, review_type, task_id, result["response"]))
@@ -478,18 +516,45 @@ def _error_event(request_id: str, repo_path: str, review_type: str, task_id: str
 
 
 async def main():
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name="sddtdd-mcp",
-                server_version="1.0.0",
-                capabilities=types.ServerCapabilities(),
-            ),
-        )
+    logger.info("=== SDDTDD-MCP SERVER STARTED ===")
+    logger.info("PROCESS: pid=%d, cwd=%s", os.getpid(), os.getcwd())
+
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            logger.info("stdio_server: connected, entering app.run()")
+            try:
+                await app.run(
+                    read_stream,
+                    write_stream,
+                    InitializationOptions(
+                        server_name="sddtdd-mcp",
+                        server_version="1.0.0",
+                        capabilities=types.ServerCapabilities(),
+                    ),
+                )
+            except Exception as exc:
+                logger.error("SERVE: app.run() raised %s: %s",
+                             type(exc).__name__, exc, exc_info=True)
+                raise  # still propagate so the process exits
+        logger.info("SERVE: stdio_server context exited (read stream closed by client)")
+    except Exception:
+        logger.exception("SERVE: main() caught exception in stdio_server block")
+        raise
+
+    logger.info("=== SDDTDD-MCP SERVER EXITING (normal) ===")
 
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())
+    logger.info("=== SDDTDD-MCP PROCESS STARTING (__main__) ===")
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("=== SDDTDD-MCP PROCESS: KeyboardInterrupt ===")
+    except SystemExit:
+        logger.info("=== SDDTDD-MCP PROCESS: SystemExit ===")
+    except BaseException:
+        logger.exception("=== SDDTDD-MCP PROCESS: UNHANDLED EXCEPTION ===")
+    else:
+        logger.info("=== SDDTDD-MCP PROCESS EXITED cleanly ===")
+    logger.info("=== SDDTDD-MCP PROCESS WILL NOW EXIT ===")
