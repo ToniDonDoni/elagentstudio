@@ -258,6 +258,10 @@ RED_REVIEW:
 - Review the committed tests and RED evidence for the selected task.
 - Tests must derive from reviewed requirements, reviewed architecture, task acceptance criteria, and parent task context.
 - The primary test should be acceptance-oriented at the highest practical stable boundary.
+- The reviewer must identify the chosen test boundary and decide whether it is the highest practical stable boundary for the task.
+- If behavior is covered only by unit tests, check whether an acceptance-oriented, integration, or end-to-end test was practical.
+- Unit-only coverage is acceptable only when the reviewer can identify why a higher-level observable boundary is impractical, unstable, unavailable, or disproportionate for the task.
+- If a higher-level observable test was practical but omitted, FAIL the RED review or require a concrete justification before PASS.
 - Unit tests may supplement but must not replace acceptance-oriented proof when a higher boundary is practical.
 - RED evidence must show the new test was run before implementation and failed because required behavior was absent, not because of an unrelated setup problem.
 - Check that an incorrect implementation would be detected.
