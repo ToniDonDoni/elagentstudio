@@ -27,6 +27,8 @@ import mcp.types as types
 from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 
+MAX_SAMPLING_ROUNDS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_ROUNDS", "64"))
+
 
 # ---------------------------------------------------------------------------
 # Errors
@@ -278,11 +280,23 @@ FINAL_REVIEW:
 
 Output format:
 - Start with the verdict on the first line exactly as one of: PASS, FAIL, NEEDS_CLARIFICATION.
-- Then provide:
-  - Review scope inspected
-  - Key evidence read
-  - Findings
-  - Required fixes or clarification questions when not PASS
+- Always explain the workflow meaning of the verdict for the current review_type. Make clear whether observed failures are expected stage evidence or actual review problems.
+- If the verdict is PASS:
+  - Be brief. Do not write a long essay.
+  - State what you reviewed and why it passes.
+  - Include the key task IDs / requirement IDs / evidence identifiers that were checked.
+  - State the next workflow meaning, e.g. for RED_REVIEW PASS: "RED is valid; failing tests are expected evidence; record the review and continue to the broker/process gate before GREEN."
+  - Do not list expected RED failures as defects to fix.
+- If the verdict is FAIL:
+  - Be specific and actionable.
+  - Explain exactly what failed review, why it failed, and what must be changed before re-review.
+  - Distinguish process/journal gaps, missing evidence, wrong tests, wrong implementation, and requirement/architecture mismatches.
+  - Include file paths, task IDs, requirement IDs, journal IDs, commands, or evidence names whenever available.
+- If the verdict is NEEDS_CLARIFICATION:
+  - Never return an empty answer.
+  - Ask concrete numbered questions.
+  - Explain what information is missing, where you looked, and why review cannot honestly pass or fail without it.
+  - Include the exact artifact, task, requirement, journal entry, or evidence gap that caused the question.
 - Do not return JSON unless explicitly required by the caller. Plain text is preferred.
 
 The installed SDDTDD policy files are embedded below. Use them as authoritative review policy.
@@ -673,9 +687,19 @@ async def call_tool(
             initial_prompt=effective_prompt,
             repo_path=repo_path,
             system_prompt=system_prompt,
-            max_rounds=5555,
+            max_rounds=MAX_SAMPLING_ROUNDS,
         )
         logger.info("call_tool: sampling returned stop_reason=%s", stop_reason)
+
+        if not response_text.strip():
+            response_text = (
+                "Reviewer did not produce a final textual verdict. "
+                f"Sampling stopped with stop_reason={stop_reason}. "
+                "This is a reviewer/MCP execution failure, not a semantic "
+                "NEEDS_CLARIFICATION verdict. Retry the review or inspect "
+                "the reviewer access log."
+            )
+            stop_reason = "emptyResponse"
 
         # Extract verdict from response.
         # The LLM may place PASS/FAIL/NEEDS_CLARIFICATION at the start,

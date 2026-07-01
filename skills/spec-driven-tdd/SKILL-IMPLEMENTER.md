@@ -265,15 +265,28 @@ instruction. The independent reviewer does that. The broker only
 checks that the reviewer verdict is in the journal with the right
 status, the right `TYPE`, and a valid `PARENT`.
 
+
 The implementer calls the reviewer MCP
 (`mcp_sddtdd_review_review`) exactly as the shared `spec-driven-tdd`
-skill requires, records the verdict in `.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log`,
-commits the journal entry, and only then asks the broker to verify the
-task.
+skill requires. The MCP response `status` describes tool execution only:
+`COMPLETED` means the tool call completed; any other status means the MCP
+call did not complete successfully. If the MCP call did not complete,
+retry the reviewer call. If retrying does not resolve the MCP/tool error,
+escalate to the user instead of treating it as a review verdict.
+
+When `status: COMPLETED`, the authoritative review outcome is the review
+response's `verdict` field: `PASS`, `FAIL`, or `NEEDS_CLARIFICATION`.
+`status: COMPLETED` MUST NOT be treated as review approval. Words such as
+"failed" inside RED evidence describe expected RED test failures unless
+`verdict` is `FAIL`. The implementer records the reviewer `verdict` in
+`.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log`, commits the journal entry, and
+only then asks the broker to verify the task.
+
 
 A reviewer `*_REVIEW: PASS` is **not** the same as a broker
 `BROKER_TASK_REVIEW: PASS`. The two chains are independent and both
 must succeed.
+
 
 The implementer must not bypass the reviewer
 The implementer must either:
@@ -301,6 +314,12 @@ Never remove or rename reviewer log file review-access.jsonl.
   unverified, even if the work is already journaled. The broker
   will return `blocked` until `reviewTask` confirms process
   completion.
+- If the reviewer MCP response `status` is not `COMPLETED`, retry the
+  reviewer call. If the MCP/tool error persists, escalate to the user.
+- When reviewer MCP `status` is `COMPLETED`, decide reviewer success only
+  from the reviewer response `verdict` field. Do not use MCP
+  `status: COMPLETED` as approval, and do not treat expected RED test
+  failures mentioned in the response body as review failures.
 - Do not treat a reviewer `PASS` as a broker `reviewTask PASS`; the
   broker must confirm process completion.
 - Do not execute work outside the broker task's `allowed_scope`.

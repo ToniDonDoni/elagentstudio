@@ -166,13 +166,22 @@ gate: while a previous broker task id has no committed
 not issue the next task; `getNextTask` returns `blocked` and names
 the outstanding `task_id` in `unverified_task_ids`.
 
-### Independent reviewer 
+### Independent reviewer
 
-Invoked through `mcp_sddtdd_review_review`. Reviews the committed artifact 
-against its already-reviewed predecessor inputs and returns PASS, FAIL (with findings),
-or NEEDS_CLARIFICATION (with questions). Never modifies files, 
-never implements, never writes the journal, never advances the pipeline. 
-A reviewer that changes the artifact would be evaluating its own work.
+Invoked through `mcp_sddtdd_review_review`. Reviews the committed artifact
+against its already-reviewed predecessor inputs and returns a structured result
+whose `verdict` field is the authoritative review outcome: `PASS`, `FAIL`, or
+`NEEDS_CLARIFICATION`. Callers MUST decide review success from `verdict`, not
+from the MCP transport status and not from words like "failed" inside RED
+evidence. `status: COMPLETED` means only that the MCP call completed.
+
+`PASS` means the reviewed stage is accepted. For `RED_REVIEW`, `PASS` means
+the failing tests are valid RED evidence, not a request to implement or fix the
+missing behavior immediately. `FAIL` includes specific findings explaining what
+is wrong. `NEEDS_CLARIFICATION` includes questions that must be answered before
+a truthful pass/fail verdict is possible. Never modifies files, never
+implements, never writes the journal, never advances the pipeline. A reviewer
+that changes the artifact would be evaluating its own work.
 
 ### Broker / orchestrator
 
