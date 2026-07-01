@@ -180,10 +180,10 @@ mcp_servers:
       PATH: /root/.local/bin:/usr/bin:/bin
     sampling:
       enabled: true
-      timeout: 451
+      timeout: 1228
       max_rpm: 5555
       max_tool_rounds: 5555
-    timeout: 451
+    timeout: 1228
     connect_timeout: 30
 ```
 
