@@ -168,7 +168,9 @@ the outstanding `task_id` in `unverified_task_ids`.
 
 ### Independent reviewer
 
-Invoked through `mcp_sddtdd_review_review`. Reviews the committed artifact 
+Invoked through `mcp_sddtdd_review_review`.
+Include to reviewer prompt the review procedure below:
+Reviews the committed artifact
 against its already-reviewed predecessor inputs and returns PASS, FAIL (with findings),
 or NEEDS_CLARIFICATION (with questions). Never modifies files, 
 never implements, never writes the journal, never advances the pipeline. 
