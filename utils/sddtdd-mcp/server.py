@@ -27,7 +27,8 @@ import mcp.types as types
 from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 
-MAX_SAMPLING_ROUNDS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_ROUNDS", "64"))
+MAX_SAMPLING_ROUNDS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_ROUNDS", "5555"))
+MAX_SAMPLING_TOKENS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_TOKENS", "128000"))
 
 
 # ---------------------------------------------------------------------------
@@ -497,18 +498,22 @@ def _execute_tool(name: str, args: dict, repo_path: str) -> str:
     return f"ERROR: unknown tool: {name}"
 
 
-def _extract_verdict(text: str) -> str:
-    """Extract verdict from reviewer response text.
+def _extract_verdict(text: str) -> str | None:
+    """Extract verdict from the first non-empty response line only."""
+    first_line = ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped:
+            first_line = stripped.upper()
+            break
 
-    Scans the entire text (case-insensitive) for known verdict keywords.
-    Returns the first match: PASS > FAIL > NEEDS_CLARIFICATION.
-    Defaults to NEEDS_CLARIFICATION if none found.
-    """
-    upper = text.strip().upper()
-    for keyword in ("PASS", "FAIL", "NEEDS_CLARIFICATION"):
-        if keyword in upper:
-            return keyword
-    return "NEEDS_CLARIFICATION"
+    if first_line in {"PASS", "FAIL", "NEEDS_CLARIFICATION"}:
+        return first_line
+    if first_line.startswith("## REVIEW VERDICT:"):
+        candidate = first_line.split(":", 1)[1].strip()
+        if candidate in {"PASS", "FAIL", "NEEDS_CLARIFICATION"}:
+            return candidate
+    return None
 
 
 async def _sample_with_tools(
@@ -543,7 +548,7 @@ async def _sample_with_tools(
             try:
                 result = await ctx.session.create_message(
                     messages=messages,
-                    max_tokens=128000,
+                    max_tokens=MAX_SAMPLING_TOKENS,
                     tools=REVIEWER_TOOLS,
                     system_prompt=system_prompt,
                 )
@@ -562,7 +567,7 @@ async def _sample_with_tools(
                 ] + messages[1:]
                 result = await ctx.session.create_message(
                     messages=inline_messages,
-                    max_tokens=128000,
+                    max_tokens=MAX_SAMPLING_TOKENS,
                     tools=REVIEWER_TOOLS,
                 )
         except Exception as exc:
@@ -691,28 +696,35 @@ async def call_tool(
         )
         logger.info("call_tool: sampling returned stop_reason=%s", stop_reason)
 
+        execution_error = stop_reason in {"maxTokens", "maxRoundsExceeded"}
         if not response_text.strip():
+            execution_error = True
             response_text = (
                 "Reviewer did not produce a final textual verdict. "
                 f"Sampling stopped with stop_reason={stop_reason}. "
                 "This is a reviewer/MCP execution failure, not a semantic "
-                "NEEDS_CLARIFICATION verdict. Retry the review or inspect "
-                "the reviewer access log."
+                "review verdict. Retry the review or inspect the reviewer "
+                "access log."
             )
             stop_reason = "emptyResponse"
 
-        # Extract verdict from response.
-        # The LLM may place PASS/FAIL/NEEDS_CLARIFICATION at the start,
-        # middle, or end of its response. Search the whole text for the
-        # first known verdict keyword.
-        verdict = _extract_verdict(response_text)
+        verdict = None if execution_error else _extract_verdict(response_text)
+        if verdict is None and not execution_error:
+            execution_error = True
+            response_text = (
+                "Reviewer response did not start with a valid verdict line "
+                "(PASS, FAIL, or NEEDS_CLARIFICATION). This is a reviewer/MCP "
+                "execution failure, not a semantic review verdict. Retry the "
+                "review or inspect the reviewer access log.\n\n"
+                + response_text
+            )
 
         # 5: Capture Git state after
         head_after = git.head_sha()
 
         # 6: Stale detection
         stale = head_before != head_after
-        status = "STALE" if stale else "COMPLETED"
+        status = "ERROR" if execution_error else ("STALE" if stale else "COMPLETED")
 
         # 7: Compute duration
         duration_ms = int((time.monotonic() - t_before) * 1000)
