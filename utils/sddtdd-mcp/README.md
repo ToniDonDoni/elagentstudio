@@ -52,15 +52,19 @@ uv run pytest -v
 ```yaml
 mcp_servers:
   sddtdd_review:
-    command: "uv"
+    command: uv
     args:
-      - "--directory"
-      - "/path/to/sddtdd-mcp"
-      - "run"
-      - "server.py"
+    - --directory
+    - /work/elagentstudio/utils/sddtdd-mcp
+    - run
+    - server.py
+    env:
+      PATH: /root/.local/bin:/usr/bin:/bin
     sampling:
       enabled: true
-      timeout: 120
-    tools:
-      include: [review]
+      timeout: 451
+      max_rpm: 5555
+      max_tool_rounds: 5555
+    timeout: 451
+    connect_timeout: 30
 ```

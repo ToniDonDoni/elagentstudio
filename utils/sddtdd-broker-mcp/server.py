@@ -1,34 +1,24 @@
-"""sddtdd-broker-mcp — MCP task broker for Spec-Driven TDD.
+"""sddtdd-broker-mcp — LLM-based MCP task broker for Spec-Driven TDD.
 
-The server exposes a two-tool broker contract:
+Two tools:
+  * getNextTask — inspect committed repo state and issue the next self-contained task.
+  * reviewTask — verify that the issued task is process-complete.
 
-* ``getNextTask`` — returns the next workflow task, or ``complete`` /
-  ``blocked``. The first call carries ``user_input`` and creates or
-  resumes the delivery. Subsequent calls carry ``previous_task_id``.
-* ``reviewTask`` — performs **process-gate verification** without LLM
-  sampling. The broker itself reads the committed journal, the broker
-  task instruction, and the implementer's claimed evidence, and decides
-  whether the issued workflow step has produced all evidence and
-  approvals required to permit the next workflow step. The broker does
-  not re-review the artifact's correctness — that is the independent
-  reviewer's job (``mcp_sddtdd_review_review``).
-
-The broker does not pass role files to a sampled model. The orchestrator
-role file (``SKILL-ORCHESTRATOR.md``) is the source of truth for the
-decision policy, but the policy is enforced directly by the broker in
-Python.
+The broker is deliberately read-only: it never edits repository files, never
+writes the SDDTDD journal, never commits, and never performs independent artifact
+review. It only orchestrates the next task and checks process-gate state.
 """
-
 from __future__ import annotations
 
-import datetime
 import json
 import logging
 import os
 import re
+import shlex
 import subprocess
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -38,274 +28,197 @@ from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 
 
-app = mcp_server.Server("sddtdd-broker-mcp")
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
 
 logger = logging.getLogger("sddtdd-broker-mcp")
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+    level=logging.DEBUG,
     force=True,
+    format="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
 
-DEFAULT_PROCESS_SKILL = REPO_ROOT / "skills" / "spec-driven-tdd" / "SKILL.md"
-DEFAULT_ORCHESTRATOR_ROLE = REPO_ROOT / "skills" / "spec-driven-tdd" / "SKILL-ORCHESTRATOR.md"
-DEFAULT_STAGES_REF = REPO_ROOT / "skills" / "spec-driven-tdd" / "references" / "STAGES.md"
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 
+SERVER_NAME = "sddtdd-broker-mcp"
+SERVER_VERSION = "1.0.0"
+DEFAULT_SKILL_ROOT = Path.home() / ".hermes" / "skills" / "spec-driven-tdd"
+MAX_TOOL_OUTPUT_CHARS = 12000
+MAX_SAMPLING_ROUNDS = 64
 
-def _configured_path(env_var: str, default: Path) -> Path:
-    value = os.environ.get(env_var)
-    if value:
-        return Path(value).expanduser().resolve()
-    return default
-
-
-PROCESS_SKILL = _configured_path("SDDTDD_BROKER_PROCESS_SKILL", DEFAULT_PROCESS_SKILL)
-ORCHESTRATOR_ROLE = _configured_path("SDDTDD_BROKER_ORCHESTRATOR_ROLE", DEFAULT_ORCHESTRATOR_ROLE)
-STAGES_REF = _configured_path("SDDTDD_BROKER_STAGES_REF", DEFAULT_STAGES_REF)
-
-BROKER_TOOLS = {"getNextTask", "reviewTask"}
-
-# Stages that have no independent reviewer and therefore require no
-# review verdict in the journal for process-gate verification.
-NO_REVIEW_STAGES = {"USER_INPUT_CAPTURE", "PROJECT_INIT", "SPEC_SPEC", "DECOMPOSE", "TASKS_COMPLETE"}
-
-# Mapping from a workflow stage to the review_type the implementer must
-# have journaled with STATUS: PASS by the time the broker verifies the
-# task. The reviewer verdict is what the broker checks; the broker does
-# not generate one.
-STAGE_REQUIRED_REVIEW: dict[str, str] = {
-    "ARCHITECTURE": "ARCHITECTURE_REVIEW",
-    "RED": "RED_REVIEW",
-    "GREEN": "GREEN_REVIEW",
-    "REGRESSION": "REGRESSION_REVIEW",
-    "FINAL": "FINAL_REVIEW",
-}
-
-# Mapping from a workflow stage to the prior journal entries that must
-# already exist in the committed journal for the broker to consider
-# this stage's prerequisites satisfied. Each entry is (TYPE, STATUS);
-# the broker only checks that any committed entry has that TYPE and
-# STATUS. ``*_REVIEW`` prerequisites are review verdicts (STATUS:
-# PASS); ``*_COMPLETE`` and work-type prerequisites are convergence
-# events or work entries (STATUS: COMPLETED).
-STAGE_PREREQUISITES: dict[str, list[tuple[str, str]]] = {
-    "GREEN": [("RED_REVIEW", "PASS")],
-    "TASKS_COMPLETE": [("GREEN_REVIEW", "PASS")],
-    "REGRESSION": [("TASKS_COMPLETE", "COMPLETED")],
-    "FINAL": [("REGRESSION_REVIEW", "PASS")],
-}
-
-# Mapping from a workflow stage to the artifacts that must exist at
-# ``head_sha_before`` for the broker to consider the stage complete.
-# The broker does not re-review the artifact's content — that is the
-# reviewer's job — but it does verify that the artifact that the
-# reviewer allegedly reviewed actually exists in the committed tree.
-STAGE_REQUIRED_ARTIFACTS: dict[str, list[str]] = {
-    "USER_INPUT_CAPTURE": [".sddtdd_skill/SPEC-DRAFT.md"],
-    "SPEC_SPEC": [".sddtdd_skill/SPEC.md"],
-    "ARCHITECTURE": [".sddtdd_skill/ARCHITECTURE.md"],
-    "DECOMPOSE": [".sddtdd_skill/TASKS.md"],
-}
+READ_ONLY_DENY_RE = re.compile(
+    r"""
+    (^|[;&|`$()<>])\s*(
+        rm|rmdir|mv|cp|touch|mkdir|chmod|chown|truncate|tee|sed\s+-i|perl\s+-i|
+        python\b|python3\b|node\b|ruby\b|bash\b|sh\b|zsh\b|fish\b|
+        git\s+(add|commit|reset|checkout|switch|restore|merge|rebase|cherry-pick|am|apply|clean|stash|tag|branch\s+-D)|
+        npm\s+(install|ci|run)|pnpm\s+|yarn\s+|pip\s+|poetry\s+|cargo\s+|go\s+|
+        make\s+|cmake\s+|ninja\s+
+    )\b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 
 
 # ---------------------------------------------------------------------------
-# Git and journal helpers
+# Errors and helpers
 # ---------------------------------------------------------------------------
 
-
-def _git(repo_path: str, *args: str) -> str:
-    result = subprocess.run(
-        ["git", "-C", repo_path, *args],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
-    return result.stdout.strip()
+class GitError(Exception):
+    """Raised when a git command fails."""
 
 
-def _git_show(repo_path: str, ref: str, file_path: str) -> str | None:
-    result = subprocess.run(
-        ["git", "-C", repo_path, "show", f"{ref}:{file_path}"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if result.returncode != 0:
-        return None
-    return result.stdout
+class BrokerError(Exception):
+    """Raised for broker-local validation or sampling errors."""
 
 
-def _broker_log_path(repo_path: str) -> Path:
-    # Runtime access log (not committed). Sibling of review-access.jsonl;
-    # both are ignored by .gitignore via the `.sddtdd_skill/*.jsonl`
-    # pattern shipped with the spec-driven-tdd skill.
-    return Path(repo_path) / ".sddtdd_skill" / "broker-access.jsonl"
+class GitCapturer:
+    """Read repository metadata through git CLI."""
 
+    def __init__(self, repo_path: str):
+        self.repo_path = str(Path(repo_path).resolve())
 
-def _append_broker_event(repo_path: str, event: dict[str, Any]) -> None:
-    path = _broker_log_path(repo_path)
-    event.setdefault("timestamp_utc", datetime.datetime.now(datetime.timezone.utc).isoformat())
-    logger.info("_append_broker_event: path=%s exists=%s", path, path.exists())
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(event, ensure_ascii=False) + "\n")
-
-
-def _read_text(path: Path) -> str:
-    if not path.exists():
-        return f"MISSING: {path}"
-    return path.read_text(errors="replace")
-
-
-# ---------------------------------------------------------------------------
-# Journal parsing
-# ---------------------------------------------------------------------------
-
-
-_ENTRY_HEADER = re.compile(r"^=== (?P<jid>J-\S+) ===\s*$")
-
-
-def _parse_journal(text: str) -> list[dict[str, str]]:
-    """Parse a journal log into a list of dicts with the raw key/value fields.
-
-    Each entry is delimited by ``=== JID ===`` lines. Field lines are
-    either ``|KEY: VALUE`` (the canonical form documented in
-    JOURNAL.md) or plain ``KEY: VALUE`` for backward compatibility.
-    """
-    entries: list[dict[str, str]] = []
-    current: dict[str, str] | None = None
-    for raw_line in text.splitlines():
-        m = _ENTRY_HEADER.match(raw_line)
-        if m:
-            if current is not None:
-                entries.append(current)
-            current = {"_jid": m.group("jid")}
-            continue
-        if current is None:
-            continue
-        line = raw_line.lstrip()
-        if line.startswith("|"):
-            line = line[1:].strip()
-        if ":" not in line:
-            continue
-        key, _, value = line.partition(":")
-        key = key.strip()
-        value = value.strip()
-        if key in current:
-            current[key] = f"{current[key]}\n{value}"
-        else:
-            current[key] = value
-    if current is not None:
-        entries.append(current)
-    return entries
-
-
-def _committed_journal(repo_path: str, ref: str | None = None) -> str | None:
-    """Return the committed journal text at the given ref (or HEAD).
-
-    The broker reads the journal at ``head_sha_before`` (the HEAD the
-    broker observed at the start of ``reviewTask``). The implementer
-    cannot commit additional journal entries after the broker started
-    verification and then re-ask for a PASS.
-    """
-    if ref is None:
+    def git(self, *args: str, timeout: int = 15) -> str:
         try:
-            ref = _git(repo_path, "rev-parse", "HEAD")
-        except Exception:
-            return None
-    return _git_show(repo_path, ref, ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log")
+            result = subprocess.run(
+                ["git", "-C", self.repo_path, *args],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except FileNotFoundError as exc:
+            raise GitError("git not found") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise GitError(f"git {' '.join(args)} timed out") from exc
+        if result.returncode != 0:
+            raise GitError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
+        return result.stdout.strip()
+
+    def branch(self) -> str:
+        return self.git("rev-parse", "--abbrev-ref", "HEAD")
+
+    def head_sha(self) -> str:
+        return self.git("rev-parse", "HEAD")
+
+    def is_dirty(self) -> bool:
+        return bool(self.git("status", "--porcelain"))
 
 
-def _file_exists_at_ref(repo_path: str, ref: str, file_path: str) -> bool:
+class LogWriter:
+    """Append-only JSON Lines broker access log."""
+
+    def __init__(self, log_path: str):
+        self.path = log_path
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        self._file = open(log_path, "a", buffering=1, encoding="utf-8")
+
+    def append(self, event: dict[str, Any]) -> None:
+        self._file.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
+        self._file.flush()
+
+    def close(self) -> None:
+        self._file.close()
+
+
+def _get_log_path(repo_path: str) -> str:
+    env = os.environ.get("SDDTDD_BROKER_LOG_PATH")
+    if env:
+        return env
+    return str(Path(repo_path) / ".sddtdd_skill" / "broker-access.jsonl")
+
+
+def _resolve_repo_path(repo_path: str) -> Path:
+    repo = Path(repo_path).expanduser().resolve()
+    if not repo.exists():
+        raise BrokerError(f"repo_path does not exist: {repo}")
+    if not (repo / ".git").exists():
+        # Worktrees can lack .git directory but have a .git file.
+        if not (repo / ".git").is_file():
+            raise BrokerError(f"repo_path is not a Git repository root: {repo}")
+    return repo
+
+
+def _resolve_path(repo_path: str, raw: str) -> Path:
+    repo = Path(repo_path).resolve()
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        p = repo / p
+    p = p.resolve()
+    if p != repo and repo not in p.parents:
+        raise ValueError(f"path escapes repository: {raw}")
+    return p
+
+
+def _trim(text: str, limit: int = MAX_TOOL_OUTPUT_CHARS) -> str:
+    if len(text) > limit:
+        return text[:limit] + f"\n... [truncated at {limit} chars]"
+    return text
+
+
+def _extract_first_json_object(text: str) -> dict[str, Any]:
+    """Extract the first balanced JSON object from an LLM response."""
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = re.sub(r"^```(?:json)?\s*", "", stripped, flags=re.I)
+        stripped = re.sub(r"\s*```$", "", stripped)
     try:
-        result = subprocess.run(
-            ["git", "-C", repo_path, "cat-file", "-e", f"{ref}:{file_path}"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
+        parsed = json.loads(stripped)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    start = stripped.find("{")
+    if start < 0:
+        raise BrokerError(f"LLM response did not contain JSON object: {stripped[:500]}")
+
+    depth = 0
+    in_string = False
+    escape = False
+    for i, ch in enumerate(stripped[start:], start=start):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                candidate = stripped[start:i + 1]
+                parsed = json.loads(candidate)
+                if not isinstance(parsed, dict):
+                    raise BrokerError("LLM JSON response was not an object")
+                return parsed
+    raise BrokerError("LLM response contained incomplete JSON object")
 
 
-def _working_tree_dirty(repo_path: str) -> bool:
+def _read_skill_file(relative_path: str) -> str:
+    root = Path(os.environ.get("SDDTDD_SKILL_ROOT", str(DEFAULT_SKILL_ROOT))).expanduser()
+    path = (root / relative_path).resolve()
     try:
-        return bool(_git(repo_path, "status", "--porcelain"))
-    except Exception:
-        return True  # treat unreadable repo as dirty for safety
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        return f"[MISSING: {path}]"
+    return _trim(text, 20000)
 
 
 # ---------------------------------------------------------------------------
-# Schemas
+# MCP app and schemas
 # ---------------------------------------------------------------------------
 
-
-def _get_next_task_schema() -> dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": {
-            "repo_path": {"type": "string", "description": "Absolute path to the Git repository"},
-            "user_input": {
-                "type": "string",
-                "description": "Original user request. Required on the first call to start a new delivery; omit on subsequent calls.",
-            },
-            "previous_task_id": {
-                "type": "string",
-                "description": "Task id returned by the previously verified task. Omit on the first call to start a new delivery.",
-            },
-        },
-        "required": ["repo_path"],
-    }
-
-
-def _review_task_schema() -> dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": {
-            "repo_path": {"type": "string", "description": "Absolute path to the Git repository"},
-            "task_id": {"type": "string", "description": "Broker-assigned task id being verified"},
-            "task_kind": {
-                "type": "string",
-                "description": (
-                    "Workflow stage the broker issued. One of USER_INPUT_CAPTURE, "
-                    "SPEC_SPEC, ARCHITECTURE, DECOMPOSE, RED, GREEN, TASKS_COMPLETE, "
-                    "REGRESSION, FINAL."
-                ),
-            },
-            "review_type": {
-                "type": ["string", "null"],
-                "description": (
-                    "Review type the implementer was required to obtain. Null/absent when the task does not require independent review."
-                ),
-            },
-            "claimed_result": {"type": "string", "description": "Implementer completion summary"},
-            "work_journal_id": {
-                "type": "string",
-                "description": "JID of the work journal entry the implementer just committed (the stage's own journal entry).",
-            },
-            "evidence": {
-                "type": "object",
-                "description": "Concrete evidence supporting completion",
-                "properties": {
-                    "commits": {"type": "array", "items": {"type": "string"}},
-                    "journal_ids": {"type": "array", "items": {"type": "string"}},
-                    "review_request_id": {"type": "string"},
-                    "review_journal_id": {
-                        "type": "string",
-                        "description": "JID of the journal entry recording the independent reviewer verdict (when one was required).",
-                    },
-                    "test_commands": {"type": "array", "items": {"type": "string"}},
-                    "files": {"type": "array", "items": {"type": "string"}},
-                },
-            },
-        },
-        "required": ["repo_path", "task_id", "task_kind", "claimed_result", "work_journal_id"],
-    }
+app = mcp_server.Server(SERVER_NAME)
 
 
 @app.list_tools()
@@ -314,602 +227,519 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="getNextTask",
             description=(
-                "Ask the orchestrator for the next task, or for 'complete' / 'blocked'. "
-                "The first call carries user_input; subsequent calls carry previous_task_id."
+                "Inspect committed SDDTDD repository state and issue exactly one "
+                "self-contained next broker task, or return complete/blocked. The "
+                "broker is read-only and does not modify the repository."
             ),
-            inputSchema=_get_next_task_schema(),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo_path": {
+                        "type": "string",
+                        "description": "Absolute path to the Git repository.",
+                    },
+                    "user_input": {
+                        "type": "string",
+                        "description": (
+                            "Original user request. Required only for the first "
+                            "broker call of a delivery."
+                        ),
+                    },
+                    "previous_task_id": {
+                        "type": "string",
+                        "description": "Broker task id that was just completed, e.g. B-000003.",
+                    },
+                },
+                "required": ["repo_path"],
+            },
         ),
         types.Tool(
             name="reviewTask",
             description=(
-                "Ask the orchestrator to verify that the current task is process-complete. "
-                "The broker checks the committed journal, the issued task_kind, and the "
-                "required reviewer verdict; it does not re-review the artifact."
+                "Verify that one issued broker task is process-complete. This is "
+                "not semantic artifact review; it checks journal, commit, reviewer "
+                "verdict chain, and broker-task gate evidence."
             ),
-            inputSchema=_review_task_schema(),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo_path": {"type": "string"},
+                    "task_id": {"type": "string", "description": "Broker task id, e.g. B-000003."},
+                    "task_kind": {"type": "string"},
+                    "review_type": {
+                        "type": ["string", "null"],
+                        "description": "Expected independent reviewer entry type, or null.",
+                    },
+                    "claimed_result": {
+                        "type": "string",
+                        "description": "Implementer's concise claim of what was completed.",
+                    },
+                    "work_journal_id": {
+                        "type": "string",
+                        "description": "JID of the work entry for this broker task.",
+                    },
+                    "evidence": {
+                        "type": "object",
+                        "description": (
+                            "Concrete evidence. Use evidence.review_journal_id when "
+                            "independent_review_required was true. Include commit hashes, "
+                            "commands, file paths, and reviewer request ids when available."
+                        ),
+                        "additionalProperties": True,
+                    },
+                },
+                "required": [
+                    "repo_path",
+                    "task_id",
+                    "task_kind",
+                    "claimed_result",
+                    "work_journal_id",
+                    "evidence",
+                ],
+            },
         ),
     ]
 
 
 # ---------------------------------------------------------------------------
-# Process-gate verification (reviewTask)
+# Sampling tools available to the broker LLM
 # ---------------------------------------------------------------------------
 
+BROKER_TOOLS: list[types.Tool] = [
+    types.Tool(
+        name="read_file",
+        description=(
+            "Read a text file from the repository. Use absolute paths or paths "
+            "relative to repo root. This is read-only and truncates large output."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+        },
+    ),
+    types.Tool(
+        name="read_skill_file",
+        description=(
+            "Read a file from the installed spec-driven-tdd skill directory, "
+            "usually ~/.hermes/skills/spec-driven-tdd. Use relative paths like "
+            "SKILL.md, SKILL-IMPLEMENTER.md, SKILL-ORCHESTRATOR.md, "
+            "references/JOURNAL.md, references/STAGES.md."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+        },
+    ),
+    types.Tool(
+        name="shell_command",
+        description=(
+            "Run a read-only shell command in the repository for inspection only: "
+            "git status, git log/show/diff/ls-files, grep, find, ls, cat, wc, head, "
+            "tail. Mutating commands are rejected. Output is truncated."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {"command": {"type": "string"}},
+            "required": ["command"],
+        },
+    ),
+]
 
-def _find_entry(entries: list[dict[str, str]], jid: str) -> dict[str, str] | None:
-    for entry in entries:
-        if entry.get("_jid") == jid:
-            return entry
-    return None
 
+def _execute_broker_tool(name: str, args: dict[str, Any], repo_path: str) -> str:
+    if name == "read_file":
+        try:
+            path = _resolve_path(repo_path, str(args["path"]))
+        except (KeyError, ValueError) as exc:
+            return f"ERROR: {exc}"
+        if not path.exists():
+            return f"ERROR: file not found: {path}"
+        if path.is_dir():
+            try:
+                result = subprocess.run(["ls", "-la", str(path)], capture_output=True, text=True, timeout=10)
+                return _trim((result.stdout or "") + (result.stderr or ""))
+            except subprocess.TimeoutExpired:
+                return "ERROR: ls timed out"
+        try:
+            return _trim(path.read_text(encoding="utf-8", errors="replace"))
+        except Exception as exc:
+            return f"ERROR: could not read file: {exc}"
 
-def _check_process_gate(
-    repo_path: str,
-    task_id: str,
-    task_kind: str,
-    review_type: str | None,
-    work_journal_id: str,
-    evidence: dict[str, Any],
-    head_sha_before: str,
-) -> dict[str, Any]:
-    """Run the process-gate checks for the issued task.
+    if name == "read_skill_file":
+        raw_path = str(args.get("path", ""))
+        if not raw_path or Path(raw_path).is_absolute() or ".." in Path(raw_path).parts:
+            return "ERROR: path must be relative inside the skill directory"
+        return _read_skill_file(raw_path)
 
-    The broker reads the committed journal at ``head_sha_before`` (the
-    HEAD the broker observed when ``reviewTask`` was called). The
-    implementer cannot commit additional journal entries after the
-    broker started verification and then re-ask for a PASS.
-
-    Returns a dict with ``status`` in {PASS, FAIL, NEEDS_CLARIFICATION, ERROR}
-    and ``findings`` (a list of strings).
-    """
-    findings: list[str] = []
-
-    if _working_tree_dirty(repo_path):
-        return {
-            "status": "FAIL",
-            "findings": [
-                "Working tree is dirty; the broker only verifies committed state. Commit the work and the journal update first."
-            ],
-        }
-
-    if not head_sha_before:
-        return {
-            "status": "ERROR",
-            "findings": ["HEAD is unknown; cannot pin the broker's verification to a commit."],
-        }
-
-    # Required artifacts: the broker verifies the artifact that the
-    # reviewer allegedly reviewed actually exists in the committed
-    # tree. This catches the "journal is pretty, artifact evaporated"
-    # failure.
-    for artifact in STAGE_REQUIRED_ARTIFACTS.get(task_kind, []):
-        if not _file_exists_at_ref(repo_path, head_sha_before, artifact):
-            findings.append(
-                f"required artifact {artifact!r} is absent at HEAD {head_sha_before[:12]}; "
-                f"the broker cannot accept a process-gate PASS for {task_kind} without it."
+    if name == "shell_command":
+        cmd = str(args.get("command", "")).strip()
+        if not cmd:
+            return "ERROR: empty command"
+        if READ_ONLY_DENY_RE.search(cmd):
+            return "ERROR: command rejected by read-only broker policy"
+        try:
+            # shlex.split catches obvious malformed quoting before shell=True.
+            shlex.split(cmd)
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
+            output = (result.stdout or "") + (result.stderr or "")
+            if not output:
+                output = f"(no output, exit={result.returncode})"
+            return _trim(output)
+        except ValueError as exc:
+            return f"ERROR: invalid command: {exc}"
+        except subprocess.TimeoutExpired:
+            return "ERROR: command timed out after 30s"
+        except Exception as exc:
+            return f"ERROR: {exc}"
 
-    journal_text = _committed_journal(repo_path, head_sha_before)
-    if journal_text is None:
-        return {
-            "status": "ERROR",
-            "findings": [
-                f".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log is absent at HEAD {head_sha_before[:12]}; cannot verify process state."
-            ],
-        }
+    return f"ERROR: unknown tool: {name}"
 
-    entries = _parse_journal(journal_text)
-    if not entries:
-        return {
-            "status": "FAIL",
-            "findings": ["Committed journal is empty; the implementer must journal the work before calling reviewTask."],
-        }
 
-    work_entry = _find_entry(entries, work_journal_id)
-    if work_entry is None:
-        return {
-            "status": "FAIL",
-            "findings": [
-                f"work_journal_id {work_journal_id} not found in committed .sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log at HEAD {head_sha_before[:12]}; "
-                "the implementer must commit the work journal entry before calling reviewTask."
-            ],
-        }
+# ---------------------------------------------------------------------------
+# Broker prompts
+# ---------------------------------------------------------------------------
 
-    if work_entry.get("STATUS") != "COMPLETED":
-        findings.append(
-            f"work_journal_id {work_journal_id} has STATUS {work_entry.get('STATUS')!r}; expected 'COMPLETED'."
+SYSTEM_PROJECT = """
+You are the Spec-Driven TDD MCP task broker for a repository.
+
+You are a read-only broker/orchestrator. You MUST NOT modify files, write the
+journal, change the working tree, stage files, commit, run formatters, or alter
+repository state. You only inspect committed repository state and runtime broker
+logs, then return either the next self-contained task or a process-gate verdict.
+
+You MUST reference and apply the installed skill files:
+- ~/.hermes/skills/spec-driven-tdd/SKILL.md
+- ~/.hermes/skills/spec-driven-tdd/SKILL-IMPLEMENTER.md
+- ~/.hermes/skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md
+- ~/.hermes/skills/spec-driven-tdd/references/JOURNAL.md
+- ~/.hermes/skills/spec-driven-tdd/references/STAGES.md
+
+The implementer does not read SKILL-ORCHESTRATOR.md or references/STAGES.md in
+broker mode. You, the broker, own the workflow order and issue exactly one next
+task. The implementer only receives your task and must not cut corners.
+
+You are NOT the independent reviewer. The reviewer MCP performs semantic
+artifact review and records SPEC_REVIEW, ARCHITECTURE_REVIEW, TASK_REVIEW,
+RED_REVIEW, GREEN_REVIEW, REGRESSION_REVIEW, and FINAL_REVIEW. You only verify
+process completion and decide the next task from committed state, journal state,
+and broker/reviewer evidence.
+
+Return JSON only. Do not wrap it in Markdown.
+""".strip()
+
+GET_NEXT_SCHEMA = """
+For getNextTask, return exactly one JSON object in one of these shapes:
+
+Task response:
+{
+  "status": "task",
+  "task_id": "B-000001",
+  "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | FINAL | DONE",
+  "instruction": "one concrete instruction in English",
+  "allowed_scope": ["exact repo paths or artifact globs the implementer may touch"],
+  "required_evidence": ["concrete required evidence the implementer must produce"],
+  "independent_review_required": true,
+  "review_type": "SPEC_REVIEW | ARCHITECTURE_REVIEW | TASK_REVIEW | RED_REVIEW | GREEN_REVIEW | REGRESSION_REVIEW | FINAL_REVIEW | null",
+  "rationale": "brief process reason for this task"
+}
+
+Blocked response:
+{
+  "status": "blocked",
+  "reason": "why no next task can be issued",
+  "unverified_task_ids": ["B-000003"],
+  "required_action": "Call reviewTask for the outstanding broker task before getNextTask."
+}
+
+Clarification response:
+{
+  "status": "needs_clarification",
+  "question": "question for the implementer/user",
+  "rationale": "why this is required before issuing a task"
+}
+
+Complete response:
+{
+  "status": "complete",
+  "rationale": "why the workflow is complete"
+}
+
+Rules:
+- Issue only one task.
+- Use monotonically increasing broker task ids B-000001, B-000002, etc. Infer the next id from broker-access.jsonl and journal evidence.
+- If a previous broker task lacks a committed BROKER_TASK_REVIEW with STATUS: PASS and TASK_ID equal to that broker task id, return blocked.
+- The first task for a fresh delivery is USER_INPUT_CAPTURE and must preserve the user's input exactly in .sddtdd_skill/SPEC-DRAFT.md plus create the USER_INPUT journal entry.
+- For agent-generated artifacts, require independent reviewer verdict before broker PASS.
+- Architecture is a mandatory stage between SPEC_REVIEW PASS and DECOMPOSE.
+- Do not let implementation begin before TASK_REVIEW PASS.
+- Do not allow GREEN before RED_REVIEW PASS for that task.
+- Do not allow final completion before regression review PASS and final review PASS.
+- Instructions must be in English and self-contained; the implementer should not need to know the workflow order.
+""".strip()
+
+REVIEW_TASK_SCHEMA = """
+For reviewTask, return exactly one JSON object:
+{
+  "status": "PASS | FAIL | NEEDS_CLARIFICATION | ERROR",
+  "findings": ["specific process findings"],
+  "required_fixes": ["specific required fixes before retry; empty on PASS"],
+  "parent_for_broker_review": "JID that BROKER_TASK_REVIEW should point to",
+  "detail_suggestion": "English DETAIL text the implementer may paste into BROKER_TASK_REVIEW",
+  "rationale": "brief explanation"
+}
+
+Process gate rules:
+- Check only process completeness, not semantic artifact quality.
+- Verify the work_journal_id exists in .sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log.
+- Verify the work entry TYPE matches task_kind's journal stage and STATUS is COMPLETED.
+- If review_type is non-null, verify evidence.review_journal_id exists, has TYPE equal to review_type, STATUS: PASS, and PARENT equal to work_journal_id.
+- If review_type is null, parent_for_broker_review must be work_journal_id.
+- Verify the relevant artifacts/evidence are committed at HEAD where possible.
+- Verify the repository did not advance during your review; stale state must be ERROR.
+- On PASS, parent_for_broker_review is the reviewer verdict JID, or work_journal_id for capture tasks.
+- Do not require BROKER_TASK_REVIEW to already exist for the task being reviewed; the implementer writes it after your PASS/FAIL response.
+""".strip()
+
+
+def _base_repo_context(repo_path: str, git: GitCapturer) -> dict[str, Any]:
+    return {
+        "repo_path": repo_path,
+        "branch": git.branch(),
+        "head_sha": git.head_sha(),
+        "working_tree_dirty": git.is_dirty(),
+        "important_paths": {
+            "skill_root": str(Path(os.environ.get("SDDTDD_SKILL_ROOT", str(DEFAULT_SKILL_ROOT))).expanduser()),
+            "working_area": ".sddtdd_skill/",
+            "journal": ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log",
+            "review_log": ".sddtdd_skill/review-access.jsonl",
+            "broker_log": ".sddtdd_skill/broker-access.jsonl",
+        },
+    }
+
+
+def _get_next_prompt(repo_path: str, git: GitCapturer, args: dict[str, Any]) -> str:
+    payload = {
+        "operation": "getNextTask",
+        "repo": _base_repo_context(repo_path, git),
+        "user_input": args.get("user_input"),
+        "previous_task_id": args.get("previous_task_id"),
+    }
+    return (
+        SYSTEM_PROJECT
+        + "\n\n"
+        + GET_NEXT_SCHEMA
+        + "\n\nInspect the repository using tools before deciding. Read the skill files listed above as needed. "
+          "Return JSON only.\n\nREQUEST:\n"
+        + json.dumps(payload, ensure_ascii=False, indent=2)
+    )
+
+
+def _review_task_prompt(repo_path: str, git: GitCapturer, args: dict[str, Any]) -> str:
+    payload = {
+        "operation": "reviewTask",
+        "repo": _base_repo_context(repo_path, git),
+        "task_id": args.get("task_id"),
+        "task_kind": args.get("task_kind"),
+        "review_type": args.get("review_type"),
+        "claimed_result": args.get("claimed_result"),
+        "work_journal_id": args.get("work_journal_id"),
+        "evidence": args.get("evidence", {}),
+    }
+    return (
+        SYSTEM_PROJECT
+        + "\n\n"
+        + REVIEW_TASK_SCHEMA
+        + "\n\nInspect the committed repository and journal using tools before giving a verdict. "
+          "Return JSON only.\n\nREQUEST:\n"
+        + json.dumps(payload, ensure_ascii=False, indent=2)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sampling loop
+# ---------------------------------------------------------------------------
+
+async def _sample_with_tools(ctx: Any, initial_prompt: str, repo_path: str) -> tuple[str, str]:
+    messages: list[types.SamplingMessage] = [
+        types.SamplingMessage(
+            role="user",
+            content=types.TextContent(type="text", text=initial_prompt),
+        )
+    ]
+
+    last_text = ""
+    for round_no in range(1, MAX_SAMPLING_ROUNDS + 1):
+        logger.info("sampling round %d/%d messages=%d", round_no, MAX_SAMPLING_ROUNDS, len(messages))
+        result = await ctx.session.create_message(
+            messages=messages,
+            max_tokens=64000,
+            tools=BROKER_TOOLS,
         )
 
-    # Stage prerequisites (prior journal entries that must already exist).
-    for prereq_type, prereq_status in STAGE_PREREQUISITES.get(task_kind, []):
-        if not any(
-            e.get("TYPE") == prereq_type and e.get("STATUS") == prereq_status
-            for e in entries
-        ):
-            findings.append(
-                f"prerequisite {prereq_type}: {prereq_status} is required before {task_kind} "
-                f"and is missing from the committed journal."
-            )
+        blocks = result.content if isinstance(result.content, list) else [result.content]
+        for block in blocks:
+            if isinstance(block, types.TextContent):
+                last_text = block.text
 
-    # Stage-required reviewer verdict.
-    required_review = review_type or STAGE_REQUIRED_REVIEW.get(task_kind)
-    if required_review:
-        review_journal_id = (evidence or {}).get("review_journal_id")
-        if not review_journal_id:
-            findings.append(
-                f"reviewer verdict for {required_review} is required by {task_kind} but the implementer did not provide a review_journal_id."
-            )
-        else:
-            review_entry = _find_entry(entries, review_journal_id)
-            if review_entry is None:
-                findings.append(
-                    f"review_journal_id {review_journal_id} not found in committed .sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log at HEAD {head_sha_before[:12]}."
+        stop_reason = getattr(result, "stopReason", None) or "endTurn"
+        logger.info("sampling stop_reason=%s text_len=%d", stop_reason, len(last_text))
+        if stop_reason != "toolUse":
+            return last_text, stop_reason
+
+        tool_uses = [block for block in blocks if isinstance(block, types.ToolUseContent)]
+        if not tool_uses:
+            return last_text, stop_reason
+
+        tool_results: list[types.ToolResultContent] = []
+        for tool_use in tool_uses:
+            output = _execute_broker_tool(tool_use.name, tool_use.input, repo_path)
+            tool_results.append(
+                types.ToolResultContent(
+                    type="tool_result",
+                    toolUseId=tool_use.id,
+                    content=[types.TextContent(type="text", text=output)],
                 )
-            else:
-                if review_entry.get("TYPE") != required_review:
-                    findings.append(
-                        f"review_journal_id {review_journal_id} has TYPE {review_entry.get('TYPE')!r}; expected {required_review!r}."
-                    )
-                if review_entry.get("STATUS") != "PASS":
-                    findings.append(
-                        f"review_journal_id {review_journal_id} has STATUS {review_entry.get('STATUS')!r}; expected 'PASS'."
-                    )
-                # Strict binding: the reviewer verdict must descend
-                # from the work_journal_id the implementer just
-                # committed. A verdict that descends from a different
-                # work entry — or has no PARENT — is rejected.
-                if review_entry.get("PARENT") != work_journal_id:
-                    findings.append(
-                        f"review_journal_id {review_journal_id} has PARENT {review_entry.get('PARENT')!r}; "
-                        f"expected {work_journal_id!r} (the work entry for this broker task). "
-                        "The reviewer verdict must descend from the work entry of the task being verified."
-                    )
+            )
+        messages.append(types.SamplingMessage(role="assistant", content=result.content))
+        messages.append(types.SamplingMessage(role="user", content=tool_results))
 
-    if findings:
-        return {"status": "FAIL", "findings": findings}
-    return {
-        "status": "PASS",
-        "findings": [
-            f"process-gate verification passed for task {task_id} ({task_kind}) at HEAD {head_sha_before[:12]}"
-        ],
-    }
-
-
-# ---------------------------------------------------------------------------
-# getNextTask — minimal schema-driven decision (no LLM sampling in v3)
-# ---------------------------------------------------------------------------
-
-
-def _read_broker_log(repo_path: str) -> list[dict[str, Any]]:
-    """Read the broker access log (a JSONL file under ``.sddtdd_skill/``).
-
-    The access log records every ``getNextTask`` issuance and every
-    ``reviewTask`` verdict. It is **not** committed to the working
-    tree — it lives under ``.sddtdd_skill/`` (next to the committed
-    artifacts) and is expected to be ignored by ``.gitignore`` via
-    the ``.sddtdd_skill/*.jsonl`` pattern shipped with the
-    spec-driven-tdd skill. The broker uses it to remember which
-    task ids it has issued in this delivery.
-    """
-    path = _broker_log_path(repo_path)
-    logger.info("_read_broker_log: path=%s exists=%s", path, path.exists())
-    if not path.exists():
-        return []
-    events: list[dict[str, Any]] = []
-    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        raw_line = raw_line.strip()
-        if not raw_line:
-            continue
-        try:
-            events.append(json.loads(raw_line))
-        except json.JSONDecodeError:
-            continue
-    return events
-
-
-def _read_repo_state(repo_path: str) -> dict[str, Any]:
-    try:
-        head_sha = _git(repo_path, "rev-parse", "HEAD")
-    except Exception:
-        return {"exists": False}
-    journal_text = _git_show(repo_path, head_sha, ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log")
-    journal_path = f"{repo_path}/.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"
-    logger.info("_read_repo_state: journal_path=%s head_sha=%s lines=%d",
-                 journal_path, head_sha, len((journal_text or "").splitlines()))
-    entries = _parse_journal(journal_text or "")
-
-    # Identify broker task ids the broker has issued in this delivery
-    # (from the broker access log) and the broker task ids the
-    # implementer has verified (from committed journal entries of
-    # TYPE=BROKER_TASK_REVIEW with STATUS=PASS, carrying TASK_ID).
-    broker_events = _read_broker_log(repo_path)
-    issued_task_ids: set[str] = set()
-    for event in broker_events:
-        if event.get("event") == "task_issued":
-            tid = event.get("task_id")
-            if isinstance(tid, str) and tid:
-                issued_task_ids.add(tid)
-    broker_passed_task_ids: set[str] = set()
-    for entry in entries:
-        if (
-            entry.get("TYPE") == "BROKER_TASK_REVIEW"
-            and entry.get("STATUS") == "PASS"
-        ):
-            tid = entry.get("TASK_ID")
-            if isinstance(tid, str) and tid:
-                broker_passed_task_ids.add(tid)
-    unverified_task_ids = issued_task_ids - broker_passed_task_ids
-    logger.info("_read_repo_state: issued=%s passed=%s unverified=%s",
-                 sorted(issued_task_ids), sorted(broker_passed_task_ids), sorted(unverified_task_ids))
-
-    return {
-        "exists": True,
-        "head_sha": head_sha,
-        "entries": entries,
-        "has_user_input": any(e.get("TYPE") == "USER_INPUT" for e in entries),
-        "has_spec": any(e.get("TYPE") == "SPEC_REVIEW" and e.get("STATUS") == "PASS" for e in entries),
-        "has_architecture": any(e.get("TYPE") == "ARCHITECTURE_REVIEW" and e.get("STATUS") == "PASS" for e in entries),
-        "has_task_review": any(e.get("TYPE") == "TASK_REVIEW" and e.get("STATUS") == "PASS" for e in entries),
-        "has_red_review": any(e.get("TYPE") == "RED_REVIEW" and e.get("STATUS") == "PASS" for e in entries),
-        "has_green_review": any(e.get("TYPE") == "GREEN_REVIEW" and e.get("STATUS") == "PASS" for e in entries),
-        "has_tasks_complete": any(
-            e.get("TYPE") == "TASKS_COMPLETE" and e.get("STATUS") == "COMPLETED"
-            for e in entries
-        ),
-        "has_regression": any(e.get("TYPE") == "REGRESSION_REVIEW" and e.get("STATUS") == "PASS" for e in entries),
-        "has_final_review": any(e.get("TYPE") == "FINAL_REVIEW" and e.get("STATUS") == "PASS" for e in entries),
-        "has_done": any(e.get("TYPE") == "DONE" and e.get("STATUS") == "COMPLETED" for e in entries),
-        "issued_task_ids": issued_task_ids,
-        "broker_passed_task_ids": broker_passed_task_ids,
-        "unverified_task_ids": unverified_task_ids,
-    }
-
-
-def _select_next_task(repo_state: dict[str, Any], previous_task_id: str | None, user_input: str | None) -> dict[str, Any]:
-    """Decide what to return for getNextTask.
-
-    The order of stages is fixed by the orchestrator role file. The
-    broker picks the earliest unmet mandatory condition and returns one
-    task. This is a deterministic state-machine; no LLM sampling is
-    involved in v3.
-
-    The broker additionally enforces a **process-gate**: it will not
-    hand out the next task while a previously issued task id has not
-    been verified (``BROKER_TASK_REVIEW: PASS``) and committed. The
-    implementer cannot skip ``reviewTask`` and call ``getNextTask``
-    for the next step; the broker returns ``blocked`` with a
-    ``required_action`` telling the implementer to verify the
-    outstanding task first.
-    """
-    # Broker gate: outstanding issued task ids must have a committed
-    # BROKER_TASK_REVIEW: PASS entry whose TASK_ID matches. This
-    # catches the implementer that does the work, never calls
-    # reviewTask, and asks the broker for the next task anyway.
-    unverified = sorted(repo_state.get("unverified_task_ids", set()))
-    logger.info("_select_next_task: gate_check unverified=%s", unverified)
-    if unverified:
-        return {
-            "status": "blocked",
-            "summary": (
-                f"Outstanding broker task id(s) {unverified} have not been verified "
-                f"with reviewTask and a committed BROKER_TASK_REVIEW: PASS journal entry. "
-                f"The broker will not issue the next task until the previous one is verified."
-            ),
-            "required_action": (
-                "Call reviewTask for the outstanding task id(s) first, append a "
-                "BROKER_TASK_REVIEW: PASS journal entry carrying TASK_ID=<task_id>, "
-                "commit, then call getNextTask again."
-            ),
-            "unverified_task_ids": unverified,
-        }
-
-    if not repo_state.get("exists"):
-        if not user_input:
-            return {
-                "status": "blocked",
-                "summary": "Empty repository: user_input is required to start a new delivery.",
-                "required_action": "Call getNextTask again with user_input set to the original user request.",
-            }
-        return {
-            "status": "TASK",
-            "task_id": "B-000001",
-            "task_kind": "USER_INPUT_CAPTURE",
-            "instruction": (
-                "Preserve the original user request as .sddtdd_skill/SPEC-DRAFT.md, create the USER_INPUT journal entry, "
-                "and commit both. Do not translate, summarize, or normalize the user request."
-            ),
-            "allowed_scope": [".sddtdd_skill/SPEC-DRAFT.md", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
-            "required_evidence": ["commit hash", "USER_INPUT journal JID"],
-            "independent_review_required": False,
-            "review_type": None,
-            "rationale": "Empty repository: capture immutable user input first.",
-        }
-
-    if not repo_state.get("has_user_input"):
-        return {
-            "status": "TASK",
-            "task_id": "B-000002",
-            "task_kind": "USER_INPUT_CAPTURE",
-            "instruction": "The committed journal lacks a USER_INPUT entry. Create the USER_INPUT journal entry and commit it.",
-            "allowed_scope": [".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
-            "required_evidence": ["USER_INPUT journal JID"],
-            "independent_review_required": False,
-            "review_type": None,
-            "rationale": "First committed state without a USER_INPUT entry; create the journal root.",
-        }
-
-    if not repo_state.get("has_spec"):
-        return {
-            "status": "TASK",
-            "task_id": "B-000003",
-            "task_kind": "SPEC_SPEC",
-            "instruction": "Create .sddtdd_skill/SPEC.md from committed .sddtdd_skill/SPEC-DRAFT.md. Create the SPEC_SPEC and SPEC_REVIEW journal entries.",
-            "allowed_scope": [".sddtdd_skill/SPEC.md", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
-            "required_evidence": ["commit hash", "SPEC_SPEC journal JID", "SPEC_REVIEW journal JID with STATUS: PASS"],
-            "independent_review_required": True,
-            "review_type": "SPEC_REVIEW",
-            "rationale": "Spec review is the earliest unmet mandatory condition.",
-        }
-
-    if not repo_state.get("has_architecture"):
-        return {
-            "status": "TASK",
-            "task_id": "B-000004",
-            "task_kind": "ARCHITECTURE",
-            "instruction": "Create or update .sddtdd_skill/ARCHITECTURE.md from reviewed .sddtdd_skill/SPEC.md. Create the ARCHITECTURE and ARCHITECTURE_REVIEW journal entries.",
-            "allowed_scope": [".sddtdd_skill/ARCHITECTURE.md", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
-            "required_evidence": ["commit hash", "ARCHITECTURE journal JID", "ARCHITECTURE_REVIEW journal JID with STATUS: PASS"],
-            "independent_review_required": True,
-            "review_type": "ARCHITECTURE_REVIEW",
-            "rationale": "Architecture review is the earliest unmet mandatory condition.",
-        }
-
-    if not repo_state.get("has_task_review"):
-        return {
-            "status": "TASK",
-            "task_id": "B-000005",
-            "task_kind": "DECOMPOSE",
-            "instruction": "Create .sddtdd_skill/TASKS.md from reviewed .sddtdd_skill/SPEC.md and reviewed .sddtdd_skill/ARCHITECTURE.md. Create the DECOMPOSE and TASK_REVIEW journal entries.",
-            "allowed_scope": [".sddtdd_skill/TASKS.md", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
-            "required_evidence": ["commit hash", "DECOMPOSE journal JID", "TASK_REVIEW journal JID with STATUS: PASS"],
-            "independent_review_required": True,
-            "review_type": "TASK_REVIEW",
-            "rationale": "Task review is the earliest unmet mandatory condition.",
-        }
-
-    # Per-task work stages: in this delivery the broker keeps a flat
-    # single-task model and treats the RED → RED_REVIEW → GREEN →
-    # GREEN_REVIEW chain as one convergence sequence. A real
-    # multi-task model would iterate this block per task in TASKS.md.
-    if not repo_state.get("has_red_review"):
-        return {
-            "status": "TASK",
-            "task_id": "B-000006",
-            "task_kind": "RED",
-            "instruction": "Create the failing test that defines the work. Journal the RED entry and request the RED_REVIEW verdict.",
-            "allowed_scope": ["tests/", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
-            "required_evidence": ["commit hash", "RED journal JID", "RED_REVIEW journal JID with STATUS: PASS"],
-            "independent_review_required": True,
-            "review_type": "RED_REVIEW",
-            "rationale": "RED is the earliest unmet per-task stage.",
-        }
-
-    if not repo_state.get("has_green_review"):
-        return {
-            "status": "TASK",
-            "task_id": "B-000007",
-            "task_kind": "GREEN",
-            "instruction": "Implement the production code that makes the failing test pass, run the test and confirm it passes. Journal the GREEN entry and request the GREEN_REVIEW verdict.",
-            "allowed_scope": ["src/", "tests/", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
-            "required_evidence": ["commit hash", "GREEN journal JID", "GREEN_REVIEW journal JID with STATUS: PASS"],
-            "independent_review_required": True,
-            "review_type": "GREEN_REVIEW",
-            "rationale": "GREEN is the earliest unmet per-task stage.",
-        }
-
-    if not repo_state.get("has_tasks_complete"):
-        return {
-            "status": "TASK",
-            "task_id": "B-000008",
-            "task_kind": "TASKS_COMPLETE",
-            "instruction": (
-                "All per-task chains are closed (GREEN_REVIEW: PASS in the committed journal). "
-                "Record the TASKS_COMPLETE convergence event in the journal with STATUS: COMPLETED, "
-                "and commit. There is no independent reviewer verdict for this stage."
-            ),
-            "allowed_scope": [".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
-            "required_evidence": ["commit hash", "TASKS_COMPLETE journal JID with STATUS: COMPLETED"],
-            "independent_review_required": False,
-            "review_type": None,
-            "rationale": "Convergence event: all per-task branches reached GREEN_REVIEW: PASS.",
-        }
-
-    if not repo_state.get("has_regression"):
-        return {
-            "status": "TASK",
-            "task_id": "B-000009",
-            "task_kind": "REGRESSION",
-            "instruction": "Run the full required test suite and capture regression evidence. Create the REGRESSION and REGRESSION_REVIEW journal entries.",
-            "allowed_scope": [".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log", "regression evidence files"],
-            "required_evidence": ["commit hash", "REGRESSION journal JID", "REGRESSION_REVIEW journal JID with STATUS: PASS"],
-            "independent_review_required": True,
-            "review_type": "REGRESSION_REVIEW",
-            "rationale": "Regression review is the earliest unmet mandatory condition.",
-        }
-
-    if not repo_state.get("has_final_review"):
-        return {
-            "status": "TASK",
-            "task_id": "B-000010",
-            "task_kind": "FINAL",
-            "instruction": "Final review of the complete committed solution and its artifact chain. Create the FINAL_REVIEW journal entry.",
-            "allowed_scope": [".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
-            "required_evidence": ["FINAL_REVIEW journal JID with STATUS: PASS"],
-            "independent_review_required": True,
-            "review_type": "FINAL_REVIEW",
-            "rationale": "Final review is the earliest unmet mandatory condition.",
-        }
-
-    if not repo_state.get("has_done"):
-        return {
-            "status": "TASK",
-            "task_id": "B-000011",
-            "task_kind": "DONE",
-            "instruction": "Record the DONE journal entry with STATUS: COMPLETED.",
-            "allowed_scope": [".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
-            "required_evidence": ["DONE journal JID"],
-            "independent_review_required": False,
-            "review_type": None,
-            "rationale": "All required review stages have passed; record DONE.",
-        }
-
-    return {
-        "status": "complete",
-        "summary": "All required SDDTDD completion conditions are satisfied.",
-        "rationale": "Final review passed and DONE is journaled.",
-    }
+    return last_text, "maxRoundsExceeded"
 
 
 # ---------------------------------------------------------------------------
 # Tool dispatch
 # ---------------------------------------------------------------------------
 
-
-def _normalize_evidence(arguments: dict[str, Any]) -> dict[str, Any]:
-    raw = arguments.get("evidence")
-    if not isinstance(raw, dict):
-        return {}
-    return raw
-
-
 @app.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
-    if name not in BROKER_TOOLS:
+    if name not in {"getNextTask", "reviewTask"}:
         raise ValueError(f"Unknown tool: {name}")
 
+    repo = _resolve_repo_path(arguments["repo_path"])
+    repo_path = str(repo)
     request_id = uuid.uuid4().hex
-    started_at = time.monotonic()
-
-    repo_path = str(Path(arguments["repo_path"]).resolve())
-
-    head_sha_before = ""
-    try:
-        head_sha_before = _git(repo_path, "rev-parse", "HEAD")
-    except Exception:
-        pass
-
-    task_id = arguments.get("task_id") if name == "reviewTask" else None
-
-    if name == "getNextTask":
-        _append_broker_event(repo_path, {
-            "event": "get_next_task_started",
-            "request_id": request_id,
-            "head_sha_before": head_sha_before,
-            "arguments": arguments,
-        })
-    elif name == "reviewTask":
-        _append_broker_event(repo_path, {
-            "event": "task_review_started",
-            "request_id": request_id,
-            "task_id": task_id,
-            "head_sha_before": head_sha_before,
-            "arguments": arguments,
-        })
-    else:
-        _append_broker_event(repo_path, {
-            "event": "unknown_tool",
-            "request_id": request_id,
-            "tool_name": name,
-            "head_sha_before": head_sha_before,
-        })
+    timestamp_before = datetime.now(timezone.utc).isoformat()
+    t_before = time.monotonic()
+    log: LogWriter | None = None
 
     try:
-        if name == "getNextTask":
-            previous_task_id = arguments.get("previous_task_id")
-            user_input = arguments.get("user_input")
-            repo_state = _read_repo_state(repo_path)
-            result = _select_next_task(repo_state, previous_task_id, user_input)
-            result["request_id"] = request_id
-            result.setdefault("repo_head", repo_state.get("head_sha", ""))
-            _append_broker_event(repo_path, {
-                "event": "get_next_task_completed",
+        git = GitCapturer(repo_path)
+        head_before = git.head_sha()
+        branch = git.branch()
+        dirty = git.is_dirty()
+        log = LogWriter(_get_log_path(repo_path))
+
+        started_event = {
+            "event": f"{name}_started",
+            "request_id": request_id,
+            "timestamp_utc": timestamp_before,
+            "repo_path": repo_path,
+            "branch": branch,
+            "head_sha": head_before,
+            "working_tree_dirty": dirty,
+            "arguments": arguments,
+        }
+        log.append(started_event)
+
+        prompt = _get_next_prompt(repo_path, git, arguments) if name == "getNextTask" else _review_task_prompt(repo_path, git, arguments)
+        response_text, stop_reason = await _sample_with_tools(app.request_context, prompt, repo_path)
+        parsed = _extract_first_json_object(response_text)
+
+        head_after = git.head_sha()
+        stale = head_after != head_before
+        status = "STALE" if stale else "COMPLETED"
+        duration_ms = int((time.monotonic() - t_before) * 1000)
+
+        if stale:
+            result: dict[str, Any] = {
                 "request_id": request_id,
-                "status": result.get("status"),
-                "task_id": result.get("task_id"),
-                "task_kind": result.get("task_kind"),
-                "instruction": result.get("instruction"),
-                "allowed_scope": result.get("allowed_scope"),
-                "required_evidence": result.get("required_evidence"),
-                "independent_review_required": result.get("independent_review_required"),
-                "review_type": result.get("review_type"),
-                "rationale": result.get("rationale"),
-                "summary": result.get("summary"),
-                "head_sha_before": head_sha_before,
-                "previous_task_id": previous_task_id,
-            })
-        elif name == "reviewTask":
-            evidence = _normalize_evidence(arguments)
-            result = _check_process_gate(
-                repo_path=repo_path,
-                task_id=arguments.get("task_id", ""),
-                task_kind=arguments.get("task_kind", ""),
-                review_type=arguments.get("review_type"),
-                work_journal_id=arguments.get("work_journal_id", ""),
-                evidence=evidence,
-                head_sha_before=head_sha_before,
-            )
-            result["request_id"] = request_id
-            result["task_id"] = arguments.get("task_id")
-            result["repo_head"] = head_sha_before
+                "status": "ERROR",
+                "error": "Repository HEAD changed during broker operation; retry against current HEAD.",
+                "stale": True,
+                "head_sha_before": head_before,
+                "head_sha_after": head_after,
+            }
         else:
-            result = {"status": "ERROR", "summary": f"Unknown tool: {name}"}
+            result = {
+                "request_id": request_id,
+                "status": status,
+                "stale": False,
+                "head_sha": head_before,
+                "broker_result": parsed,
+            }
+
+        completed_event = {
+            "event": f"{name}_completed",
+            "request_id": request_id,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "repo_path": repo_path,
+            "head_sha_before": head_before,
+            "head_sha_after": head_after,
+            "status": status,
+            "stale": stale,
+            "stop_reason": stop_reason,
+            "duration_ms": duration_ms,
+            "result": result,
+            "raw_response": response_text,
+        }
+        log.append(completed_event)
+        return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+
     except Exception as exc:
+        logger.error("call_tool %s failed: %s", name, exc, exc_info=True)
         result = {
             "request_id": request_id,
             "status": "ERROR",
-            "summary": str(exc),
+            "stale": False,
+            "error": str(exc),
         }
-
-    head_sha_after = ""
-    try:
-        head_sha_after = _git(repo_path, "rev-parse", "HEAD")
-    except Exception:
-        pass
-    duration_ms = int((time.monotonic() - started_at) * 1000)
-
-    if name == "reviewTask":
-        verdict = result.get("status", "ERROR")
-        if verdict not in {"PASS", "FAIL", "NEEDS_CLARIFICATION", "ERROR"}:
-            verdict = "ERROR"
-        _append_broker_event(repo_path, {
-            "event": "task_review_completed",
-            "request_id": request_id,
-            "task_id": task_id,
-            "head_sha_before": head_sha_before,
-            "head_sha_after": head_sha_after,
-            "status": verdict,
-            "findings": result.get("findings", []),
-            "summary": result.get("summary"),
-            "duration_ms": duration_ms,
-        })
-
-    return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+        if log is not None:
+            log.append(
+                {
+                    "event": f"{name}_completed",
+                    "request_id": request_id,
+                    "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                    "repo_path": repo_path if "repo_path" in locals() else arguments.get("repo_path"),
+                    "status": "ERROR",
+                    "error": str(exc),
+                }
+            )
+        return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+    finally:
+        if log is not None:
+            log.close()
 
 
-async def main():
+async def main() -> None:
+    logger.info("=== %s server started ===", SERVER_NAME)
     async with stdio_server() as (read_stream, write_stream):
         await app.run(
             read_stream,
             write_stream,
             InitializationOptions(
-                server_name="sddtdd-broker-mcp",
-                server_version="3.0.0",
+                server_name=SERVER_NAME,
+                server_version=SERVER_VERSION,
                 capabilities=types.ServerCapabilities(),
             ),
         )
+    logger.info("=== %s server exiting ===", SERVER_NAME)
 
 
 if __name__ == "__main__":
     import asyncio
 
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("=== %s interrupted ===", SERVER_NAME)
+    except BaseException:
+        logger.exception("=== %s unhandled exception ===", SERVER_NAME)

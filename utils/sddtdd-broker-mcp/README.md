@@ -14,19 +14,29 @@ decision tools and the self-contained broker task fields
 
 The broker is configured with the role files at startup, not per call.
 The implementer does not hand the broker skill files on every call.
-The broker does not sample an LLM. The process-gate verification is
-enforced in code by the broker itself.
+The broker is LLM-based: both `getNextTask` and `reviewTask` use MCP
+sampling against the configured role files and committed repository
+state. The broker is still read-only. It does not modify files, write
+journal entries, commit, implement, or perform artifact-correctness
+review. It only returns the next broker task or a process-gate verdict.
 
 ## Configuration
 
 The broker resolves its skill paths at startup from environment
-variables, with sensible fallbacks to the in-folder skill files:
+variables, with sensible fallbacks to the in-folder skill files. These
+paths describe the broker's process policy, not the target repository.
+The target project repository is supplied by the implementer on each
+tool call through `repo_path`.
 
 | Environment variable | Default |
 |---|---|
 | `SDDTDD_BROKER_PROCESS_SKILL` | `skills/spec-driven-tdd/SKILL.md` |
 | `SDDTDD_BROKER_ORCHESTRATOR_ROLE` | `skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md` |
 | `SDDTDD_BROKER_STAGES_REF` | `skills/spec-driven-tdd/references/STAGES.md` |
+
+The MCP client must enable sampling for this server. Without sampling,
+the broker cannot ask the model to inspect the committed repository
+state and choose the next process step.
 
 ## Tools
 
@@ -43,6 +53,10 @@ Subsequent calls carry `previous_task_id`.
   "user_input": "original user request"
 }
 ```
+
+`repo_path` is the absolute path to the target project repository. It is
+provided by the implementer. It is not the broker server repository and
+not the skill repository.
 
 The response is one of:
 
@@ -86,6 +100,9 @@ correctness — that is the independent reviewer's job.
 }
 ```
 
+`repo_path` must point to the same target project repository that was
+used for the corresponding `getNextTask` call.
+
 For capture tasks (`USER_INPUT_CAPTURE`) the implementer passes
 `review_type: null` and omits `evidence.review_journal_id`.
 
@@ -98,35 +115,31 @@ The response is one of:
 
 ## Process-gate checks
 
-The broker applies these checks in order:
+`reviewTask` is a process-gate review, not an artifact-correctness
+review. The broker uses MCP sampling to inspect the committed repository
+state, the SDDTDD journal, the issued broker task, and the implementer's
+claimed evidence.
 
-1. Working tree is clean (`git status --porcelain` is empty).
-2. `head_sha_before` is recorded. The broker reads the committed
-   journal from that exact ref for the rest of the call. The
-   implementer cannot commit additional journal entries or verdict
-   JIDs after the broker started verification and then re-ask for
-   a PASS.
-3. Stage-required artifacts exist at `head_sha_before`:
-   `USER_INPUT_CAPTURE` → `SPEC-DRAFT.md`; `SPEC_SPEC` → `SPEC.md`;
-   `ARCHITECTURE` → `ARCHITECTURE.md`; `DECOMPOSE` → `TASKS.md`.
-   Code-producing stages have no broker artifact check.
-4. `JOURNAL_SDD_TDD_SKILL.log` exists at `head_sha_before`.
-5. `work_journal_id` exists in the committed journal.
-6. The work entry has `STATUS: COMPLETED`.
-7. Prerequisite reviewer verdicts exist (`RED_REVIEW: PASS` before
-   `GREEN`, `REGRESSION_REVIEW: PASS` before `FINAL`).
-8. When `review_type` is non-null, a reviewer-verdict journal
-   entry with the right `TYPE` and `STATUS: PASS` exists.
-9. The reviewer verdict's `PARENT` equals the `work_journal_id` of
-   this task. The broker rejects verdicts whose `PARENT` points to
-   a different work entry or that have no `PARENT` at all. This
-   catches a implementer that reuses an old `PASS` from a previous
-   task.
-10. The reviewer verdict's `PARENT` is present in the committed
-    journal.
+The broker checks that the issued task is process-complete, including:
+
+1. the target repository can be inspected at `repo_path`;
+2. the working tree state is safe to evaluate;
+3. the relevant SDDTDD artifacts and journal exist in the committed
+   repository state;
+4. the supplied `work_journal_id` exists and records the issued task's
+   work step with `STATUS: COMPLETED`;
+5. when `review_type` is non-null, the supplied reviewer verdict exists,
+   has the expected review `TYPE`, has `STATUS: PASS`, and points back
+   to the work journal entry through `PARENT`;
+6. prerequisite reviewed stages are present before later work is issued;
+7. a previous broker task is not skipped: the implementer must record a
+   committed `BROKER_TASK_REVIEW: PASS` with the matching broker
+   `TASK_ID` before asking for the next task.
 
 The broker does not check whether the artifact's content is correct,
-idiomatic, or appropriate. That is the reviewer's job.
+idiomatic, or appropriate. That is the independent reviewer's job. The
+broker checks whether the implementer followed the SDDTDD process and
+did not cut corners.
 
 ## Broker access log
 
@@ -134,7 +147,7 @@ The broker writes every `reviewTask` call to an append-only JSONL log
 so the broker's checks can be investigated:
 
 ```text
-<repo>/.git/sddtdd/broker-access.jsonl
+<repo>/.sddtdd_skill/broker-access.jsonl
 ```
 
 Each call produces two events:
@@ -152,18 +165,31 @@ need to look at this log; the broker uses it for its own investigation.
 
 ## Hermes Config
 
+Example Hermes configuration for the LLM-based broker MCP:
+
 ```yaml
 mcp_servers:
   sddtdd_broker:
-    command: "uv"
+    command: uv
     args:
-      - "--directory"
-      - "/path/to/elagentstudio/utils/sddtdd-broker-mcp"
-      - "run"
-      - "server.py"
-    tools:
-      include: [getNextTask, reviewTask]
+    - --directory
+    - /work/elagentstudio/utils/sddtdd-broker-mcp
+    - run
+    - server.py
+    env:
+      PATH: /root/.local/bin:/usr/bin:/bin
+    sampling:
+      enabled: true
+      timeout: 451
+      max_rpm: 5555
+      max_tool_rounds: 5555
+    timeout: 451
+    connect_timeout: 30
 ```
+
+The broker server path in `args` is the repository that contains this MCP
+server. The project under delivery is selected per call by the
+implementer through `repo_path`.
 
 ## Tests
 
