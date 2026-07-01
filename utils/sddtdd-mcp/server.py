@@ -680,8 +680,13 @@ async def _sample_with_tools(
 
         # If the LLM didn't ask for tools, we're done
         stop_reason = getattr(result, "stopReason", None) or "endTurn"
-        logger.info("SAMPLING: round %d stop_reason=%s text_len=%d",
-                     _round + 1, stop_reason, len(last_text))
+        logger.info(
+            "SAMPLING: round %d stop_reason=%s text_len=%d requested_max_tokens=%d",
+            _round + 1,
+            stop_reason,
+            len(last_text),
+            MAX_SAMPLING_TOKENS,
+        )
         if stop_reason == "maxTokens":
             max_token_continues += 1
             if max_token_continues > MAX_MAXTOKEN_CONTINUES:
@@ -692,8 +697,11 @@ async def _sample_with_tools(
                 return last_text, stop_reason
 
             logger.info(
-                "SAMPLING: maxTokens in round %d; asking sampler to continue (%d/%d)",
+                "SAMPLING: maxTokens in round %d; output hit requested_max_tokens=%d; "
+                "text_len=%d chars; missing_tokens=unknown; asking sampler to continue (%d/%d)",
                 _round + 1,
+                MAX_SAMPLING_TOKENS,
+                len(last_text),
                 max_token_continues,
                 MAX_MAXTOKEN_CONTINUES,
             )
