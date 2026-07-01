@@ -175,6 +175,7 @@ against its already-reviewed predecessor inputs and returns PASS, FAIL (with fin
 or NEEDS_CLARIFICATION (with questions). Never modifies files, 
 never implements, never writes the journal, never advances the pipeline. 
 A reviewer that changes the artifact would be evaluating its own work.
+Provide review details in reponse.
 
 ### Broker / orchestrator
 
