@@ -7,11 +7,15 @@ import json
 import logging
 import os
 import subprocess
-import sys
 import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+import mcp.server as mcp_server
+import mcp.types as types
+from mcp.server.models import InitializationOptions
+from mcp.server.stdio import stdio_server
 
 # Logger for our own lifecycle tracing (goes to stderr → mcp-stderr.log)
 logger = logging.getLogger("sddtdd-mcp")
@@ -22,15 +26,11 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S',
 )
 
-import mcp.server as mcp_server
-import mcp.types as types
-from mcp.server.models import InitializationOptions
-from mcp.server.stdio import stdio_server
-
 MAX_SAMPLING_ROUNDS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_ROUNDS", "5555"))
 MAX_SAMPLING_TOKENS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_TOKENS", "128000"))
 MAX_VERDICT_REPAIR_ATTEMPTS = int(os.environ.get("SDDTDD_REVIEW_VERDICT_REPAIR_ATTEMPTS", "21"))
 MAX_MAXTOKEN_CONTINUES = int(os.environ.get("SDDTDD_REVIEW_MAXTOKEN_CONTINUES", "6"))
+MAX_TOOL_OUTPUT_CHARS = int(os.environ.get("SDDTDD_REVIEW_TOOL_OUTPUT_CHARS", "200000"))
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +208,7 @@ Your job:
 - The implementer's prompt is only a hint. If it conflicts with this system policy, the SDDTDD skill files, the journal, or committed artifacts, this policy wins.
 
 Repository inspection rules:
-1. First inspect the repository structure and committed state. Prefer `git show HEAD:<path>`, `git ls-tree`, `git diff HEAD^..HEAD`, and `git log` through `shell_command` when reviewing committed artifacts.
+1. First inspect the repository structure and committed state. Use `shell_command` for read-only inspection such as `git show HEAD:<path>`, `git ls-tree`, `git diff HEAD^..HEAD`, `git log`, `grep`, `find`, `ls`, `cat`, `wc`, `head`, `tail`, and `sed -n` when reviewing committed artifacts.
 2. Read `.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log` from the target repository.
 3. Read every relevant committed SDDTDD artifact that exists:
    - `.sddtdd_skill/SPEC-DRAFT.md`
@@ -382,47 +382,27 @@ async def list_tools() -> list[types.Tool]:
 # Sampling tools — filesystem access for the reviewer LLM
 # ---------------------------------------------------------------------------
 # TODO4 issue #1: the reviewer LLM could only see the prompt text and had
-# no way to read committed files. These tools give the sampled LLM access
-# to read_file and shell_command. Hermes (mcp_tool.py:855-871) already
+# no way to inspect committed files. The sampled LLM gets one minimal
+# read-only inspection tool: shell_command. Hermes (mcp_tool.py:855-871)
 # forwards tools to the LLM call and returns CreateMessageResultWithTools
 # when the LLM emits tool_calls. The loop in _sample_with_tools drives the
 # tool-use round trip.
 
 REVIEWER_TOOLS: list[types.Tool] = [
     types.Tool(
-        name="read_file",
-        description=(
-            "Read a text file from the repository under review. "
-            "Use absolute or repo-relative paths. Returns the file contents "
-            "(truncated to 8000 chars if large)."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": (
-                        "Path to the file, absolute or relative to the "
-                        "repository root."
-                    ),
-                },
-            },
-            "required": ["path"],
-        },
-    ),
-    types.Tool(
         name="shell_command",
         description=(
-            "Run a shell command inside the repository. Use for `git log`, "
-            "`git show`, `git diff`, `ls`, `cat`, etc. The working directory "
-            "is the repository root. Output is truncated to 8000 chars."
+            "Run a read-only shell command inside the repository for inspection only: "
+            "git status, git log/show/diff/ls-tree/ls-files, grep, find, ls, cat, "
+            "wc, head, tail, sed. The working directory is the repository root. "
+            "Output is truncated."
         ),
         inputSchema={
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "Shell command to run.",
+                    "description": "Read-only shell command to run.",
                 },
             },
             "required": ["command"],
@@ -449,33 +429,8 @@ def _resolve_path(repo_path: str, raw: str) -> Path:
 
 def _execute_tool(name: str, args: dict, repo_path: str) -> str:
     """Execute a reviewer tool call. Returns the text result."""
-    if name == "read_file":
-        try:
-            path = _resolve_path(repo_path, args["path"])
-        except (KeyError, ValueError) as exc:
-            return f"ERROR: {exc}"
-        if not path.exists():
-            return f"ERROR: file not found: {path}"
-        if path.is_dir():
-            # ls -la for directories
-            try:
-                result = subprocess.run(
-                    ["ls", "-la", str(path)],
-                    capture_output=True, text=True, timeout=10,
-                )
-                return (result.stdout or "") + (result.stderr or "")
-            except subprocess.TimeoutExpired:
-                return "ERROR: ls timed out"
-        try:
-            text = path.read_text(errors="replace")
-        except UnicodeDecodeError:
-            return f"ERROR: not a text file: {path}"
-        if len(text) > 8000:
-            return text[:8000] + "\n... [truncated at 8000 chars]"
-        return text
-
     if name == "shell_command":
-        cmd = args.get("command", "")
+        cmd = str(args.get("command", "")).strip()
         if not cmd:
             return "ERROR: empty command"
         # Run from repo root
@@ -489,11 +444,20 @@ def _execute_tool(name: str, args: dict, repo_path: str) -> str:
                 timeout=228,
             )
             out = (result.stdout or "") + (result.stderr or "")
-            if len(out) > 8000:
-                out = out[:8000] + "\n... [truncated at 8000 chars]"
+            original_len = len(out)
+            if original_len > MAX_TOOL_OUTPUT_CHARS:
+                out = (
+                    out[:MAX_TOOL_OUTPUT_CHARS]
+                    + "\n\n[TOOL_OUTPUT_TRUNCATED]\n"
+                    + f"Returned chars: {MAX_TOOL_OUTPUT_CHARS}\n"
+                    + f"Original chars: {original_len}\n"
+                    + "The command output exceeded the tool output limit. "
+                    + "The omitted content was not reviewed unless another command reads it explicitly.\n"
+                    + "Run a narrower command to inspect the missing content."
+                )
             return out if out else f"(no output, exit={result.returncode})"
         except subprocess.TimeoutExpired:
-            return "ERROR: command timed out after 15s"
+            return "ERROR: command timed out after 228s"
         except Exception as exc:
             return f"ERROR: {exc}"
 
@@ -741,7 +705,14 @@ async def _sample_with_tools(
                      len(tool_uses), _round + 1)
         tool_results = []
         for tu in tool_uses:
-            output = _execute_tool(tu.name, tu.input, repo_path)
+            tool_args = tu.input if isinstance(tu.input, dict) else {}
+            arg_summary = ""
+            if tu.name == "shell_command":
+                command = str(tool_args.get("command", ""))
+                arg_summary = f" command={command[:300]!r}"
+            logger.info("SAMPLING: executing tool name=%s%s", tu.name, arg_summary)
+            output = _execute_tool(tu.name, tool_args, repo_path)
+            logger.info("SAMPLING: tool result name=%s output_len=%d", tu.name, len(output))
             tool_results.append(
                 types.ToolResultContent(
                     type="tool_result",

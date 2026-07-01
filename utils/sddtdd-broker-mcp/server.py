@@ -48,7 +48,7 @@ logging.basicConfig(
 SERVER_NAME = "sddtdd-broker-mcp"
 SERVER_VERSION = "1.0.0"
 DEFAULT_SKILL_ROOT = Path.home() / ".hermes" / "skills" / "spec-driven-tdd"
-MAX_TOOL_OUTPUT_CHARS = 12000
+MAX_TOOL_OUTPUT_CHARS = int(os.environ.get("SDDTDD_BROKER_TOOL_OUTPUT_CHARS", "200000"))
 MAX_SAMPLING_ROUNDS = int(os.environ.get("SDDTDD_BROKER_MAX_SAMPLING_ROUNDS", "5555"))
 MAX_SAMPLING_TOKENS = int(os.environ.get("SDDTDD_BROKER_MAX_SAMPLING_TOKENS", "128000"))
 MAX_JSON_REPAIR_ATTEMPTS = int(os.environ.get("SDDTDD_BROKER_JSON_REPAIR_ATTEMPTS", "21"))
@@ -159,8 +159,17 @@ def _resolve_path(repo_path: str, raw: str) -> Path:
 
 
 def _trim(text: str, limit: int = MAX_TOOL_OUTPUT_CHARS) -> str:
-    if len(text) > limit:
-        return text[:limit] + f"\n... [truncated at {limit} chars]"
+    original_len = len(text)
+    if original_len > limit:
+        return (
+            text[:limit]
+            + "\n\n[TOOL_OUTPUT_TRUNCATED]\n"
+            + f"Returned chars: {limit}\n"
+            + f"Original chars: {original_len}\n"
+            + "The command output exceeded the tool output limit. "
+            + "The omitted content was not reviewed unless another command reads it explicitly.\n"
+            + "Run a narrower command to inspect the missing content."
+        )
     return text
 
 
@@ -318,32 +327,6 @@ async def list_tools() -> list[types.Tool]:
 
 BROKER_TOOLS: list[types.Tool] = [
     types.Tool(
-        name="read_file",
-        description=(
-            "Read a text file from the repository. Use absolute paths or paths "
-            "relative to repo root. This is read-only and truncates large output."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {"path": {"type": "string"}},
-            "required": ["path"],
-        },
-    ),
-    types.Tool(
-        name="read_skill_file",
-        description=(
-            "Read a file from the installed spec-driven-tdd skill directory, "
-            "usually ~/.hermes/skills/spec-driven-tdd. Use relative paths like "
-            "SKILL.md, SKILL-IMPLEMENTER.md, SKILL-ORCHESTRATOR.md, "
-            "references/JOURNAL.md, references/STAGES.md."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {"path": {"type": "string"}},
-            "required": ["path"],
-        },
-    ),
-    types.Tool(
         name="shell_command",
         description=(
             "Run a read-only shell command in the repository for inspection only: "
@@ -360,30 +343,6 @@ BROKER_TOOLS: list[types.Tool] = [
 
 
 def _execute_broker_tool(name: str, args: dict[str, Any], repo_path: str) -> str:
-    if name == "read_file":
-        try:
-            path = _resolve_path(repo_path, str(args["path"]))
-        except (KeyError, ValueError) as exc:
-            return f"ERROR: {exc}"
-        if not path.exists():
-            return f"ERROR: file not found: {path}"
-        if path.is_dir():
-            try:
-                result = subprocess.run(["ls", "-la", str(path)], capture_output=True, text=True, timeout=10)
-                return _trim((result.stdout or "") + (result.stderr or ""))
-            except subprocess.TimeoutExpired:
-                return "ERROR: ls timed out"
-        try:
-            return _trim(path.read_text(encoding="utf-8", errors="replace"))
-        except Exception as exc:
-            return f"ERROR: could not read file: {exc}"
-
-    if name == "read_skill_file":
-        raw_path = str(args.get("path", ""))
-        if not raw_path or Path(raw_path).is_absolute() or ".." in Path(raw_path).parts:
-            return "ERROR: path must be relative inside the skill directory"
-        return _read_skill_file(raw_path)
-
     if name == "shell_command":
         cmd = str(args.get("command", "")).strip()
         if not cmd:
@@ -666,11 +625,7 @@ async def _sample_with_tools(ctx: Any, initial_prompt: str, repo_path: str) -> t
         for tool_use in tool_uses:
             tool_args = tool_use.input if isinstance(tool_use.input, dict) else {}
             arg_summary = ""
-            if tool_use.name == "read_file":
-                arg_summary = f" path={tool_args.get('path')!r}"
-            elif tool_use.name == "read_skill_file":
-                arg_summary = f" path={tool_args.get('path')!r}"
-            elif tool_use.name == "shell_command":
+            if tool_use.name == "shell_command":
                 command = str(tool_args.get("command", ""))
                 arg_summary = f" command={command[:300]!r}"
             logger.info("sampling executing tool name=%s%s", tool_use.name, arg_summary)
