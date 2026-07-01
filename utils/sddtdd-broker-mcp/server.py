@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import signal
 import shlex
 import subprocess
 import time
@@ -158,6 +159,7 @@ def _resolve_path(repo_path: str, raw: str) -> Path:
     return p
 
 
+
 def _trim(text: str, limit: int = MAX_TOOL_OUTPUT_CHARS) -> str:
     original_len = len(text)
     if original_len > limit:
@@ -171,6 +173,104 @@ def _trim(text: str, limit: int = MAX_TOOL_OUTPUT_CHARS) -> str:
             + "Run a narrower command to inspect the missing content."
         )
     return text
+
+
+
+def _safe_log_text(value: object, limit: int = 300) -> str:
+    """Return ASCII-only text safe for stderr logs.
+
+    MCP stderr logs are later searched with grep. Never write raw sampled
+    text into them: model/tool arguments can contain control bytes, ANSI
+    escapes, or other non-printable characters that make grep treat the log
+    as binary. Use unicode_escape so NUL becomes `\\x00` text instead of a
+    real NUL byte.
+    """
+    text = str(value)
+    if len(text) > limit:
+        text = text[:limit] + f"... ({len(text)} chars total)"
+    return text.encode("unicode_escape", "backslashreplace").decode("ascii")
+
+
+def _cleanup_process_groups(process_groups: list[int], leaked_pids: list[int]) -> None:
+    """Terminate broker shell_command groups and observed leftover PIDs.
+
+    Broker shell_command starts each command in a new session, so the command's
+    initial PID is also its process group id. Group cleanup is the normal path
+    for child trees such as npm -> sh -> vite -> esbuild.
+
+    The leaked_pids list is a fallback for concrete PIDs observed after a command
+    returned. It is useful if a child survives, gets reparented, or escapes the
+    original group/session before final MCP cleanup; killpg(pgid) may miss that,
+    but the exact PID can still be terminated directly.
+    """
+    pgids = sorted(set(process_groups))
+    pids = sorted(set(leaked_pids))
+    if not pgids and not pids:
+        return
+
+    for pgid in pgids:
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+            logger.info("cleanup: sent SIGTERM to process group pgid=%d", pgid)
+        except ProcessLookupError:
+            pass
+        except Exception as exc:
+            logger.warning("cleanup: SIGTERM failed pgid=%d error=%s", pgid, exc)
+
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+            logger.info("cleanup: sent SIGTERM to leaked pid=%d", pid)
+        except ProcessLookupError:
+            pass
+        except Exception as exc:
+            logger.warning("cleanup: SIGTERM failed leaked pid=%d error=%s", pid, exc)
+
+    time.sleep(1)
+
+    for pgid in pgids:
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+            logger.info("cleanup: sent SIGKILL to process group pgid=%d", pgid)
+        except ProcessLookupError:
+            pass
+        except Exception as exc:
+            logger.warning("cleanup: SIGKILL failed pgid=%d error=%s", pgid, exc)
+
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+            logger.info("cleanup: sent SIGKILL to leaked pid=%d", pid)
+        except ProcessLookupError:
+            pass
+        except Exception as exc:
+            logger.warning("cleanup: SIGKILL failed leaked pid=%d error=%s", pid, exc)
+
+
+def _process_group_pids(pgid: int) -> list[int]:
+    """Return live process IDs that still belong to a process group."""
+    pids: list[int] = []
+    proc = Path("/proc")
+    if not proc.exists():
+        return pids
+
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            stat = (entry / "stat").read_text(errors="replace")
+            # /proc/<pid>/stat is: pid (comm) state ppid pgrp session ...
+            # `comm` may contain spaces, so split after the final ") " first.
+            # After that split, fields[0]=state, fields[1]=ppid, fields[2]=pgrp.
+            after_comm = stat.rsplit(") ", 1)[1]
+            fields = after_comm.split()
+            process_pgid = int(fields[2])
+        except Exception:
+            continue
+        if process_pgid == pgid:
+            pids.append(int(entry.name))
+
+    return sorted(pids)
 
 
 def _extract_first_json_object(text: str) -> dict[str, Any]:
@@ -342,7 +442,13 @@ BROKER_TOOLS: list[types.Tool] = [
 ]
 
 
-def _execute_broker_tool(name: str, args: dict[str, Any], repo_path: str) -> str:
+def _execute_broker_tool(
+    name: str,
+    args: dict[str, Any],
+    repo_path: str,
+    process_groups: list[int],
+    leaked_pids: list[int],
+) -> str:
     if name == "shell_command":
         cmd = str(args.get("command", "")).strip()
         if not cmd:
@@ -352,22 +458,48 @@ def _execute_broker_tool(name: str, args: dict[str, Any], repo_path: str) -> str
         try:
             # shlex.split catches obvious malformed quoting before shell=True.
             shlex.split(cmd)
-            result = subprocess.run(
+            process = subprocess.Popen(
                 cmd,
                 shell=True,
                 cwd=repo_path,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=30,
+                start_new_session=True,
             )
-            output = (result.stdout or "") + (result.stderr or "")
+            process_groups.append(process.pid)
+            try:
+                stdout, stderr = process.communicate(timeout=30)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                    stdout, stderr = process.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    stdout, stderr = process.communicate()
+                output = (stdout or "") + (stderr or "")
+                output += (
+                    "\n\n[TOOL_COMMAND_TIMED_OUT]\n"
+                    "Timeout seconds: 30\n"
+                    "The command exceeded the broker shell command timeout and its process group was terminated."
+                )
+            else:
+                output = (stdout or "") + (stderr or "")
+
+            leftover_pids = _process_group_pids(process.pid)
+            if leftover_pids:
+                leaked_pids.extend(leftover_pids)
+                logger.warning(
+                    "PROCESS_LEAK_DETECTED: broker shell_command returned with live process group members pgid=%d pids=%s",
+                    process.pid,
+                    ", ".join(str(pid) for pid in leftover_pids),
+                )
+
             if not output:
-                output = f"(no output, exit={result.returncode})"
+                output = f"(no output, exit={process.returncode})"
             return _trim(output)
         except ValueError as exc:
             return f"ERROR: invalid command: {exc}"
-        except subprocess.TimeoutExpired:
-            return "ERROR: command timed out after 30s"
         except Exception as exc:
             return f"ERROR: {exc}"
 
@@ -549,7 +681,13 @@ def _expected_json_schema_for_operation(operation: str) -> str:
 # Sampling loop
 # ---------------------------------------------------------------------------
 
-async def _sample_with_tools(ctx: Any, initial_prompt: str, repo_path: str) -> tuple[str, str]:
+async def _sample_with_tools(
+    ctx: Any,
+    initial_prompt: str,
+    repo_path: str,
+    process_groups: list[int],
+    leaked_pids: list[int],
+) -> tuple[str, str]:
     messages: list[types.SamplingMessage] = [
         types.SamplingMessage(
             role="user",
@@ -627,9 +765,9 @@ async def _sample_with_tools(ctx: Any, initial_prompt: str, repo_path: str) -> t
             arg_summary = ""
             if tool_use.name == "shell_command":
                 command = str(tool_args.get("command", ""))
-                arg_summary = f" command={command[:300]!r}"
+                arg_summary = f" command={_safe_log_text(command)!r}"
             logger.info("sampling executing tool name=%s%s", tool_use.name, arg_summary)
-            output = _execute_broker_tool(tool_use.name, tool_args, repo_path)
+            output = _execute_broker_tool(tool_use.name, tool_args, repo_path, process_groups, leaked_pids)
             logger.info("sampling tool result name=%s output_len=%d", tool_use.name, len(output))
             tool_results.append(
                 types.ToolResultContent(
@@ -763,6 +901,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
     timestamp_before = datetime.now(timezone.utc).isoformat()
     t_before = time.monotonic()
     log: LogWriter | None = None
+    process_groups: list[int] = []
+    leaked_pids: list[int] = []
 
     try:
         git = GitCapturer(repo_path)
@@ -784,7 +924,13 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         log.append(started_event)
 
         prompt = _get_next_prompt(repo_path, git, arguments) if name == "getNextTask" else _review_task_prompt(repo_path, git, arguments)
-        response_text, stop_reason = await _sample_with_tools(app.request_context, prompt, repo_path)
+        response_text, stop_reason = await _sample_with_tools(
+            app.request_context,
+            prompt,
+            repo_path,
+            process_groups,
+            leaked_pids,
+        )
         logger.info(
             "call_tool %s sampling returned stop_reason=%s text_len=%d response_prefix=%r",
             name,
@@ -872,6 +1018,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             )
         return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
     finally:
+        _cleanup_process_groups(process_groups, leaked_pids)
         if log is not None:
             log.close()
 

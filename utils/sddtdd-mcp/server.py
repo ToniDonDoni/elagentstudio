@@ -6,6 +6,7 @@ records everything in an append-only JSON Lines access log.
 import json
 import logging
 import os
+import signal
 import subprocess
 import time
 import uuid
@@ -30,7 +31,37 @@ MAX_SAMPLING_ROUNDS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_ROUNDS", "5
 MAX_SAMPLING_TOKENS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_TOKENS", "128000"))
 MAX_VERDICT_REPAIR_ATTEMPTS = int(os.environ.get("SDDTDD_REVIEW_VERDICT_REPAIR_ATTEMPTS", "21"))
 MAX_MAXTOKEN_CONTINUES = int(os.environ.get("SDDTDD_REVIEW_MAXTOKEN_CONTINUES", "6"))
+
+
 MAX_TOOL_OUTPUT_CHARS = int(os.environ.get("SDDTDD_REVIEW_TOOL_OUTPUT_CHARS", "200000"))
+MAX_SHELL_COMMAND_SECONDS = int(os.environ.get("SDDTDD_REVIEW_SHELL_COMMAND_SECONDS", "228"))
+MAX_TEST_COMMAND_SECONDS = int(os.environ.get("SDDTDD_REVIEW_TEST_COMMAND_SECONDS", "200"))
+
+# Canonical review response schema for strict JSON output
+REVIEW_RESPONSE_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["verdict", "response"],
+    "properties": {
+        "verdict": {
+            "type": "string",
+            "enum": ["PASS", "FAIL", "NEEDS_CLARIFICATION"],
+        },
+        "response": {
+            "type": "string",
+            "minLength": 1,
+            "description": (
+                "Human-readable review text. Must start with the same verdict "
+                "as the verdict field on the first non-empty line."
+            ),
+        },
+    },
+}
+
+def _review_response_schema_json() -> str:
+    """Return the canonical review JSON Schema used in prompts and repair."""
+    return json.dumps(REVIEW_RESPONSE_SCHEMA, indent=2)
+
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +145,7 @@ def _get_log_path(repo_path: str) -> str:
     return os.path.join(repo_path, ".sddtdd_skill", "review-access.jsonl")
 
 
+
 def _read_text_if_exists(path: Path, max_chars: int = 24000) -> str:
     """Read a role/reference file for reviewer grounding.
 
@@ -131,6 +163,22 @@ def _read_text_if_exists(path: Path, max_chars: int = 24000) -> str:
     if len(data) > max_chars:
         return data[:max_chars] + f"\n... [truncated at {max_chars} chars]"
     return data
+
+
+# Helper: safe logging of sampled tool commands for stderr logs
+def _safe_log_text(value: object, limit: int = 300) -> str:
+    """Return ASCII-only text safe for stderr logs.
+
+    MCP stderr logs are later searched with grep. Never write raw sampled
+    text into them: model/tool arguments can contain control bytes, ANSI
+    escapes, or other non-printable characters that make grep treat the log
+    as binary. Use unicode_escape so NUL becomes `\\x00` text instead of a
+    real NUL byte.
+    """
+    text = str(value)
+    if len(text) > limit:
+        text = text[:limit] + f"... ({len(text)} chars total)"
+    return text.encode("unicode_escape", "backslashreplace").decode("ascii")
 
 
 def _review_skill_paths() -> dict[str, Path]:
@@ -182,6 +230,8 @@ def _build_reviewer_prompt(
         "references/JOURNAL.md": _read_text_if_exists(paths["journal"]),
     }
 
+    response_schema_json = _review_response_schema_json()
+
     system_prompt = f"""You are the independent Spec-Driven TDD reviewer MCP for a target repository.
 
 You are NOT the implementer. You are NOT the broker/orchestrator. You are a read-only independent reviewer.
@@ -216,7 +266,8 @@ Repository inspection rules:
    - `.sddtdd_skill/ARCHITECTURE.md`
    - `.sddtdd_skill/TASKS.md`
 4. Read files named in the implementer's prompt, journal DETAIL fields, tests, evidence files, and recent commits.
-5. If a required committed artifact, journal entry, evidence file, or parent context is missing and you cannot review honestly, return FAIL or NEEDS_CLARIFICATION. Do not guess.
+5. Potentially long commands related to building, testing, verification, or running the application under review must be bounded by an explicit command-level timeout of {MAX_TEST_COMMAND_SECONDS} seconds or less. This includes test runs, build commands, preview/dev/server launches used for verification, application startup, browser/e2e harnesses, and any command that may keep running. Do not run these commands open-ended. If such a command times out, treat the evidence as inconclusive or failing instead of retrying indefinitely.
+6. If a required committed artifact, journal entry, evidence file, or parent context is missing and you cannot review honestly, return FAIL or NEEDS_CLARIFICATION. Do not guess.
 
 Task ancestry and context reconstruction:
 1. If task_id is supplied, locate it in `.sddtdd_skill/TASKS.md` and in the journal.
@@ -286,8 +337,12 @@ FINAL_REVIEW:
 - DONE may only follow FINAL_REVIEW PASS.
 
 Output format:
-- Start with the verdict on the first line exactly as one of: PASS, FAIL, NEEDS_CLARIFICATION.
-- Always explain the workflow meaning of the verdict for the current review_type. Make clear whether observed failures are expected stage evidence or actual review problems.
+- Return JSON only. No markdown. No code fence. No text before or after the JSON object.
+- The JSON object must match this schema exactly:
+{response_schema_json}
+- `verdict` must be exactly one of: PASS, FAIL, NEEDS_CLARIFICATION.
+- `response` must be a non-empty human-readable review text.
+- The first non-empty line of `response` must be exactly the same verdict as the `verdict` field.
 - If the verdict is PASS:
   - Be brief. Do not write a long essay.
   - State what you reviewed and why it passes.
@@ -304,7 +359,6 @@ Output format:
   - Ask concrete numbered questions.
   - Explain what information is missing, where you looked, and why review cannot honestly pass or fail without it.
   - Include the exact artifact, task, requirement, journal entry, or evidence gap that caused the question.
-- Do not return JSON unless explicitly required by the caller. Plain text is preferred.
 
 The installed SDDTDD policy files are embedded below. Use them as authoritative review policy.
 
@@ -399,6 +453,9 @@ REVIEWER_TOOLS: list[types.Tool] = [
             "Run a read-only shell command inside the repository for inspection only: "
             "git status, git log/show/diff/ls-tree/ls-files, grep, find, ls, cat, "
             "wc, head, tail, sed. The working directory is the repository root. "
+            "Potentially long build/test/verification/application-run commands must be "
+            f"bounded by an explicit timeout of {MAX_TEST_COMMAND_SECONDS} seconds or less; "
+            "do not run them open-ended. "
             "Output is truncated."
         ),
         inputSchema={
@@ -431,23 +488,141 @@ def _resolve_path(repo_path: str, raw: str) -> Path:
     return p
 
 
-def _execute_tool(name: str, args: dict, repo_path: str) -> str:
+# Per-review cleanup of process groups created by reviewer shell_command calls.
+
+def _cleanup_process_groups(process_groups: list[int], leaked_pids: list[int]) -> None:
+    """Terminate command process groups and any previously observed leaked PIDs.
+
+    The primary cleanup path is process-group based: every shell_command starts
+    a new session, so its initial process PID is also the process group id, and
+    killing the group should terminate normal children such as npm -> sh -> vite
+    -> esbuild.
+
+    The separate leaked_pids list is a fallback for processes we already saw in
+    a [PROCESS_LEAK_WARNING]. It matters when a child survives the command return
+    and later escapes the original group/session, gets reparented, or otherwise
+    is no longer reachable by killpg(pgid) at final MCP cleanup time. In that
+    case the exact PID we observed is still the best cleanup handle we have.
+    """
+    pgids = sorted(set(process_groups))
+    pids = sorted(set(leaked_pids))
+    if not pgids and not pids:
+        return
+
+    for pgid in pgids:
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+            logger.info("cleanup: sent SIGTERM to process group pgid=%d", pgid)
+        except ProcessLookupError:
+            pass
+        except Exception as exc:
+            logger.warning("cleanup: SIGTERM failed pgid=%d error=%s", pgid, exc)
+
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+            logger.info("cleanup: sent SIGTERM to leaked pid=%d", pid)
+        except ProcessLookupError:
+            pass
+        except Exception as exc:
+            logger.warning("cleanup: SIGTERM failed leaked pid=%d error=%s", pid, exc)
+
+    time.sleep(1)
+
+    for pgid in pgids:
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+            logger.info("cleanup: sent SIGKILL to process group pgid=%d", pgid)
+        except ProcessLookupError:
+            pass
+        except Exception as exc:
+            logger.warning("cleanup: SIGKILL failed pgid=%d error=%s", pgid, exc)
+
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+            logger.info("cleanup: sent SIGKILL to leaked pid=%d", pid)
+        except ProcessLookupError:
+            pass
+        except Exception as exc:
+            logger.warning("cleanup: SIGKILL failed leaked pid=%d error=%s", pid, exc)
+
+
+# Minimal process-leak helper: enumerate live PIDs in a process group.
+def _process_group_pids(pgid: int) -> list[int]:
+    """Return live process IDs that still belong to a process group."""
+    pids: list[int] = []
+    proc = Path("/proc")
+    if not proc.exists():
+        return pids
+
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            stat = (entry / "stat").read_text(errors="replace")
+            # /proc/<pid>/stat is: pid (comm) state ppid pgrp session ...
+            # `comm` may contain spaces, so split after the final ") " first.
+            # After that split, fields[0]=state, fields[1]=ppid, fields[2]=pgrp.
+            after_comm = stat.rsplit(") ", 1)[1]
+            fields = after_comm.split()
+            process_pgid = int(fields[2])
+        except Exception:
+            continue
+        if process_pgid == pgid:
+            pids.append(int(entry.name))
+
+    return sorted(pids)
+
+
+def _execute_tool(
+    name: str,
+    args: dict,
+    repo_path: str,
+    process_groups: list[int],
+    leaked_pids: list[int],
+) -> str:
     """Execute a reviewer tool call. Returns the text result."""
     if name == "shell_command":
         cmd = str(args.get("command", "")).strip()
         if not cmd:
             return "ERROR: empty command"
-        # Run from repo root
+        # Run from repo root in a new process session so timeout can terminate
+        # the whole command tree, not just the intermediate shell. This protects
+        # against commands such as `npm run dev`, `vite preview`, watch-mode test
+        # runners, or e2e harnesses that spawn child processes and keep running.
+        # On timeout, send SIGTERM to the process group first, then SIGKILL if
+        # children do not exit promptly.
         try:
-            result = subprocess.run(
+            process = subprocess.Popen(
                 cmd,
                 shell=True,
                 cwd=repo_path,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=228,
+                start_new_session=True,
             )
-            out = (result.stdout or "") + (result.stderr or "")
+            process_groups.append(process.pid)
+            try:
+                stdout, stderr = process.communicate(timeout=MAX_SHELL_COMMAND_SECONDS)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                    stdout, stderr = process.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    stdout, stderr = process.communicate()
+                out = (stdout or "") + (stderr or "")
+                timeout_notice = (
+                    f"\n\n[TOOL_COMMAND_TIMED_OUT]\n"
+                    f"Timeout seconds: {MAX_SHELL_COMMAND_SECONDS}\n"
+                    "The command exceeded the shell command timeout and its process group was terminated."
+                )
+                out = out + timeout_notice
+            else:
+                out = (stdout or "") + (stderr or "")
+
             original_len = len(out)
             if original_len > MAX_TOOL_OUTPUT_CHARS:
                 out = (
@@ -459,37 +634,36 @@ def _execute_tool(name: str, args: dict, repo_path: str) -> str:
                     + "The omitted content was not reviewed unless another command reads it explicitly.\n"
                     + "Run a narrower command to inspect the missing content."
                 )
-            return out if out else f"(no output, exit={result.returncode})"
-        except subprocess.TimeoutExpired:
-            return "ERROR: command timed out after 228s"
+
+            # Minimal process-leak warning for shell_command tool result
+            leftover_pids = _process_group_pids(process.pid)
+            if leftover_pids:
+                leaked_pids.extend(leftover_pids)
+                leftover_pid_text = ", ".join(str(pid) for pid in leftover_pids)
+                logger.warning(
+                    "PROCESS_LEAK_WARNING: shell_command returned with live process group members pgid=%d pids=%s",
+                    process.pid,
+                    leftover_pid_text,
+                )
+                warning = (
+                    "\n\n[PROCESS_LEAK_WARNING]\n"
+                    "This shell_command returned, but left running processes in its process group.\n"
+                    f"PIDs: {leftover_pid_text}"
+                )
+                out = (out or f"(no output, exit={process.returncode})") + warning
+
+            return out if out else f"(no output, exit={process.returncode})"
         except Exception as exc:
             return f"ERROR: {exc}"
 
     return f"ERROR: unknown tool: {name}"
 
 
-def _extract_verdict(text: str) -> str | None:
-    """Extract verdict from the first non-empty response line only."""
-    first_line = ""
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped:
-            first_line = stripped.upper()
-            break
+def _parse_review_json(text: str) -> tuple[str | None, str | None, str | None]:
+    """Parse and validate the canonical review JSON response.
 
-    if first_line in {"PASS", "FAIL", "NEEDS_CLARIFICATION"}:
-        return first_line
-    if first_line.startswith("## REVIEW VERDICT:"):
-        candidate = first_line.split(":", 1)[1].strip()
-        if candidate in {"PASS", "FAIL", "NEEDS_CLARIFICATION"}:
-            return candidate
-    return None
-
-def _parse_repair_json(text: str) -> tuple[str | None, str | None, str | None]:
-    """Parse sampler output for verdict repair.
-
-    Returns (verdict, response, error). The repair sampler must return a JSON
-    object with verdict and response fields.
+    Returns (verdict, response, error). Both primary sampler output and repair
+    output must match REVIEW_RESPONSE_SCHEMA exactly.
     """
     try:
         data = json.loads(text)
@@ -499,12 +673,37 @@ def _parse_repair_json(text: str) -> tuple[str | None, str | None, str | None]:
     if not isinstance(data, dict):
         return None, None, "expected a JSON object"
 
+    expected_keys = {"verdict", "response"}
+    actual_keys = set(data.keys())
+    if actual_keys != expected_keys:
+        missing = sorted(expected_keys - actual_keys)
+        extra = sorted(actual_keys - expected_keys)
+        parts = []
+        if missing:
+            parts.append(f"missing required keys: {missing}")
+        if extra:
+            parts.append(f"unexpected keys: {extra}")
+        return None, None, "; ".join(parts)
+
     verdict = data.get("verdict")
     response = data.get("response")
     if verdict not in {"PASS", "FAIL", "NEEDS_CLARIFICATION"}:
         return None, None, "verdict must be PASS, FAIL, or NEEDS_CLARIFICATION"
     if not isinstance(response, str) or not response.strip():
         return None, None, "response must be a non-empty string"
+
+    first_response_line = next(
+        (line.strip() for line in response.splitlines() if line.strip()),
+        "",
+    )
+    if first_response_line != verdict:
+        return (
+            None,
+            None,
+            "response first non-empty line must exactly match verdict; "
+            f"verdict={verdict!r} first_line={first_response_line!r}",
+        )
+
     return verdict, response, None
 
 
@@ -531,11 +730,8 @@ This is exactly what the sampler returned:
 {current_response}
 ===== END RAW SAMPLER RESPONSE =====
 
-Expected schema:
-{{
-  "verdict": "PASS | FAIL | NEEDS_CLARIFICATION",
-  "response": "the reviewer response text to expose to the caller"
-}}
+Expected JSON Schema:
+{_review_response_schema_json()}
 
 Do not re-review the repository. Do not change the review meaning. Only convert
 the raw sampler response into the expected JSON object. Return JSON only, with
@@ -557,7 +753,7 @@ no markdown, no code fence, and no explanation.
                 repair_text = block.text
 
         stop_reason = getattr(result, "stopReason", None) or "endTurn"
-        verdict, response, error = _parse_repair_json(repair_text.strip())
+        verdict, response, error = _parse_review_json(repair_text.strip())
         attempts.append({
             "attempt": attempt,
             "stop_reason": stop_reason,
@@ -586,6 +782,8 @@ async def _sample_with_tools(
     ctx,
     initial_prompt: str,
     repo_path: str,
+    process_groups: list[int],
+    leaked_pids: list[int],
     system_prompt: str | None = None,
     max_rounds: int = 5,
 ) -> tuple[str, str]:
@@ -685,8 +883,8 @@ async def _sample_with_tools(
                             "Your previous response hit the max token limit before producing a usable final review. "
                             "Continue from where you stopped. Do not restart the review from scratch. "
                             "If you have enough evidence to conclude, produce the final review and start the response "
-                            "with exactly one verdict line: PASS, FAIL, or NEEDS_CLARIFICATION. "
-                            "If the verdict is FAIL or NEEDS_CLARIFICATION, include concise actionable explanation."
+                            "with a JSON object matching the required review response schema. "
+                            "If the verdict is FAIL or NEEDS_CLARIFICATION, include concise actionable explanation in the response field."
                         ),
                     ),
                 )
@@ -713,9 +911,9 @@ async def _sample_with_tools(
             arg_summary = ""
             if tu.name == "shell_command":
                 command = str(tool_args.get("command", ""))
-                arg_summary = f" command={command[:300]!r}"
+                arg_summary = f" command={_safe_log_text(command)!r}"
             logger.info("SAMPLING: executing tool name=%s%s", tu.name, arg_summary)
-            output = _execute_tool(tu.name, tool_args, repo_path)
+            output = _execute_tool(tu.name, tool_args, repo_path, process_groups, leaked_pids)
             logger.info("SAMPLING: tool result name=%s output_len=%d", tu.name, len(output))
             tool_results.append(
                 types.ToolResultContent(
@@ -745,10 +943,10 @@ async def call_tool(
     # Log the full incoming tool call for debugging
     log_args = dict(arguments)
     prompt = log_args.get("prompt", "")
-    if prompt and len(prompt) > 200:
-        log_args["prompt"] = prompt[:200] + f"... ({len(prompt)} chars total)"
-    logger.info("call_tool: name=%s args=%s",
-                 name, json.dumps(log_args, ensure_ascii=False, default=str))
+    if prompt:
+        log_args["prompt"] = _safe_log_text(prompt, limit=200)
+    safe_args = _safe_log_text(json.dumps(log_args, ensure_ascii=False, default=str), limit=1000)
+    logger.info("call_tool: name=%s args=%s", name, safe_args)
 
     if name != "review":
         raise ValueError(f"Unknown tool: {name}")
@@ -761,6 +959,9 @@ async def call_tool(
     request_id = uuid.uuid4().hex
     timestamp_before = datetime.now(timezone.utc).isoformat()
     t_before = time.monotonic()
+
+    process_groups: list[int] = []
+    leaked_pids: list[int] = []
 
     log = None
     try:
@@ -808,6 +1009,8 @@ async def call_tool(
             ctx=ctx,
             initial_prompt=effective_prompt,
             repo_path=repo_path,
+            process_groups=process_groups,
+            leaked_pids=leaked_pids,
             system_prompt=system_prompt,
             max_rounds=MAX_SAMPLING_ROUNDS,
         )
@@ -825,19 +1028,20 @@ async def call_tool(
             )
             stop_reason = "emptyResponse"
 
-        verdict = None if execution_error else _extract_verdict(response_text)
         repair_attempts: list[dict] = []
-        if verdict is None and not execution_error:
-            verdict, repaired_response, repair_attempts = await _repair_verdict_with_sampling(
-                ctx,
-                raw_response=response_text,
-                parse_error=(
-                    "reviewer response did not start with PASS, FAIL, "
-                    "NEEDS_CLARIFICATION, or ## Review Verdict: <verdict>"
-                ),
-                max_attempts=MAX_VERDICT_REPAIR_ATTEMPTS,
-            )
-            response_text = repaired_response
+        verdict = None
+        if not execution_error:
+            verdict, parsed_response, parse_error = _parse_review_json(response_text.strip())
+            if parse_error is None:
+                response_text = parsed_response or ""
+            else:
+                verdict, repaired_response, repair_attempts = await _repair_verdict_with_sampling(
+                    ctx,
+                    raw_response=response_text,
+                    parse_error=parse_error,
+                    max_attempts=MAX_VERDICT_REPAIR_ATTEMPTS,
+                )
+                response_text = repaired_response
 
         if verdict is None and not execution_error:
             execution_error = True
@@ -902,6 +1106,7 @@ async def call_tool(
         if log:
             log.append(_error_event(request_id, repo_path, review_type, task_id, result["response"]))
 
+    _cleanup_process_groups(process_groups, leaked_pids)
     return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
