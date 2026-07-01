@@ -49,7 +49,8 @@ SERVER_NAME = "sddtdd-broker-mcp"
 SERVER_VERSION = "1.0.0"
 DEFAULT_SKILL_ROOT = Path.home() / ".hermes" / "skills" / "spec-driven-tdd"
 MAX_TOOL_OUTPUT_CHARS = 12000
-MAX_SAMPLING_ROUNDS = 64
+MAX_SAMPLING_ROUNDS = int(os.environ.get("SDDTDD_BROKER_MAX_SAMPLING_ROUNDS", "5555"))
+MAX_SAMPLING_TOKENS = int(os.environ.get("SDDTDD_BROKER_MAX_SAMPLING_TOKENS", "128000"))
 
 READ_ONLY_DENY_RE = re.compile(
     r"""
@@ -581,7 +582,7 @@ async def _sample_with_tools(ctx: Any, initial_prompt: str, repo_path: str) -> t
         logger.info("sampling round %d/%d messages=%d", round_no, MAX_SAMPLING_ROUNDS, len(messages))
         result = await ctx.session.create_message(
             messages=messages,
-            max_tokens=64000,
+            max_tokens=MAX_SAMPLING_TOKENS,
             tools=BROKER_TOOLS,
         )
 
