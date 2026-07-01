@@ -51,6 +51,9 @@ DEFAULT_SKILL_ROOT = Path.home() / ".hermes" / "skills" / "spec-driven-tdd"
 MAX_TOOL_OUTPUT_CHARS = 12000
 MAX_SAMPLING_ROUNDS = int(os.environ.get("SDDTDD_BROKER_MAX_SAMPLING_ROUNDS", "5555"))
 MAX_SAMPLING_TOKENS = int(os.environ.get("SDDTDD_BROKER_MAX_SAMPLING_TOKENS", "128000"))
+MAX_JSON_REPAIR_ATTEMPTS = int(os.environ.get("SDDTDD_BROKER_JSON_REPAIR_ATTEMPTS", "21"))
+MAX_MAXTOKEN_CONTINUES = int(os.environ.get("SDDTDD_BROKER_MAXTOKEN_CONTINUES", "6"))
+JSON_ERROR_PREFIX_CHARS = 300
 
 READ_ONLY_DENY_RE = re.compile(
     r"""
@@ -164,6 +167,7 @@ def _trim(text: str, limit: int = MAX_TOOL_OUTPUT_CHARS) -> str:
 def _extract_first_json_object(text: str) -> dict[str, Any]:
     """Extract the first balanced JSON object from an LLM response."""
     stripped = text.strip()
+    response_prefix = stripped[:JSON_ERROR_PREFIX_CHARS]
     if stripped.startswith("```"):
         stripped = re.sub(r"^```(?:json)?\s*", "", stripped, flags=re.I)
         stripped = re.sub(r"\s*```$", "", stripped)
@@ -176,7 +180,10 @@ def _extract_first_json_object(text: str) -> dict[str, Any]:
 
     start = stripped.find("{")
     if start < 0:
-        raise BrokerError(f"LLM response did not contain JSON object: {stripped[:500]}")
+        raise BrokerError(
+            "LLM response did not contain JSON object; "
+            f"response_len={len(stripped)} response_prefix={response_prefix!r}"
+        )
 
     depth = 0
     in_string = False
@@ -202,7 +209,10 @@ def _extract_first_json_object(text: str) -> dict[str, Any]:
                 if not isinstance(parsed, dict):
                     raise BrokerError("LLM JSON response was not an object")
                 return parsed
-    raise BrokerError("LLM response contained incomplete JSON object")
+    raise BrokerError(
+        "LLM response contained incomplete JSON object; "
+        f"response_len={len(stripped)} response_prefix={response_prefix!r}"
+    )
 
 
 def _read_skill_file(relative_path: str) -> str:
@@ -566,6 +576,17 @@ def _review_task_prompt(repo_path: str, git: GitCapturer, args: dict[str, Any]) 
 
 
 # ---------------------------------------------------------------------------
+# JSON schema helper for repair
+# ---------------------------------------------------------------------------
+def _expected_json_schema_for_operation(operation: str) -> str:
+    if operation == "getNextTask":
+        return GET_NEXT_SCHEMA
+    if operation == "reviewTask":
+        return REVIEW_TASK_SCHEMA
+    return "Return one valid JSON object."
+
+
+# ---------------------------------------------------------------------------
 # Sampling loop
 # ---------------------------------------------------------------------------
 
@@ -578,6 +599,7 @@ async def _sample_with_tools(ctx: Any, initial_prompt: str, repo_path: str) -> t
     ]
 
     last_text = ""
+    max_token_continues = 0
     for round_no in range(1, MAX_SAMPLING_ROUNDS + 1):
         logger.info("sampling round %d/%d messages=%d", round_no, MAX_SAMPLING_ROUNDS, len(messages))
         result = await ctx.session.create_message(
@@ -592,7 +614,47 @@ async def _sample_with_tools(ctx: Any, initial_prompt: str, repo_path: str) -> t
                 last_text = block.text
 
         stop_reason = getattr(result, "stopReason", None) or "endTurn"
-        logger.info("sampling stop_reason=%s text_len=%d", stop_reason, len(last_text))
+        logger.info(
+            "sampling stop_reason=%s text_len=%d requested_max_tokens=%d",
+            stop_reason,
+            len(last_text),
+            MAX_SAMPLING_TOKENS,
+        )
+        if stop_reason == "maxTokens":
+            max_token_continues += 1
+            if max_token_continues > MAX_MAXTOKEN_CONTINUES:
+                logger.warning(
+                    "sampling maxTokens continue limit exceeded (%d); returning maxTokens",
+                    MAX_MAXTOKEN_CONTINUES,
+                )
+                return last_text, stop_reason
+
+            logger.info(
+                "sampling maxTokens in round %d; output hit requested_max_tokens=%d; "
+                "text_len=%d chars; missing_tokens=unknown; asking sampler to continue (%d/%d)",
+                round_no,
+                MAX_SAMPLING_TOKENS,
+                len(last_text),
+                max_token_continues,
+                MAX_MAXTOKEN_CONTINUES,
+            )
+            messages.append(types.SamplingMessage(role="assistant", content=result.content))
+            messages.append(
+                types.SamplingMessage(
+                    role="user",
+                    content=types.TextContent(
+                        type="text",
+                        text=(
+                            "Your previous response hit the max token limit before producing a usable final JSON result. "
+                            "Continue from where you stopped. Do not restart from scratch. "
+                            "If you have enough information to conclude, return exactly one valid JSON object matching "
+                            "the requested schema. Do not wrap it in Markdown."
+                        ),
+                    ),
+                )
+            )
+            continue
+
         if stop_reason != "toolUse":
             return last_text, stop_reason
 
@@ -602,7 +664,18 @@ async def _sample_with_tools(ctx: Any, initial_prompt: str, repo_path: str) -> t
 
         tool_results: list[types.ToolResultContent] = []
         for tool_use in tool_uses:
-            output = _execute_broker_tool(tool_use.name, tool_use.input, repo_path)
+            tool_args = tool_use.input if isinstance(tool_use.input, dict) else {}
+            arg_summary = ""
+            if tool_use.name == "read_file":
+                arg_summary = f" path={tool_args.get('path')!r}"
+            elif tool_use.name == "read_skill_file":
+                arg_summary = f" path={tool_args.get('path')!r}"
+            elif tool_use.name == "shell_command":
+                command = str(tool_args.get("command", ""))
+                arg_summary = f" command={command[:300]!r}"
+            logger.info("sampling executing tool name=%s%s", tool_use.name, arg_summary)
+            output = _execute_broker_tool(tool_use.name, tool_args, repo_path)
+            logger.info("sampling tool result name=%s output_len=%d", tool_use.name, len(output))
             tool_results.append(
                 types.ToolResultContent(
                     type="tool_result",
@@ -614,6 +687,110 @@ async def _sample_with_tools(ctx: Any, initial_prompt: str, repo_path: str) -> t
         messages.append(types.SamplingMessage(role="user", content=tool_results))
 
     return last_text, "maxRoundsExceeded"
+
+
+# ---------------------------------------------------------------------------
+# JSON repair helper
+# ---------------------------------------------------------------------------
+async def _repair_json_with_sampling(
+    ctx: Any,
+    operation: str,
+    raw_response: str,
+    parse_error: str,
+) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
+    attempts: list[dict[str, Any]] = []
+    expected_schema = _expected_json_schema_for_operation(operation)
+    repair_prompt = (
+        "The broker MCP server could not parse your previous response as the required JSON object.\n\n"
+        f"Operation: {operation}\n\n"
+        f"Parser error:\n{parse_error}\n\n"
+        "Expected JSON schema / allowed shapes:\n"
+        f"{expected_schema}\n\n"
+        "Previous raw response follows exactly between markers. Convert it to exactly one valid JSON object "
+        "matching the expected schema. Do not add Markdown, code fences, commentary, or extra text.\n\n"
+        "---RAW_RESPONSE_START---\n"
+        f"{raw_response}\n"
+        "---RAW_RESPONSE_END---"
+    )
+
+    messages: list[types.SamplingMessage] = [
+        types.SamplingMessage(
+            role="user",
+            content=types.TextContent(type="text", text=repair_prompt),
+        )
+    ]
+
+    for attempt_no in range(1, MAX_JSON_REPAIR_ATTEMPTS + 1):
+        result = await ctx.session.create_message(
+            messages=messages,
+            max_tokens=MAX_SAMPLING_TOKENS,
+        )
+        blocks = result.content if isinstance(result.content, list) else [result.content]
+        repaired_text = ""
+        for block in blocks:
+            if isinstance(block, types.TextContent):
+                repaired_text = block.text
+
+        stop_reason = getattr(result, "stopReason", None) or "endTurn"
+        try:
+            parsed = _extract_first_json_object(repaired_text)
+            attempts.append(
+                {
+                    "attempt": attempt_no,
+                    "stop_reason": stop_reason,
+                    "success": True,
+                    "response_len": len(repaired_text),
+                }
+            )
+            logger.info(
+                "JSON_REPAIR: attempt %d/%d stop_reason=%s success=True response_len=%d",
+                attempt_no,
+                MAX_JSON_REPAIR_ATTEMPTS,
+                stop_reason,
+                len(repaired_text),
+            )
+            return parsed, repaired_text, attempts
+        except Exception as exc:
+            error_text = str(exc)
+            attempts.append(
+                {
+                    "attempt": attempt_no,
+                    "stop_reason": stop_reason,
+                    "success": False,
+                    "error": error_text,
+                    "response_len": len(repaired_text),
+                    "response_prefix": repaired_text[:JSON_ERROR_PREFIX_CHARS],
+                }
+            )
+            logger.info(
+                "JSON_REPAIR: attempt %d/%d stop_reason=%s success=False error=%s response_prefix=%r",
+                attempt_no,
+                MAX_JSON_REPAIR_ATTEMPTS,
+                stop_reason,
+                error_text,
+                repaired_text[:JSON_ERROR_PREFIX_CHARS],
+            )
+            messages.append(types.SamplingMessage(role="assistant", content=result.content))
+            messages.append(
+                types.SamplingMessage(
+                    role="user",
+                    content=types.TextContent(
+                        type="text",
+                        text=(
+                            "That response still did not parse as the required JSON object.\n\n"
+                            f"Parser error:\n{error_text}\n\n"
+                            "Return exactly one valid JSON object matching the expected schema. "
+                            "Do not include Markdown, code fences, commentary, or extra text."
+                        ),
+                    ),
+                )
+            )
+
+    raise BrokerError(
+        "Could not repair LLM response into valid JSON after "
+        f"{MAX_JSON_REPAIR_ATTEMPTS} attempts; last_error="
+        f"{attempts[-1].get('error') if attempts else parse_error}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -653,7 +830,30 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
         prompt = _get_next_prompt(repo_path, git, arguments) if name == "getNextTask" else _review_task_prompt(repo_path, git, arguments)
         response_text, stop_reason = await _sample_with_tools(app.request_context, prompt, repo_path)
-        parsed = _extract_first_json_object(response_text)
+        logger.info(
+            "call_tool %s sampling returned stop_reason=%s text_len=%d response_prefix=%r",
+            name,
+            stop_reason,
+            len(response_text),
+            response_text[:JSON_ERROR_PREFIX_CHARS],
+        )
+        json_repair_attempts: list[dict[str, Any]] = []
+        try:
+            parsed = _extract_first_json_object(response_text)
+        except Exception as exc:
+            logger.info(
+                "call_tool %s JSON parse failed: %s response_len=%d response_prefix=%r",
+                name,
+                exc,
+                len(response_text),
+                response_text[:JSON_ERROR_PREFIX_CHARS],
+            )
+            parsed, response_text, json_repair_attempts = await _repair_json_with_sampling(
+                app.request_context,
+                name,
+                response_text,
+                str(exc),
+            )
 
         head_after = git.head_sha()
         stale = head_after != head_before
@@ -691,6 +891,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             "duration_ms": duration_ms,
             "result": result,
             "raw_response": response_text,
+            "json_repair_attempts": json_repair_attempts,
         }
         log.append(completed_event)
         return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
