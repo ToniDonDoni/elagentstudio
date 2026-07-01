@@ -30,6 +30,7 @@ from mcp.server.stdio import stdio_server
 MAX_SAMPLING_ROUNDS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_ROUNDS", "5555"))
 MAX_SAMPLING_TOKENS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_TOKENS", "128000"))
 MAX_VERDICT_REPAIR_ATTEMPTS = int(os.environ.get("SDDTDD_REVIEW_VERDICT_REPAIR_ATTEMPTS", "21"))
+MAX_MAXTOKEN_CONTINUES = int(os.environ.get("SDDTDD_REVIEW_MAXTOKEN_CONTINUES", "6"))
 
 
 # ---------------------------------------------------------------------------
@@ -638,6 +639,7 @@ async def _sample_with_tools(
     ]
 
     last_text = ""
+    max_token_continues = 0
     for _round in range(max_rounds):
         logger.info("SAMPLING: round %d of %d, messages=%d",
                      _round + 1, max_rounds, len(messages))
@@ -680,6 +682,40 @@ async def _sample_with_tools(
         stop_reason = getattr(result, "stopReason", None) or "endTurn"
         logger.info("SAMPLING: round %d stop_reason=%s text_len=%d",
                      _round + 1, stop_reason, len(last_text))
+        if stop_reason == "maxTokens":
+            max_token_continues += 1
+            if max_token_continues > MAX_MAXTOKEN_CONTINUES:
+                logger.warning(
+                    "SAMPLING: maxTokens continue limit exceeded (%d); returning maxTokens",
+                    MAX_MAXTOKEN_CONTINUES,
+                )
+                return last_text, stop_reason
+
+            logger.info(
+                "SAMPLING: maxTokens in round %d; asking sampler to continue (%d/%d)",
+                _round + 1,
+                max_token_continues,
+                MAX_MAXTOKEN_CONTINUES,
+            )
+            messages.append(
+                types.SamplingMessage(role="assistant", content=result.content)
+            )
+            messages.append(
+                types.SamplingMessage(
+                    role="user",
+                    content=types.TextContent(
+                        type="text",
+                        text=(
+                            "Your previous response hit the max token limit before producing a usable final review. "
+                            "Do not restart the review from scratch. Stop analysis and produce the final review now. "
+                            "Start the response with exactly one verdict line: PASS, FAIL, or NEEDS_CLARIFICATION. "
+                            "Then provide concise evidence and findings only."
+                        ),
+                    ),
+                )
+            )
+            continue
+
         if stop_reason != "toolUse":
             return last_text, stop_reason
 
