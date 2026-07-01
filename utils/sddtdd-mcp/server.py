@@ -707,9 +707,10 @@ async def _sample_with_tools(
                         type="text",
                         text=(
                             "Your previous response hit the max token limit before producing a usable final review. "
-                            "Do not restart the review from scratch. Stop analysis and produce the final review now. "
-                            "Start the response with exactly one verdict line: PASS, FAIL, or NEEDS_CLARIFICATION. "
-                            "Then provide concise evidence and findings only."
+                            "Continue from where you stopped. Do not restart the review from scratch. "
+                            "If you have enough evidence to conclude, produce the final review and start the response "
+                            "with exactly one verdict line: PASS, FAIL, or NEEDS_CLARIFICATION. "
+                            "If the verdict is FAIL or NEEDS_CLARIFICATION, include concise actionable explanation."
                         ),
                     ),
                 )
