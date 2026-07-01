@@ -29,6 +29,7 @@ from mcp.server.stdio import stdio_server
 
 MAX_SAMPLING_ROUNDS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_ROUNDS", "5555"))
 MAX_SAMPLING_TOKENS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_TOKENS", "128000"))
+MAX_VERDICT_REPAIR_ATTEMPTS = int(os.environ.get("SDDTDD_REVIEW_VERDICT_REPAIR_ATTEMPTS", "21"))
 
 
 # ---------------------------------------------------------------------------
@@ -515,6 +516,102 @@ def _extract_verdict(text: str) -> str | None:
             return candidate
     return None
 
+def _parse_repair_json(text: str) -> tuple[str | None, str | None, str | None]:
+    """Parse sampler output for verdict repair.
+
+    Returns (verdict, response, error). The repair sampler must return a JSON
+    object with verdict and response fields.
+    """
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return None, None, f"invalid JSON: {exc}"
+
+    if not isinstance(data, dict):
+        return None, None, "expected a JSON object"
+
+    verdict = data.get("verdict")
+    response = data.get("response")
+    if verdict not in {"PASS", "FAIL", "NEEDS_CLARIFICATION"}:
+        return None, None, "verdict must be PASS, FAIL, or NEEDS_CLARIFICATION"
+    if not isinstance(response, str) or not response.strip():
+        return None, None, "response must be a non-empty string"
+    return verdict, response, None
+
+
+async def _repair_verdict_with_sampling(
+    ctx,
+    *,
+    raw_response: str,
+    parse_error: str,
+    max_attempts: int,
+) -> tuple[str | None, str, list[dict]]:
+    """Ask the sampler to convert an unparseable reviewer response to JSON."""
+    attempts: list[dict] = []
+    current_response = raw_response
+    current_error = parse_error
+
+    for attempt in range(1, max_attempts + 1):
+        prompt = f"""The reviewer MCP server could not convert the sampler response into tool JSON.
+
+Parser error:
+{current_error}
+
+This is exactly what the sampler returned:
+===== BEGIN RAW SAMPLER RESPONSE =====
+{current_response}
+===== END RAW SAMPLER RESPONSE =====
+
+Expected schema:
+{{
+  "verdict": "PASS | FAIL | NEEDS_CLARIFICATION",
+  "response": "the reviewer response text to expose to the caller"
+}}
+
+Do not re-review the repository. Do not change the review meaning. Only convert
+the raw sampler response into the expected JSON object. Return JSON only, with
+no markdown, no code fence, and no explanation.
+"""
+        result = await ctx.session.create_message(
+            messages=[
+                types.SamplingMessage(
+                    role="user",
+                    content=types.TextContent(type="text", text=prompt),
+                )
+            ],
+            max_tokens=MAX_SAMPLING_TOKENS,
+        )
+
+        repair_text = ""
+        for block in (result.content if isinstance(result.content, list) else [result.content]):
+            if isinstance(block, types.TextContent):
+                repair_text = block.text
+
+        stop_reason = getattr(result, "stopReason", None) or "endTurn"
+        verdict, response, error = _parse_repair_json(repair_text.strip())
+        attempts.append({
+            "attempt": attempt,
+            "stop_reason": stop_reason,
+            "error": error,
+        })
+        logger.info(
+            "VERDICT_REPAIR: attempt %d/%d stop_reason=%s success=%s error=%s",
+            attempt,
+            max_attempts,
+            stop_reason,
+            error is None,
+            error,
+        )
+
+        if error is None:
+            return verdict, response, attempts
+
+        current_response = repair_text
+        current_error = error
+
+    return None, raw_response, attempts
+
+
 
 async def _sample_with_tools(
     ctx,
@@ -709,13 +806,27 @@ async def call_tool(
             stop_reason = "emptyResponse"
 
         verdict = None if execution_error else _extract_verdict(response_text)
+        repair_attempts: list[dict] = []
+        if verdict is None and not execution_error:
+            verdict, repaired_response, repair_attempts = await _repair_verdict_with_sampling(
+                ctx,
+                raw_response=response_text,
+                parse_error=(
+                    "reviewer response did not start with PASS, FAIL, "
+                    "NEEDS_CLARIFICATION, or ## Review Verdict: <verdict>"
+                ),
+                max_attempts=MAX_VERDICT_REPAIR_ATTEMPTS,
+            )
+            response_text = repaired_response
+
         if verdict is None and not execution_error:
             execution_error = True
             response_text = (
-                "Reviewer response did not start with a valid verdict line "
-                "(PASS, FAIL, or NEEDS_CLARIFICATION). This is a reviewer/MCP "
-                "execution failure, not a semantic review verdict. Retry the "
-                "review or inspect the reviewer access log.\n\n"
+                "Reviewer response could not be converted to the MCP review "
+                f"JSON schema after {MAX_VERDICT_REPAIR_ATTEMPTS} repair attempts. "
+                "This is a reviewer/MCP execution failure, not a semantic "
+                "review verdict. Retry the review or inspect the reviewer "
+                "access log.\n\n"
                 + response_text
             )
 
@@ -745,6 +856,7 @@ async def call_tool(
             "response": response_text,
             "stale": stale,
             "duration_ms": duration_ms,
+            "verdict_repair_attempts": repair_attempts,
         }
         log.append(completed_event)
         logger.info("call_tool: review_completed verdict=%s status=%s duration_ms=%d",
