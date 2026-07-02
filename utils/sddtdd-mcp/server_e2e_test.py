@@ -66,6 +66,7 @@ def event(message: str) -> None:
     print(f"[{ts}] [u2u] {message}", flush=True)
 
 
+
 def summarize_json(value: Any, *, limit: int = 1200) -> str:
     try:
         text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
@@ -74,6 +75,20 @@ def summarize_json(value: Any, *, limit: int = 1200) -> str:
     if len(text) > limit:
         return text[:limit] + f"... ({len(text)} chars total)"
     return text
+
+
+# === Test runner helpers ===
+
+def banner(title: str) -> None:
+    line = "=" * 96
+    print(f"\n{line}\nTEST: {title.upper()}\n{line}", flush=True)
+
+
+def matches_test_mask(test_name: str, masks: list[str]) -> bool:
+    if not masks:
+        return True
+    lowered_name = test_name.lower()
+    return any(mask.lower() in lowered_name for mask in masks)
 
 
 def fail(message: str) -> None:
@@ -734,33 +749,58 @@ async def run_all(args: argparse.Namespace) -> None:
 
         async with MCPStdioClient(server_path=server_path, env=env, verbose=args.verbose) as client:
             event("RUN_TEST: initialize")
+            banner("initialize")
             await client.initialize()
             event("RUN_TEST_DONE: initialize")
-            event("RUN_TEST: test_startup_and_list_tools")
-            await test_startup_and_list_tools(client)
-            event("RUN_TEST_DONE: test_startup_and_list_tools")
-            event("RUN_TEST: test_basic_review")
-            await test_basic_review(client, repo)
-            event("RUN_TEST_DONE: test_basic_review")
-            event("RUN_TEST: test_tool_use_roundtrip")
-            await test_tool_use_roundtrip(client, repo, tool_use_type=args.tool_use_type)
-            event("RUN_TEST_DONE: test_tool_use_roundtrip")
-            event("RUN_TEST: test_async_shell_command_does_not_block_list_tools")
-            await test_async_shell_command_does_not_block_list_tools(client, repo, tool_use_type=args.tool_use_type)
-            event("RUN_TEST_DONE: test_async_shell_command_does_not_block_list_tools")
-            event("RUN_TEST: test_invalid_review_triggers_repair")
-            await test_invalid_review_triggers_repair(client, repo)
-            event("RUN_TEST_DONE: test_invalid_review_triggers_repair")
-            event("RUN_TEST: test_repair_sampling_does_not_block_list_tools")
-            await test_repair_sampling_does_not_block_list_tools(client, repo)
-            event("RUN_TEST_DONE: test_repair_sampling_does_not_block_list_tools")
+
+            async def run_named_test(test_name: str, test_fn: Callable[[], Awaitable[None]]) -> None:
+                if not matches_test_mask(test_name, args.test):
+                    event(f"RUN_TEST_SKIP: {test_name} masks={args.test!r}")
+                    return
+                event(f"RUN_TEST: {test_name}")
+                banner(test_name)
+                await test_fn()
+                event(f"RUN_TEST_DONE: {test_name}")
+
+            await run_named_test("test_startup_and_list_tools", lambda: test_startup_and_list_tools(client))
+            await run_named_test("test_basic_review", lambda: test_basic_review(client, repo))
+            await run_named_test(
+                "test_tool_use_roundtrip",
+                lambda: test_tool_use_roundtrip(client, repo, tool_use_type=args.tool_use_type),
+            )
+            await run_named_test(
+                "test_async_shell_command_does_not_block_list_tools",
+                lambda: test_async_shell_command_does_not_block_list_tools(client, repo, tool_use_type=args.tool_use_type),
+            )
+            await run_named_test("test_invalid_review_triggers_repair", lambda: test_invalid_review_triggers_repair(client, repo))
+            await run_named_test(
+                "test_repair_sampling_does_not_block_list_tools",
+                lambda: test_repair_sampling_does_not_block_list_tools(client, repo),
+            )
 
         assert_true(log_path.exists(), f"access log must exist at {log_path}")
         lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         started = [e for e in lines if e.get("event") == "review_started"]
         completed = [e for e in lines if e.get("event") == "review_completed"]
-        assert_true(len(started) >= 5, f"expected at least 5 review_started events, got {len(started)}")
-        assert_true(len(completed) >= 5, f"expected at least 5 review_completed events, got {len(completed)}")
+        expected_review_events = 5 if not args.test else sum(
+            1
+            for name in (
+                "test_basic_review",
+                "test_tool_use_roundtrip",
+                "test_async_shell_command_does_not_block_list_tools",
+                "test_invalid_review_triggers_repair",
+                "test_repair_sampling_does_not_block_list_tools",
+            )
+            if matches_test_mask(name, args.test)
+        )
+        assert_true(
+            len(started) >= expected_review_events,
+            f"expected at least {expected_review_events} review_started events, got {len(started)}",
+        )
+        assert_true(
+            len(completed) >= expected_review_events,
+            f"expected at least {expected_review_events} review_completed events, got {len(completed)}",
+        )
         ok("access log contains review_started/review_completed records")
 
         print("\n🎉 U2U MCP test suite passed. Async server lives; communicate() department is closed.")
@@ -783,6 +823,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=os.environ.get("U2U_TOOL_USE_TYPE", "tool_use"),
         choices=["tool_use", "toolUse"],
         help="JSON type spelling for sampling tool-use content. Default: tool_use.",
+    )
+    parser.add_argument(
+        "--test",
+        action="append",
+        default=[],
+        metavar="MASK",
+        help="Run only tests whose names contain MASK, case-insensitive. Can be specified multiple times. Default: run all tests.",
     )
     parser.add_argument("--verbose", action="store_true", help="Print raw MCP traffic and server stderr.")
     parser.add_argument("--keep-temp", action="store_true", help="Do not delete the temporary Git repo/log dir.")
