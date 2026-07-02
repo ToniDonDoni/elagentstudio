@@ -224,6 +224,52 @@ def _review_skill_paths() -> dict[str, Path]:
     }
 
 
+# --- Added: policy file helpers ---
+def _review_policy_file_paths() -> dict[str, Path]:
+    """Return all Markdown policy files under the installed SDDTDD skill root.
+
+    The reviewer should not hardcode only a few known files, because new policy
+    files such as ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md must be included
+    automatically when they are added to the skill directory.
+    """
+    paths = _review_skill_paths()
+    skill_root = paths["skill_root"]
+
+    policy_files: dict[str, Path] = {}
+    if skill_root.exists():
+        for path in sorted(skill_root.rglob("*.md")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(skill_root).as_posix()
+            policy_files[relative] = path
+
+    if policy_files:
+        return policy_files
+
+    # Fallback for broken/missing skill_root deployments: preserve the old
+    # explicit paths so the prompt still explains what could not be read.
+    return {
+        key: path
+        for key, path in paths.items()
+        if key != "skill_root"
+    }
+
+
+def _format_policy_bundle(policy_bundle: dict[str, str]) -> str:
+    """Format all loaded policy Markdown files into one prompt section."""
+    parts: list[str] = []
+    for relative_path, text in policy_bundle.items():
+        parts.extend(
+            [
+                f"===== BEGIN {relative_path} =====",
+                text,
+                f"===== END {relative_path} =====",
+                "",
+            ]
+        )
+    return "\n".join(parts).rstrip()
+
+
 def _build_reviewer_prompt(
     *,
     repo_path: str,
@@ -243,12 +289,12 @@ def _build_reviewer_prompt(
     """
     paths = _review_skill_paths()
 
+    policy_file_paths = _review_policy_file_paths()
     policy_bundle = {
-        "SKILL.md": _read_text_if_exists(paths["skill"]),
-        "SKILL-IMPLEMENTER.md": _read_text_if_exists(paths["implementer"]),
-        "references/STAGES.md": _read_text_if_exists(paths["stages"]),
-        "references/JOURNAL.md": _read_text_if_exists(paths["journal"]),
+        relative_path: _read_text_if_exists(path)
+        for relative_path, path in policy_file_paths.items()
     }
+    formatted_policy_bundle = _format_policy_bundle(policy_bundle)
 
     response_schema_json = _review_response_schema_json()
 
@@ -396,22 +442,11 @@ Output format:
   - Include the exact artifact, task, requirement, journal entry, or evidence gap that caused the question.
 
 The installed SDDTDD policy files are embedded below. Use them as authoritative review policy.
+All Markdown files under the installed skill root are included automatically so new policy files are not silently missed.
 
-===== BEGIN SKILL.md =====
-{policy_bundle["SKILL.md"]}
-===== END SKILL.md =====
-
-===== BEGIN SKILL-IMPLEMENTER.md =====
-{policy_bundle["SKILL-IMPLEMENTER.md"]}
-===== END SKILL-IMPLEMENTER.md =====
-
-===== BEGIN references/STAGES.md =====
-{policy_bundle["references/STAGES.md"]}
-===== END references/STAGES.md =====
-
-===== BEGIN references/JOURNAL.md =====
-{policy_bundle["references/JOURNAL.md"]}
-===== END references/JOURNAL.md =====
+===== BEGIN SDDTDD POLICY FILES =====
+{formatted_policy_bundle}
+===== END SDDTDD POLICY FILES =====
 """
 
     user_prompt = f"""Review request supplied by implementer.
@@ -1223,7 +1258,10 @@ async def call_tool(
             "review_type": review_type,
             "task_id": task_id,
             "prompt": prompt,
-            "reviewer_skill_paths": {k: str(v) for k, v in _review_skill_paths().items()},
+            "reviewer_skill_paths": {
+                "skill_root": str(_review_skill_paths()["skill_root"]),
+                "policy_files": {k: str(v) for k, v in _review_policy_file_paths().items()},
+            },
         }
         log.append(started_event)
         logger.debug("call_tool: review_started logged, starting sampling")
