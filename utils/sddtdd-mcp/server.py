@@ -1366,7 +1366,7 @@ async def call_tool(
         )
         logger.debug("call_tool: sampling returned stop_reason=%s", stop_reason)
 
-        execution_error = stop_reason in {"maxTokens1", "maxRoundsExceeded"}
+        execution_error = stop_reason in {"maxTokens", "maxRoundsExceeded"}
         if not response_text.strip():
             execution_error = True
             response_text = REVIEW_RETRY_RESPONSE
