@@ -3,6 +3,7 @@
 Single tool: review. Captures Git state, delegates to LLM via MCP sampling,
 records everything in an append-only JSON Lines access log.
 """
+import atexit
 import json
 import logging
 import os
@@ -41,8 +42,60 @@ class _DemoteMcpLowLevelInfoFilter(logging.Filter):
 for handler in logging.getLogger().handlers:
     handler.addFilter(_DemoteMcpLowLevelInfoFilter())
 
+def _log_process_exit() -> None:
+    """Log graceful interpreter shutdown paths.
+
+    This does not run for SIGKILL or hard crashes, but it gives us evidence for
+    normal exits, SystemExit, handled KeyboardInterrupt, SIGTERM/SIGHUP/SIGQUIT
+    paths that are caught by our signal handlers, and stdio-driven shutdowns.
+    """
+    logger.warning(
+        "PROCESS_EXIT: pid=%d ppid=%d cwd=%s",
+        os.getpid(),
+        os.getppid(),
+        os.getcwd(),
+    )
+
+
+def _make_signal_logging_handler(signum: int):
+    """Return a signal handler that logs the signal then preserves default death semantics."""
+    def _handler(received_signum, frame):
+        signal_name = signal.Signals(received_signum).name
+        logger.warning(
+            "PROCESS_SIGNAL_RECEIVED: pid=%d ppid=%d signal=%s(%d)",
+            os.getpid(),
+            os.getppid(),
+            signal_name,
+            received_signum,
+        )
+        signal.signal(received_signum, signal.SIG_DFL)
+        os.kill(os.getpid(), received_signum)
+
+    return _handler
+
+
+def _install_signal_lifecycle_logging() -> None:
+    """Install best-effort logging for external termination signals.
+
+    SIGKILL and SIGSTOP cannot be caught. If the process disappears without a
+    PROCESS_SIGNAL_RECEIVED or PROCESS_EXIT log line, that points to SIGKILL,
+    crash, or parent/stdio teardown that bypassed Python-level cleanup.
+    """
+    atexit.register(_log_process_exit)
+    for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT):
+        try:
+            signal.signal(signum, _make_signal_logging_handler(signum))
+            logger.debug("PROCESS_SIGNAL_HANDLER_INSTALLED: signal=%s(%d)", signal.Signals(signum).name, signum)
+        except Exception as exc:
+            logger.warning(
+                "PROCESS_SIGNAL_HANDLER_INSTALL_FAILED: signal=%s(%d) error=%s",
+                signal.Signals(signum).name,
+                signum,
+                exc,
+            )
+
 MAX_SAMPLING_ROUNDS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_ROUNDS", "5555"))
-MAX_SAMPLING_TOKENS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_TOKENS", "128000"))
+MAX_SAMPLING_TOKENS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_TOKENS", "20000"))
 MAX_VERDICT_REPAIR_ATTEMPTS = int(os.environ.get("SDDTDD_REVIEW_VERDICT_REPAIR_ATTEMPTS", "21"))
 
 MAX_MAXTOKEN_CONTINUES = int(os.environ.get("SDDTDD_REVIEW_MAXTOKEN_CONTINUES", "6"))
@@ -996,13 +1049,20 @@ the response field must keep concrete explanatory body text after the verdict li
                 _safe_log_text(json.dumps(result_dump, ensure_ascii=False, default=str), limit=2000),
             )
             logger.warning(
-                "REVIEW_RESPONSE_REPAIR_EMPTY_OUTPUT: attempt=%d/%d stop_reason=%s preserving_original_len=%d and returning retry response",
+                "REVIEW_RESPONSE_REPAIR_EMPTY_OUTPUT: attempt=%d/%d stop_reason=%s preserving_original_len=%d and retrying repair",
                 attempt,
                 max_attempts,
                 stop_reason,
                 len(original_response),
             )
-            return None, REVIEW_RETRY_RESPONSE, attempts
+            attempts.append({
+                "attempt": attempt,
+                "stop_reason": stop_reason,
+                "error": "empty repair output",
+            })
+            current_response = original_response
+            current_error = f"repair returned empty output with stop_reason={stop_reason}; retry without replacing the original reviewer response"
+            continue
 
         verdict, response, error = _parse_review_json(repair_text.strip())
         attempts.append({
@@ -1429,8 +1489,9 @@ def _error_event(request_id: str, repo_path: str, review_type: str, task_id: str
 
 
 async def main():
+    _install_signal_lifecycle_logging()
     logger.debug("=== SDDTDD-MCP SERVER STARTED ===")
-    logger.debug("PROCESS: pid=%d, cwd=%s", os.getpid(), os.getcwd())
+    logger.debug("PROCESS: pid=%d, ppid=%d, cwd=%s", os.getpid(), os.getppid(), os.getcwd())
 
     try:
         async with stdio_server() as (read_stream, write_stream):
