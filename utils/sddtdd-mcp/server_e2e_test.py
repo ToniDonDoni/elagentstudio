@@ -1225,11 +1225,12 @@ async def test_shell_command_process_leak_warning_and_cleanup(
             return tool_use_result(
                 tool_id="u2u-leak-tool",
                 name="shell_command",
-                arguments={"command": "sh -c 'sleep 30 & printf LEAK_PARENT_DONE'"},
+                arguments={"command": "sh -c 'sleep 30 >/dev/null 2>&1 < /dev/null & printf LEAK_PARENT_DONE'"},
                 tool_use_type=tool_use_type,
             )
         tool_text = extract_text_content(params)
-        assert_true("LEAK_PARENT_DONE" in tool_text, "process leak scenario must include parent command output")
+        assert_true("TIMED_OUT: false" in tool_text, "process leak scenario must not depend on command timeout")
+        assert_true("STDOUT:\nLEAK_PARENT_DONE" in tool_text, "process leak scenario must include parent command stdout")
         assert_true("[PROCESS_LEAK_WARNING]" in tool_text, "process leak scenario must include PROCESS_LEAK_WARNING")
         return text_result(valid_review_json("PASS", "process leak warning was surfaced"))
 
