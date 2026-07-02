@@ -51,8 +51,11 @@ REVIEW_RESPONSE_SCHEMA: dict = {
             "type": "string",
             "minLength": 1,
             "description": (
-                "Human-readable review text. Must start with the same verdict "
-                "as the verdict field on the first non-empty line."
+                "Required human-readable review text. Must start with the same "
+                "verdict as the verdict field on the first non-empty line, then "
+                "include body text after that verdict line. For PASS, keep the "
+                "body brief: state the reviewed scope and why it passed. For FAIL "
+                "and NEEDS_CLARIFICATION, include concrete explanatory body text."
             ),
         },
     },
@@ -341,8 +344,11 @@ Output format:
 - The JSON object must match this schema exactly:
 {response_schema_json}
 - `verdict` must be exactly one of: PASS, FAIL, NEEDS_CLARIFICATION.
-- `response` must be a non-empty human-readable review text.
+- `response` is required for every verdict and must be non-empty human-readable review text.
 - The first non-empty line of `response` must be exactly the same verdict as the `verdict` field.
+- `response` must contain body text after the verdict line for every verdict.
+- For PASS, keep the response brief: state the reviewed scope and why it passed.
+- For FAIL and NEEDS_CLARIFICATION, include concrete explanatory body text. Do not return diagnostic placeholders such as "sampler returned empty response".
 - If the verdict is PASS:
   - Be brief. Do not write a long essay.
   - State what you reviewed and why it passes.
@@ -659,12 +665,38 @@ def _execute_tool(
     return f"ERROR: unknown tool: {name}"
 
 
+def _unwrap_top_level_json_code_fence(text: str) -> str:
+    """Strip one top-level Markdown JSON code fence before json.loads.
+
+    The reviewer prompt says "No markdown. No code fence.", but sampling models
+    still sometimes wrap otherwise-valid JSON in ```json ... ```. This is a
+    deterministic transport cleanup only: it does not extract JSON from arbitrary
+    prose and it does not change review meaning.
+    """
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return stripped
+
+    lines = stripped.splitlines()
+    if len(lines) < 2:
+        return stripped
+
+    opening = lines[0].strip().lower()
+    if opening not in {"```", "```json"}:
+        return stripped
+    if lines[-1].strip() != "```":
+        return stripped
+
+    return "\n".join(lines[1:-1]).strip()
+
+
 def _parse_review_json(text: str) -> tuple[str | None, str | None, str | None]:
     """Parse and validate the canonical review JSON response.
 
     Returns (verdict, response, error). Both primary sampler output and repair
     output must match REVIEW_RESPONSE_SCHEMA exactly.
     """
+    text = _unwrap_top_level_json_code_fence(text)
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -704,6 +736,23 @@ def _parse_review_json(text: str) -> tuple[str | None, str | None, str | None]:
             f"verdict={verdict!r} first_line={first_response_line!r}",
         )
 
+    response_lines = [line.strip() for line in response.splitlines() if line.strip()]
+    body_text = "\n".join(response_lines[1:]).strip()
+    if not body_text:
+        return (
+            None,
+            None,
+            f"response body is required for verdict={verdict!r}",
+        )
+    if verdict in {"FAIL", "NEEDS_CLARIFICATION"}:
+        lower_body = body_text.lower()
+        if "sampler returned empty response" in lower_body:
+            return (
+                None,
+                None,
+                "response body must preserve the review explanation, not replace it with a sampler diagnostic",
+            )
+
     return verdict, response, None
 
 
@@ -714,29 +763,39 @@ async def _repair_verdict_with_sampling(
     parse_error: str,
     max_attempts: int,
 ) -> tuple[str | None, str, list[dict]]:
-    """Ask the sampler to convert an unparseable reviewer response to JSON."""
+    """Ask sampling to convert an unparseable reviewer response to JSON."""
     attempts: list[dict] = []
     current_response = raw_response
     current_error = parse_error
 
     for attempt in range(1, max_attempts + 1):
-        prompt = f"""The reviewer MCP server could not convert the sampler response into tool JSON.
+        prompt = f"""The reviewer MCP server could not convert the reviewer response into tool JSON.
 
 Parser error:
 {current_error}
 
-This is exactly what the sampler returned:
-===== BEGIN RAW SAMPLER RESPONSE =====
+This is exactly the reviewer response that must be reformatted:
+===== BEGIN RAW REVIEWER RESPONSE =====
 {current_response}
-===== END RAW SAMPLER RESPONSE =====
+===== END RAW REVIEWER RESPONSE =====
 
 Expected JSON Schema:
 {_review_response_schema_json()}
 
-Do not re-review the repository. Do not change the review meaning. Only convert
-the raw sampler response into the expected JSON object. Return JSON only, with
-no markdown, no code fence, and no explanation.
+Do not re-review the repository. Do not change the review meaning. Do not invent
+a new review. Do not replace the review explanation with diagnostics about the
+sampling system. Only convert the raw reviewer response into the expected JSON
+object. Return JSON only, with no markdown, no code fence, and no explanation.
+The response field is required for every verdict and must include body text after
+the verdict line. For PASS, keep the body brief. For FAIL and NEEDS_CLARIFICATION,
+the response field must keep concrete explanatory body text after the verdict line.
 """
+        logger.debug(
+            "REVIEW_RESPONSE_REPAIR_PROMPT: attempt=%d/%d prompt=%r",
+            attempt,
+            max_attempts,
+            _safe_log_text(prompt, limit=3000),
+        )
         result = await ctx.session.create_message(
             messages=[
                 types.SamplingMessage(
@@ -747,10 +806,11 @@ no markdown, no code fence, and no explanation.
             max_tokens=MAX_SAMPLING_TOKENS,
         )
 
-        repair_text = ""
+        repair_text_parts = []
         for block in (result.content if isinstance(result.content, list) else [result.content]):
             if isinstance(block, types.TextContent):
-                repair_text = block.text
+                repair_text_parts.append(block.text)
+        repair_text = "\n".join(repair_text_parts)
 
         stop_reason = getattr(result, "stopReason", None) or "endTurn"
         verdict, response, error = _parse_review_json(repair_text.strip())
@@ -759,14 +819,23 @@ no markdown, no code fence, and no explanation.
             "stop_reason": stop_reason,
             "error": error,
         })
-        logger.info(
-            "VERDICT_REPAIR: attempt %d/%d stop_reason=%s success=%s error=%s",
-            attempt,
-            max_attempts,
-            stop_reason,
-            error is None,
-            error,
-        )
+        if error is not None:
+            log_parse_failure = logger.warning if attempt == max_attempts else logger.info
+            log_parse_failure(
+                "REVIEW_RESPONSE_PARSE: source=repair attempt=%d/%d stop_reason=%s success=False error=%s raw=%r",
+                attempt + 1,
+                max_attempts + 1,
+                stop_reason,
+                error,
+                _safe_log_text(repair_text, limit=300),
+            )
+        else:
+            logger.info(
+                "REVIEW_RESPONSE_PARSE: source=repair attempt=%d/%d stop_reason=%s success=True error=None",
+                attempt + 1,
+                max_attempts + 1,
+                stop_reason,
+            )
 
         if error is None:
             return verdict, response, attempts
@@ -840,9 +909,12 @@ async def _sample_with_tools(
             raise
 
         # Extract any text in the content blocks
+        text_parts = []
         for block in (result.content if isinstance(result.content, list) else [result.content]):
             if isinstance(block, types.TextContent):
-                last_text = block.text
+                text_parts.append(block.text)
+        if text_parts:
+            last_text = "\n".join(text_parts)
 
         # If the LLM didn't ask for tools, we're done
         stop_reason = getattr(result, "stopReason", None) or "endTurn"
@@ -903,8 +975,6 @@ async def _sample_with_tools(
             logger.info("SAMPLING: stop_reason=toolUse but no tool_uses found, returning")
             return last_text, stop_reason
 
-        logger.info("SAMPLING: executing %d tool(s) in round %d",
-                     len(tool_uses), _round + 1)
         tool_results = []
         for tu in tool_uses:
             tool_args = tu.input if isinstance(tu.input, dict) else {}
@@ -912,9 +982,16 @@ async def _sample_with_tools(
             if tu.name == "shell_command":
                 command = str(tool_args.get("command", ""))
                 arg_summary = f" command={_safe_log_text(command)!r}"
-            logger.info("SAMPLING: executing tool name=%s%s", tu.name, arg_summary)
             output = _execute_tool(tu.name, tool_args, repo_path, process_groups, leaked_pids)
-            logger.info("SAMPLING: tool result name=%s output_len=%d", tu.name, len(output))
+            logger.debug(
+                "SAMPLING_TOOL: round=%d tool_index=%d/%d name=%s%s output_len=%d",
+                _round + 1,
+                len(tool_results) + 1,
+                len(tool_uses),
+                tu.name,
+                arg_summary,
+                len(output),
+            )
             tool_results.append(
                 types.ToolResultContent(
                     type="tool_result",
@@ -946,7 +1023,7 @@ async def call_tool(
     if prompt:
         log_args["prompt"] = _safe_log_text(prompt, limit=200)
     safe_args = _safe_log_text(json.dumps(log_args, ensure_ascii=False, default=str), limit=1000)
-    logger.info("call_tool: name=%s args=%s", name, safe_args)
+    logger.debug("call_tool: name=%s args=%s", name, safe_args)
 
     if name != "review":
         raise ValueError(f"Unknown tool: {name}")
@@ -1032,6 +1109,20 @@ async def call_tool(
         verdict = None
         if not execution_error:
             verdict, parsed_response, parse_error = _parse_review_json(response_text.strip())
+            if parse_error is not None:
+                logger.info(
+                    "REVIEW_RESPONSE_PARSE: source=primary attempt=1/%d stop_reason=%s success=False error=%s raw=%r",
+                    MAX_VERDICT_REPAIR_ATTEMPTS + 1,
+                    stop_reason,
+                    parse_error,
+                    _safe_log_text(response_text, limit=300),
+                )
+            else:
+                logger.info(
+                    "REVIEW_RESPONSE_PARSE: source=primary attempt=1/%d stop_reason=%s success=True error=None",
+                    MAX_VERDICT_REPAIR_ATTEMPTS + 1,
+                    stop_reason,
+                )
             if parse_error is None:
                 response_text = parsed_response or ""
             else:
@@ -1136,12 +1227,12 @@ def _error_event(request_id: str, repo_path: str, review_type: str, task_id: str
 
 
 async def main():
-    logger.info("=== SDDTDD-MCP SERVER STARTED ===")
-    logger.info("PROCESS: pid=%d, cwd=%s", os.getpid(), os.getcwd())
+    logger.debug("=== SDDTDD-MCP SERVER STARTED ===")
+    logger.debug("PROCESS: pid=%d, cwd=%s", os.getpid(), os.getcwd())
 
     try:
         async with stdio_server() as (read_stream, write_stream):
-            logger.info("stdio_server: connected, entering app.run()")
+            logger.debug("stdio_server: connected, entering app.run()")
             try:
                 await app.run(
                     read_stream,
@@ -1156,25 +1247,25 @@ async def main():
                 logger.error("SERVE: app.run() raised %s: %s",
                              type(exc).__name__, exc, exc_info=True)
                 raise  # still propagate so the process exits
-        logger.info("SERVE: stdio_server context exited (read stream closed by client)")
+        logger.debug("SERVE: stdio_server context exited (read stream closed by client)")
     except Exception:
         logger.exception("SERVE: main() caught exception in stdio_server block")
         raise
 
-    logger.info("=== SDDTDD-MCP SERVER EXITING (normal) ===")
+    logger.debug("=== SDDTDD-MCP SERVER EXITING (normal) ===")
 
 
 if __name__ == "__main__":
     import asyncio
-    logger.info("=== SDDTDD-MCP PROCESS STARTING (__main__) ===")
+    logger.debug("=== SDDTDD-MCP PROCESS STARTING (__main__) ===")
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("=== SDDTDD-MCP PROCESS: KeyboardInterrupt ===")
+        logger.debug("=== SDDTDD-MCP PROCESS: KeyboardInterrupt ===")
     except SystemExit:
-        logger.info("=== SDDTDD-MCP PROCESS: SystemExit ===")
+        logger.debug("=== SDDTDD-MCP PROCESS: SystemExit ===")
     except BaseException:
         logger.exception("=== SDDTDD-MCP PROCESS: UNHANDLED EXCEPTION ===")
     else:
-        logger.info("=== SDDTDD-MCP PROCESS EXITED cleanly ===")
-    logger.info("=== SDDTDD-MCP PROCESS WILL NOW EXIT ===")
+        logger.debug("=== SDDTDD-MCP PROCESS EXITED cleanly ===")
+    logger.debug("=== SDDTDD-MCP PROCESS WILL NOW EXIT ===")
