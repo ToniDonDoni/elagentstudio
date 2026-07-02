@@ -335,32 +335,6 @@ previously completed behavior remains valid, whether automatically
 testable requirements are covered, and whether the evidence corresponds
 to the exact final committed state.
 
-Final review MUST NOT begin until regression evidence receives `PASS`.
-
-## Stage 7 — Final Review
-
-The final review evaluates the complete committed solution and its
-artifact chain. The reviewer checks:
-
-- `.sddtdd_skill/SPEC-DRAFT.md` preserves the original user input;
-- `.sddtdd_skill/SPEC.md` has `PASS`;
-- `.sddtdd_skill/ARCHITECTURE.md` has `PASS`;
-- `.sddtdd_skill/TASKS.md` has `PASS`;
-- every requirement maps to tasks;
-- every automatically testable behavior has reviewed RED-GREEN evidence;
-- every task implementation has `PASS`;
-- all required tests pass;
-- non-automatable requirements have appropriate review evidence;
-- architecture matches implementation;
-- no required artifact is missing;
-- traceability is complete;
-- journal relationships are complete;
-- every deliberate deviation is recorded as an `AGENT_DECISION` with its
-  accepted risk and mitigation;
-- the working tree contains no uncommitted solution artifacts.
-
-`DONE` may be recorded only after `FINAL_REVIEW` receives `PASS`.
-
 ## Commit rules
 
 Every reviewable artifact and every evidence file named in a review
@@ -418,7 +392,6 @@ The workflow is complete only when:
   evidence;
 - all task branches have converged;
 - regression evidence has independent review `PASS`;
-- final review has `PASS`;
 - all required tests pass;
 - traceability is complete;
 - the journal is complete and internally connected;

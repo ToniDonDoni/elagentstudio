@@ -669,38 +669,6 @@ DETAIL: Regression evidence confirms both acceptance criteria remain satisfied. 
 
 ---
 
-## 9. Final Review
-
-Review the complete committed feature.
-
-Review scope:
-
-- both acceptance criteria from reviewed `.sddtdd_skill/SPEC.md` are implemented;
-- both task branches have reviewed RED and GREEN stages;
-- all tests pass;
-- journal and commit history are complete;
-- no uncommitted solution artifacts remain.
-
-Record the result:
-
-```text
-=== J-20260614-100000-019 ===
-TYPE: FINAL_REVIEW
-SPEC: S-DEMO-01
-STATUS: PASS
-PARENT: J-20260614-100000-018
-ROOT: J-20260614-100000-001
-DETAIL: Final feature review passed. Reviewed commit <hash>.
-```
-
-Commit:
-
-```text
-journal: record final review for S-DEMO-01
-```
-
----
-
 ## 10. Completion
 
 Record pipeline completion:

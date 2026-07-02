@@ -19,7 +19,6 @@ TODO: Align JOURNAL.md with the new architecture stage.
   -> TASKS_COMPLETE
   -> REGRESSION
   -> REGRESSION_REVIEW
-  -> FINAL_REVIEW
   -> DONE
 - Add the failure transition:
   ARCHITECTURE_REVIEW FAIL -> ARCHITECTURE
@@ -127,7 +126,6 @@ J-20260614-204500-001
 | `TASKS_COMPLETE` | All active task branches for a specification are complete |
 | `REGRESSION` | Regression test run |
 | `REGRESSION_REVIEW` | Regression review result |
-| `FINAL_REVIEW` | Final implementation review result |
 | `BROKER_TASK_REVIEW` | MCP task broker process-gate verdict on whether a broker-issued task is process-complete |
 | `ESCALATION` | Review limit exceeded or user decision required |
 | `DONE` | Pipeline completed |
@@ -137,7 +135,7 @@ J-20260614-204500-001
 | STATUS | Meaning | Typical entry types |
 |---|---|---|
 | `COMPLETED` | Work step completed | `USER_INPUT`, `PROJECT_INIT`, `SPEC_SPEC`, `DECOMPOSE`, `AGENT_DECISION`, `RED`, `GREEN`, `TASKS_COMPLETE`, `REGRESSION`, `DONE` |
-| `PASS` | Review passed | `SPEC_REVIEW`, `TASK_REVIEW`, `RED_REVIEW`, `GREEN_REVIEW`, `REGRESSION_REVIEW`, `FINAL_REVIEW` |
+| `PASS` | Review passed | `SPEC_REVIEW`, `TASK_REVIEW`, `RED_REVIEW`, `GREEN_REVIEW`, `REGRESSION_REVIEW` |
 | `FAIL` | Review failed | Review entries |
 | `NEEDS_CLARIFICATION` | More information is required | Review entries |
 | `FIXED` | A failed RED or GREEN artifact was corrected | `RED`, `GREEN` |
@@ -326,7 +324,6 @@ All entries referring to the same logical task MUST use identical values for the
 | `TASKS_COMPLETE` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `REGRESSION` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `REGRESSION_REVIEW` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
-| `FINAL_REVIEW` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `BROKER_TASK_REVIEW` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `ESCALATION` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `DONE` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
@@ -353,7 +350,6 @@ USER_INPUT
 → TASKS_COMPLETE
 → REGRESSION
 → REGRESSION_REVIEW
-→ FINAL_REVIEW
 → DONE
 ```
 
@@ -374,7 +370,6 @@ TASK_REVIEW FAIL → DECOMPOSE
 RED_REVIEW FAIL → RED
 GREEN_REVIEW FAIL → GREEN
 REGRESSION_REVIEW FAIL → REGRESSION or affected task
-FINAL_REVIEW FAIL → affected task or REGRESSION
 ```
 
 In broker mode, the implementer produces this sequence in the journal

@@ -287,7 +287,9 @@ Repository inspection rules:
    - `.sddtdd_skill/TASKS.md`
 4. Read files named in the implementer's prompt, journal DETAIL fields, tests, evidence files, and recent commits.
 5. Potentially long commands related to building, testing, verification, or running the application under review must be bounded by an explicit command-level timeout of {MAX_TEST_COMMAND_SECONDS} seconds or less. This includes test runs, build commands, preview/dev/server launches used for verification, application startup, browser/e2e harnesses, and any command that may keep running. Do not run these commands open-ended. If such a command times out, treat the evidence as inconclusive or failing instead of retrying indefinitely.
-6. If a required committed artifact, journal entry, evidence file, or parent context is missing and you cannot review honestly, return FAIL or NEEDS_CLARIFICATION. Do not guess.
+6. Potentially verbose commands, including test runs and builds, should avoid dumping huge logs directly into the model context. Prefer redirecting verbose output to a temporary log file outside the repository, such as under `/tmp`, checking the command exit code from the `shell_command` result, then inspecting only targeted parts of the log file with follow-up read-only commands such as `tail`, `head`, `grep`, `sed -n`, or `wc`.
+7. `shell_command` tool results include `COMMAND`, `EXIT_CODE`, `TIMED_OUT`, `STDOUT`, and `STDERR` sections. Treat `EXIT_CODE != 0` as command failure unless the review explicitly expected that command to fail, such as RED evidence.
+8. If a required committed artifact, journal entry, evidence file, or parent context is missing and you cannot review honestly, return FAIL or NEEDS_CLARIFICATION. Do not guess.
 
 Task ancestry and context reconstruction:
 1. If task_id is supplied, locate it in `.sddtdd_skill/TASKS.md` and in the journal.
@@ -598,6 +600,36 @@ def _process_group_pids(pgid: int) -> list[int]:
     return sorted(pids)
 
 
+def _format_shell_command_result(
+    *,
+    command: str,
+    exit_code: int | None,
+    timed_out: bool,
+    stdout: str,
+    stderr: str,
+) -> str:
+    """Format shell command evidence for the reviewer model.
+
+    The model does not receive subprocess metadata as structured MCP fields, so
+    include the command exit code and separated streams in the textual tool
+    result.
+    """
+    exit_code_text = "unknown" if exit_code is None else str(exit_code)
+    return "\n".join(
+        [
+            f"COMMAND: {command}",
+            f"EXIT_CODE: {exit_code_text}",
+            f"TIMED_OUT: {'true' if timed_out else 'false'}",
+            "",
+            "STDOUT:",
+            stdout or "",
+            "",
+            "STDERR:",
+            stderr or "",
+        ]
+    ).rstrip()
+
+
 def _execute_tool(
     name: str,
     args: dict,
@@ -627,24 +659,31 @@ def _execute_tool(
                 start_new_session=True,
             )
             process_groups.append(process.pid)
+            timed_out = False
             try:
                 stdout, stderr = process.communicate(timeout=MAX_SHELL_COMMAND_SECONDS)
             except subprocess.TimeoutExpired:
+                timed_out = True
                 try:
                     os.killpg(process.pid, signal.SIGTERM)
                     stdout, stderr = process.communicate(timeout=5)
                 except subprocess.TimeoutExpired:
                     os.killpg(process.pid, signal.SIGKILL)
                     stdout, stderr = process.communicate()
-                out = (stdout or "") + (stderr or "")
                 timeout_notice = (
                     f"\n\n[TOOL_COMMAND_TIMED_OUT]\n"
                     f"Timeout seconds: {MAX_SHELL_COMMAND_SECONDS}\n"
                     "The command exceeded the shell command timeout and its process group was terminated."
                 )
-                out = out + timeout_notice
-            else:
-                out = (stdout or "") + (stderr or "")
+                stderr = (stderr or "") + timeout_notice
+
+            out = _format_shell_command_result(
+                command=cmd,
+                exit_code=process.returncode,
+                timed_out=timed_out,
+                stdout=stdout or "",
+                stderr=stderr or "",
+            )
 
             original_len = len(out)
             if original_len > MAX_TOOL_OUTPUT_CHARS:
@@ -673,9 +712,9 @@ def _execute_tool(
                     "This shell_command returned, but left running processes in its process group.\n"
                     f"PIDs: {leftover_pid_text}"
                 )
-                out = (out or f"(no output, exit={process.returncode})") + warning
+                out = out + warning
 
-            return out if out else f"(no output, exit={process.returncode})"
+            return out
         except Exception as exc:
             return f"ERROR: {exc}"
 

@@ -261,6 +261,7 @@ def _cleanup_process_groups(process_groups: list[int], leaked_pids: list[int]) -
             logger.warning("cleanup: SIGKILL failed leaked pid=%d error=%s", pid, exc)
 
 
+
 def _process_group_pids(pgid: int) -> list[int]:
     """Return live process IDs that still belong to a process group."""
     pids: list[int] = []
@@ -285,6 +286,36 @@ def _process_group_pids(pgid: int) -> list[int]:
             pids.append(int(entry.name))
 
     return sorted(pids)
+
+
+def _format_shell_command_result(
+    *,
+    command: str,
+    exit_code: int | None,
+    timed_out: bool,
+    stdout: str,
+    stderr: str,
+) -> str:
+    """Format shell command evidence for the broker model.
+
+    The model does not receive subprocess metadata as structured MCP fields, so
+    include the command exit code and separated streams in the textual tool
+    result.
+    """
+    exit_code_text = "unknown" if exit_code is None else str(exit_code)
+    return "\n".join(
+        [
+            f"COMMAND: {command}",
+            f"EXIT_CODE: {exit_code_text}",
+            f"TIMED_OUT: {'true' if timed_out else 'false'}",
+            "",
+            "STDOUT:",
+            stdout or "",
+            "",
+            "STDERR:",
+            stderr or "",
+        ]
+    ).rstrip()
 
 
 def _extract_first_json_object(text: str) -> dict[str, Any]:
@@ -482,23 +513,31 @@ def _execute_broker_tool(
                 start_new_session=True,
             )
             process_groups.append(process.pid)
+            timed_out = False
             try:
                 stdout, stderr = process.communicate(timeout=30)
             except subprocess.TimeoutExpired:
+                timed_out = True
                 try:
                     os.killpg(process.pid, signal.SIGTERM)
                     stdout, stderr = process.communicate(timeout=5)
                 except subprocess.TimeoutExpired:
                     os.killpg(process.pid, signal.SIGKILL)
                     stdout, stderr = process.communicate()
-                output = (stdout or "") + (stderr or "")
-                output += (
+                timeout_notice = (
                     "\n\n[TOOL_COMMAND_TIMED_OUT]\n"
                     "Timeout seconds: 30\n"
                     "The command exceeded the broker shell command timeout and its process group was terminated."
                 )
-            else:
-                output = (stdout or "") + (stderr or "")
+                stderr = (stderr or "") + timeout_notice
+
+            output = _format_shell_command_result(
+                command=cmd,
+                exit_code=process.returncode,
+                timed_out=timed_out,
+                stdout=stdout or "",
+                stderr=stderr or "",
+            )
 
             leftover_pids = _process_group_pids(process.pid)
             if leftover_pids:
@@ -509,8 +548,6 @@ def _execute_broker_tool(
                     ", ".join(str(pid) for pid in leftover_pids),
                 )
 
-            if not output:
-                output = f"(no output, exit={process.returncode})"
             return _trim(output)
         except ValueError as exc:
             return f"ERROR: invalid command: {exc}"
@@ -546,6 +583,10 @@ artifact review and records SPEC_REVIEW, ARCHITECTURE_REVIEW, TASK_REVIEW,
 RED_REVIEW, GREEN_REVIEW, REGRESSION_REVIEW, and FINAL_REVIEW. You only verify
 process completion and decide the next task from committed state, journal state,
 and broker/reviewer evidence.
+
+`shell_command` tool results include `COMMAND`, `EXIT_CODE`, `TIMED_OUT`,
+`STDOUT`, and `STDERR` sections. Treat `EXIT_CODE != 0` as command failure
+unless the process check explicitly expects a failing command.
 
 Return JSON only. Do not wrap it in Markdown.
 """.strip()

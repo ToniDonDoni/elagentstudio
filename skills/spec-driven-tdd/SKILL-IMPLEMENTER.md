@@ -78,7 +78,7 @@ the workflow order to execute it. A task carries:
 ```json
 {
   "task_id": "B-000001",
-  "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | FINAL | DONE",
+  "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | DONE",
   "instruction": "one concrete instruction in natural language",
   "allowed_scope": ["files, paths, or artifacts the task may touch"],
   "required_evidence": [
@@ -86,7 +86,7 @@ the workflow order to execute it. A task carries:
      other concrete artifacts the implementer must produce"
   ],
   "independent_review_required": true,
-  "review_type": "SPEC_REVIEW | ARCHITECTURE_REVIEW | TASK_REVIEW | RED_REVIEW | GREEN_REVIEW | REGRESSION_REVIEW | FINAL_REVIEW | null"
+  "review_type": "SPEC_REVIEW | ARCHITECTURE_REVIEW | TASK_REVIEW | RED_REVIEW | GREEN_REVIEW | REGRESSION_REVIEW | null"
 }
 ```
 

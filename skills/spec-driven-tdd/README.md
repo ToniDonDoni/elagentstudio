@@ -153,7 +153,7 @@ in `<project-dir>`:
    a commit for `.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log` and the journal shows the
    full chain: `SPEC_DRAFT` → `SPEC` → `ARCHITECTURE` → `TASKS` → per-
    task `WORK` / `TEST` / `RED` / `GREEN` / `REVIEW` → `REGRESSION` →
-   `FINAL_REVIEW` → `DONE`. No gaps.
+   `DONE`. No gaps.
 2. **Broker access log exists and is sane.** Run
    `cat .sddtdd_skill/broker-access.jsonl | jq .` (or
    `python3 -m json.tool` if you do not have `jq`). Every broker task
