@@ -162,6 +162,15 @@ Capture tasks (`USER_INPUT_CAPTURE`) are exempt from
 `independent_review_required`. For those, `review_type` is `null` and
 the broker does not require a reviewer verdict.
 
+Acceptance-changing compromises introduce corrective workflow work before
+normal completion. When the committed journal contains an `AGENT_DECISION`
+that changes, weakens, replaces, or reinterprets an acceptance criterion,
+user-visible behavior, user-observable evidence, or required test boundary,
+the broker MUST require corrective follow-up tasks before `DONE`. These
+corrective tasks use the existing task kinds (`ARCHITECTURE`, `DECOMPOSE`,
+`RED`, `GREEN`, `REGRESSION`, and `FINAL`) with corrective instructions; the
+broker does not invent a new stage type.
+
 The stage procedure is defined in `references/STAGES.md` and is the
 same procedure the broker enforces.
 
@@ -186,6 +195,61 @@ this file:
 `DONE` itself is a journal entry with `STATUS: COMPLETED`. The broker
 treats it as process-complete when all required prior reviews have
 passed and the `DONE` entry exists.
+
+## Acceptance-changing compromise remediation
+
+A committed `AGENT_DECISION` is a transparency and audit mechanism, not a
+permanent waiver. When the broker sees, in the committed journal or in the
+verified task evidence, an `AGENT_DECISION` that changes, weakens, replaces,
+or reinterprets an acceptance criterion, user-visible behavior,
+user-observable evidence, or required test boundary, the broker MUST treat the
+delivery as carrying unresolved corrective work unless the journal also proves
+that the user or owner explicitly accepted the changed acceptance contract as
+final.
+
+The broker MUST distinguish two cases:
+
+1. **Minor technical compromise.** The compromise is journaled, but it does
+   not change the acceptance contract, user-visible behavior,
+   user-observable evidence, or required test boundary. The broker may allow
+   normal forward progress after the required `AGENT_DECISION` exists.
+2. **Major acceptance change.** The compromise changes, weakens, replaces, or
+   reinterprets an acceptance criterion, user-visible behavior,
+   user-observable evidence, or required test boundary. The broker MUST
+   require user/owner notification and MUST schedule corrective work before
+   `DONE`, unless the journal explicitly records user/owner acceptance of the
+   changed contract as final.
+
+For a major acceptance change, the broker MUST prefer restoring the original
+acceptance contract over normalizing the compromise. The corrective sequence
+MUST include, as applicable:
+
+1. an `ARCHITECTURE` correction task to revise the architecture so the
+   affected acceptance criteria can be satisfied without weakening the user
+   contract;
+2. a `DECOMPOSE` correction task to update `.sddtdd_skill/TASKS.md` with the
+   implementation and test-remediation work required by the corrected
+   architecture;
+3. one or more `RED` remediation tasks to replace compromised tests with tests
+   matching the corrected architecture and required acceptance boundary;
+4. corresponding `GREEN` work and independent reviews for the corrected
+   architecture, task decomposition, RED evidence, and implementation;
+5. `REGRESSION` and `FINAL` verification that explicitly report the
+   compromise history and the corrective work performed.
+
+The broker MUST NOT issue `DONE` while an unresolved major acceptance change
+exists. A major acceptance change is resolved only when one of the following is
+true in the committed journal:
+
+- corrective architecture, task decomposition, RED, GREEN, regression, and
+  final-review work has restored the affected acceptance boundary; or
+- the user/owner explicitly accepted the changed acceptance contract as final,
+  and the final report includes the required major-compromise disclosure.
+
+If the broker cannot determine from the committed journal whether an
+`AGENT_DECISION` is minor or major, whether user/owner notification happened,
+or whether corrective work has resolved the issue, it MUST return
+`NEEDS_CLARIFICATION` instead of issuing the next normal workflow task.
 
 ## Process-gate verification rules
 
@@ -269,6 +333,12 @@ the broker returns `FAIL` with the specific findings.
     matching `BROKER_TASK_REVIEW: PASS` entry first. This is the
     process gate that catches the implementer that does the work,
     skips `reviewTask`, and asks for the next task anyway.
+12. **Acceptance-changing compromises are not silently normalized.** If the
+    committed journal contains an unresolved major acceptance change as
+    defined in `Acceptance-changing compromise remediation`, the broker must
+    either issue the required corrective task sequence or return
+    `NEEDS_CLARIFICATION`. The broker must not verify `DONE` and must not let
+    ordinary forward progress hide the compromised acceptance boundary.
 
 The broker does not check:
 
@@ -277,13 +347,17 @@ The broker does not check:
 - whether unrelated work was added (reviewer's job);
 - whether tests are valid RED (reviewer's job);
 - whether architecture decisions are good (reviewer's job);
+- whether a compromise is technically acceptable as a product decision
+  (user/owner and reviewer responsibility);
 - which source files belong to a given code task (reviewer's job).
 
 The broker does check the **process state**: are the right reviewer
 verdicts in the right place with the right status, in the right
 order, with the right parent chain pointing at the right work
 entry, in the committed journal at the broker-recorded ref, on a
-clean working tree, with the right artifacts in the tree.
+clean working tree, with the right artifacts in the tree; and, when
+journaled compromises exist, whether required user/owner notification and
+corrective follow-up tasks are present before completion.
 
 ## Broker access log
 
@@ -352,3 +426,15 @@ need to look at this log; the broker uses it for investigation.
 - [ ] The rationale names the journal state that made the task legal.
 - [ ] Both `task_review_started` and `task_review_completed` were
       written to `broker-access.jsonl` for the call.
+- [ ] If a journaled `AGENT_DECISION` changes, weakens, replaces, or
+      reinterprets an acceptance criterion, user-visible behavior,
+      user-observable evidence, or required test boundary, the broker does not
+      issue `DONE` until corrective work restores the acceptance boundary or
+      the journal records explicit user/owner acceptance of the changed
+      contract as final.
+- [ ] Major acceptance changes cause corrective `ARCHITECTURE`, `DECOMPOSE`,
+      `RED`, `GREEN`, `REGRESSION`, and `FINAL` work as applicable, rather
+      than being treated as ordinary forward progress.
+- [ ] If the broker cannot determine whether a compromise is minor or major,
+      notified or unnotified, resolved or unresolved, it returns
+      `NEEDS_CLARIFICATION`.
