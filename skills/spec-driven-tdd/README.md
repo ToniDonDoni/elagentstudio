@@ -24,13 +24,6 @@ logs live under a single directory `<project-dir>/.sddtdd_skill/`:
   `TASKS.md`, `JOURNAL_SDD_TDD_SKILL.log`.
 - **Runtime** (NOT in git): `review-access.jsonl`, `broker-access.jsonl`.
 
-Add this to the project's `.gitignore` once, before the first run:
-
-```text
-# spec-driven-tdd runtime logs
-.sddtdd_skill/*.jsonl
-```
-
 The implementer creates `.sddtdd_skill/` (via the broker's first
 task) on the first run; you do not need to `mkdir` it manually.
 
