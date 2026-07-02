@@ -41,15 +41,6 @@ and runtime logs:
 └── ... (the project being built)
 ```
 
-The two `.jsonl` files are runtime artifacts and MUST be excluded
-by `.gitignore` in every project that uses the skill. Add the
-following to the project's `.gitignore`:
-
-```text
-# spec-driven-tdd runtime logs
-.sddtdd_skill/*.jsonl
-```
-
 The committed artifacts and the journal MUST be tracked in git
 so the broker can read the journal at a pinned `HEAD` and verify
 the journal chain (race protection).
