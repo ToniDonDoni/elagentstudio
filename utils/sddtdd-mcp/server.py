@@ -535,7 +535,7 @@ def _cleanup_process_groups(process_groups: list[int], leaked_pids: list[int]) -
     for pgid in pgids:
         try:
             os.killpg(pgid, signal.SIGTERM)
-            logger.info("cleanup: sent SIGTERM to process group pgid=%d", pgid)
+            logger.warning("cleanup: sent SIGTERM to process group pgid=%d", pgid)
         except ProcessLookupError:
             pass
         except Exception as exc:
@@ -544,7 +544,7 @@ def _cleanup_process_groups(process_groups: list[int], leaked_pids: list[int]) -
     for pid in pids:
         try:
             os.kill(pid, signal.SIGTERM)
-            logger.info("cleanup: sent SIGTERM to leaked pid=%d", pid)
+            logger.warning("cleanup: sent SIGTERM to leaked pid=%d", pid)
         except ProcessLookupError:
             pass
         except Exception as exc:
@@ -555,7 +555,7 @@ def _cleanup_process_groups(process_groups: list[int], leaked_pids: list[int]) -
     for pgid in pgids:
         try:
             os.killpg(pgid, signal.SIGKILL)
-            logger.info("cleanup: sent SIGKILL to process group pgid=%d", pgid)
+            logger.warning("cleanup: sent SIGKILL to process group pgid=%d", pgid)
         except ProcessLookupError:
             pass
         except Exception as exc:
@@ -564,7 +564,7 @@ def _cleanup_process_groups(process_groups: list[int], leaked_pids: list[int]) -
     for pid in pids:
         try:
             os.kill(pid, signal.SIGKILL)
-            logger.info("cleanup: sent SIGKILL to leaked pid=%d", pid)
+            logger.warning("cleanup: sent SIGKILL to leaked pid=%d", pid)
         except ProcessLookupError:
             pass
         except Exception as exc:
@@ -778,6 +778,49 @@ def _parse_review_json(text: str) -> tuple[str | None, str | None, str | None]:
     return verdict, response, None
 
 
+def _parse_plain_review_text(text: str) -> tuple[str | None, str | None, str | None]:
+    """Parse non-JSON reviewer text that already starts with a verdict line.
+
+    This is a deterministic transport fallback for sampler outputs such as
+    `PASS\n\nreview body`. It does not infer a verdict from prose; the first
+    non-empty line must be exactly one canonical verdict.
+    """
+    lines = text.splitlines()
+    first_index = None
+    for index, line in enumerate(lines):
+        if line.strip():
+            first_index = index
+            break
+
+    if first_index is None:
+        return None, None, "empty response"
+
+    verdict = lines[first_index].strip()
+    if verdict not in {"PASS", "FAIL", "NEEDS_CLARIFICATION"}:
+        return None, None, f"first non-empty line is not a verdict: {verdict!r}"
+
+    response = "\n".join(lines[first_index:]).strip()
+    body_text = "\n".join(lines[first_index + 1:]).strip()
+    if not body_text:
+        return None, None, f"response body is required for verdict={verdict!r}"
+
+    if verdict in {"FAIL", "NEEDS_CLARIFICATION"}:
+        lower_body = body_text.lower()
+        diagnostic_placeholders = (
+            "sampler returned empty response",
+            "no review content was provided",
+            "please retry the review",
+        )
+        if any(placeholder in lower_body for placeholder in diagnostic_placeholders):
+            return (
+                None,
+                None,
+                "response body must preserve the review explanation, not replace it with a sampler diagnostic",
+            )
+
+    return verdict, response, None
+
+
 async def _repair_verdict_with_sampling(
     ctx,
     *,
@@ -834,6 +877,7 @@ the response field must keep concrete explanatory body text after the verdict li
             if isinstance(block, types.TextContent):
                 repair_text_parts.append(block.text)
         repair_text = "\n".join(repair_text_parts)
+        stop_reason = getattr(result, "stopReason", None) or "endTurn"
         empty_repair_text = not repair_text.strip()
         if empty_repair_text:
             raw_content = result.content if isinstance(result.content, list) else [result.content]
@@ -876,7 +920,6 @@ the response field must keep concrete explanatory body text after the verdict li
             )
             return None, REVIEW_RETRY_RESPONSE, attempts
 
-        stop_reason = getattr(result, "stopReason", None) or "endTurn"
         verdict, response, error = _parse_review_json(repair_text.strip())
         attempts.append({
             "attempt": attempt,
@@ -896,7 +939,7 @@ the response field must keep concrete explanatory body text after the verdict li
             if empty_repair_text:
                 return None, REVIEW_RETRY_RESPONSE, attempts
         else:
-            logger.info(
+            logger.debug(
                 "REVIEW_RESPONSE_PARSE: source=repair attempt=%d/%d stop_reason=%s success=True error=None",
                 attempt + 1,
                 max_attempts + 1,
@@ -1040,7 +1083,7 @@ async def _sample_with_tools(
             if isinstance(b, types.ToolUseContent)
         ]
         if not tool_uses:
-            logger.info("SAMPLING: stop_reason=toolUse but no tool_uses found, returning")
+            logger.debug("SAMPLING: stop_reason=toolUse but no tool_uses found, returning")
             return last_text, stop_reason
 
         tool_results = []
@@ -1159,7 +1202,7 @@ async def call_tool(
             system_prompt=system_prompt,
             max_rounds=MAX_SAMPLING_ROUNDS,
         )
-        logger.info("call_tool: sampling returned stop_reason=%s", stop_reason)
+        logger.debug("call_tool: sampling returned stop_reason=%s", stop_reason)
 
         execution_error = stop_reason in {"maxTokens", "maxRoundsExceeded"}
         if not response_text.strip():
@@ -1172,7 +1215,7 @@ async def call_tool(
         if not execution_error:
             verdict, parsed_response, parse_error = _parse_review_json(response_text.strip())
             if parse_error is not None:
-                logger.info(
+                logger.debug(
                     "REVIEW_RESPONSE_PARSE: source=primary attempt=1/%d stop_reason=%s success=False error=%s raw=%r",
                     MAX_VERDICT_REPAIR_ATTEMPTS + 1,
                     stop_reason,
@@ -1180,7 +1223,7 @@ async def call_tool(
                     _safe_log_text(response_text, limit=300),
                 )
             else:
-                logger.info(
+                logger.debug(
                     "REVIEW_RESPONSE_PARSE: source=primary attempt=1/%d stop_reason=%s success=True error=None",
                     MAX_VERDICT_REPAIR_ATTEMPTS + 1,
                     stop_reason,
@@ -1188,13 +1231,30 @@ async def call_tool(
             if parse_error is None:
                 response_text = parsed_response or ""
             else:
-                verdict, repaired_response, repair_attempts = await _repair_verdict_with_sampling(
-                    ctx,
-                    raw_response=response_text,
-                    parse_error=parse_error,
-                    max_attempts=MAX_VERDICT_REPAIR_ATTEMPTS,
-                )
-                response_text = repaired_response
+                plain_verdict, plain_response, plain_error = _parse_plain_review_text(response_text)
+                if plain_error is None:
+                    verdict = plain_verdict
+                    response_text = plain_response or ""
+                    logger.debug(
+                        "REVIEW_RESPONSE_PARSE: source=plain_text attempt=2/%d stop_reason=%s success=True error=None",
+                        MAX_VERDICT_REPAIR_ATTEMPTS + 1,
+                        stop_reason,
+                    )
+                else:
+                    logger.debug(
+                        "REVIEW_RESPONSE_PARSE: source=plain_text attempt=2/%d stop_reason=%s success=False error=%s raw=%r",
+                        MAX_VERDICT_REPAIR_ATTEMPTS + 1,
+                        stop_reason,
+                        plain_error,
+                        _safe_log_text(response_text, limit=300),
+                    )
+                    verdict, repaired_response, repair_attempts = await _repair_verdict_with_sampling(
+                        ctx,
+                        raw_response=response_text,
+                        parse_error=parse_error,
+                        max_attempts=MAX_VERDICT_REPAIR_ATTEMPTS,
+                    )
+                    response_text = repaired_response
 
         if verdict is None and not execution_error:
             execution_error = True
@@ -1229,7 +1289,7 @@ async def call_tool(
             # "verdict_repair_attempts": repair_attempts,  # Removed from reviewer access log
         }
         log.append(completed_event)
-        logger.info("call_tool: review_completed verdict=%s status=%s duration_ms=%d",
+        logger.debug("call_tool: review_completed verdict=%s status=%s duration_ms=%d",
                      verdict, status, duration_ms)
 
         result = {
@@ -1239,7 +1299,7 @@ async def call_tool(
             "response": response_text,
             "stale": stale,
         }
-        logger.info("call_tool: SUCCESS — returning result to Hermes")
+        logger.debug("call_tool: SUCCESS — returning result to Hermes")
 
     except GitError as exc:
         logger.error("call_tool: GitError — %s", exc, exc_info=True)
