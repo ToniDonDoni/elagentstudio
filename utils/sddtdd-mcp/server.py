@@ -1072,6 +1072,12 @@ the response field must keep concrete explanatory body text after the verdict li
             continue
 
         verdict, response, error = _parse_review_json(repair_text.strip())
+        repair_execution_error = stop_reason in {"maxTokens", "maxRoundsExceeded"}
+        if repair_execution_error:
+            error = (
+                "repair output stopped with "
+                f"stop_reason={stop_reason}; retrying repair without replacing the original reviewer response"
+            )
         attempts.append({
             "attempt": attempt,
             "stop_reason": stop_reason,
@@ -1097,10 +1103,12 @@ the response field must keep concrete explanatory body text after the verdict li
                 stop_reason,
             )
 
-        if error is None:
+        if error is None and not repair_execution_error:
             return verdict, response, attempts
 
-        if repair_text.strip():
+        if repair_execution_error:
+            current_response = original_response
+        elif repair_text.strip():
             current_response = repair_text
         else:
             current_response = original_response
@@ -1214,11 +1222,11 @@ async def _sample_with_tools(
                     content=types.TextContent(
                         type="text",
                         text=(
-                            "Your previous response hit the max token limit before producing a usable final review. "
-                            "Continue from where you stopped. Do not restart the review from scratch. "
-                            "If you have enough evidence to conclude, produce the final review and start the response "
-                            "with a JSON object matching the required review response schema. "
-                            "If the verdict is FAIL or NEEDS_CLARIFICATION, include concise actionable explanation in the response field."
+                            "Your previous response stopped because stopReason=maxTokens. "
+                            "Continue from exactly where you stopped. Do not restart, do not repeat already emitted text, "
+                            "and keep the continuation as concise as possible. "
+                            "If you have enough evidence to conclude, produce the final review as a JSON object matching "
+                            "the required review response schema."
                         ),
                     ),
                 )
@@ -1358,7 +1366,7 @@ async def call_tool(
         )
         logger.debug("call_tool: sampling returned stop_reason=%s", stop_reason)
 
-        execution_error = stop_reason in {"maxTokens", "maxRoundsExceeded"}
+        execution_error = stop_reason in {"maxTokens1", "maxRoundsExceeded"}
         if not response_text.strip():
             execution_error = True
             response_text = REVIEW_RETRY_RESPONSE

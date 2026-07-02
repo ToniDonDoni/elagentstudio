@@ -47,6 +47,7 @@ Json = dict[str, Any]
 
 # Increase the stream reader limit to handle large JSON lines from MCP.
 STREAM_READER_LIMIT = 16 * 1024 * 1024
+VERBOSE_OUTPUT = False
 
 
 class U2UFailure(AssertionError):
@@ -54,16 +55,19 @@ class U2UFailure(AssertionError):
 
 
 def ok(message: str) -> None:
-    print(f"✅ {message}", flush=True)
+    if VERBOSE_OUTPUT:
+        print(f"✅ {message}", flush=True)
 
 
 def note(message: str) -> None:
-    print(f"   {message}", flush=True)
+    if VERBOSE_OUTPUT:
+        print(f"   {message}", flush=True)
 
 
 def event(message: str) -> None:
-    ts = time.strftime("%H:%M:%S")
-    print(f"[{ts}] [u2u] {message}", flush=True)
+    if VERBOSE_OUTPUT:
+        ts = time.strftime("%H:%M:%S")
+        print(f"[{ts}] [u2u] {message}", flush=True)
 
 
 
@@ -80,8 +84,9 @@ def summarize_json(value: Any, *, limit: int = 1200) -> str:
 # === Test runner helpers ===
 
 def banner(title: str) -> None:
-    line = "=" * 96
-    print(f"\n{line}\nTEST: {title.upper()}\n{line}", flush=True)
+    if VERBOSE_OUTPUT:
+        line = "=" * 96
+        print(f"\n{line}\nTEST: {title.upper()}\n{line}", flush=True)
 
 
 def matches_test_mask(test_name: str, masks: list[str]) -> bool:
@@ -375,8 +380,6 @@ class MCPStdioClient:
         assert proc is not None and proc.stdin is not None
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8") + b"\n"
         event(f"JSONRPC_SEND: method={payload.get('method') or 'response'} id={payload.get('id')} bytes={len(data)} payload={summarize_json(payload)}")
-        if self.verbose:
-            print(f">>> {payload.get('method') or 'response'} id={payload.get('id')}")
         proc.stdin.write(data)
         await proc.stdin.drain()
 
@@ -391,8 +394,6 @@ class MCPStdioClient:
                     event("STDOUT_READER: EOF")
                     return
                 event(f"JSONRPC_RECV: method={message.get('method') or 'response'} id={message.get('id')} payload={summarize_json(message)}")
-                if self.verbose:
-                    print(f"<<< {message.get('method') or 'response'} id={message.get('id')}")
                 await self._dispatch(message)
         except asyncio.CancelledError:
             event("STDOUT_READER: cancelled")
@@ -417,8 +418,6 @@ class MCPStdioClient:
                 text = line.decode("utf-8", errors="replace").rstrip()
                 self.stderr_lines.append(text)
                 event(f"SERVER_STDERR: {text}")
-                if self.verbose:
-                    print(f"[server stderr] {text}", file=sys.stderr)
         except asyncio.CancelledError:
             event("STDERR_READER: cancelled")
             raise
@@ -891,6 +890,8 @@ async def test_repair_sampling_does_not_block_list_tools(client: MCPStdioClient,
 
 
 async def run_all(args: argparse.Namespace) -> None:
+    global VERBOSE_OUTPUT
+    VERBOSE_OUTPUT = args.verbose
     server_path = Path(args.server).expanduser().resolve()
     if not server_path.exists():
         fail(f"server file does not exist: {server_path}")
@@ -913,10 +914,16 @@ async def run_all(args: argparse.Namespace) -> None:
         note(f"log path: {log_path}")
 
         async with MCPStdioClient(server_path=server_path, env=env, verbose=args.verbose) as client:
-            event("RUN_TEST: initialize")
-            banner("initialize")
-            await client.initialize()
-            event("RUN_TEST_DONE: initialize")
+            test_name = "initialize"
+            event(f"RUN_TEST: {test_name}")
+            banner(test_name)
+            try:
+                await client.initialize()
+            except Exception as exc:
+                print(f"FAIL {test_name}: {type(exc).__name__}: {exc}", flush=True)
+                raise
+            print(f"PASS {test_name}", flush=True)
+            event(f"RUN_TEST_DONE: {test_name}")
 
             async def run_named_test(test_name: str, test_fn: Callable[[], Awaitable[None]]) -> None:
                 if not matches_test_mask(test_name, args.test):
@@ -924,7 +931,12 @@ async def run_all(args: argparse.Namespace) -> None:
                     return
                 event(f"RUN_TEST: {test_name}")
                 banner(test_name)
-                await test_fn()
+                try:
+                    await test_fn()
+                except Exception as exc:
+                    print(f"FAIL {test_name}: {type(exc).__name__}: {exc}", flush=True)
+                    raise
+                print(f"PASS {test_name}", flush=True)
                 event(f"RUN_TEST_DONE: {test_name}")
 
             await run_named_test("test_startup_and_list_tools", lambda: test_startup_and_list_tools(client))
@@ -981,9 +993,10 @@ async def run_all(args: argparse.Namespace) -> None:
             len(completed) >= expected_review_events,
             f"expected at least {expected_review_events} review_completed events, got {len(completed)}",
         )
-        ok("access log contains review_started/review_completed records")
+        if VERBOSE_OUTPUT:
+            ok("access log contains review_started/review_completed records")
 
-        print("\n🎉 U2U MCP test suite passed. Async server lives; communicate() department is closed.")
+        print("PASS u2u_test_suite", flush=True)
     finally:
         if args.keep_temp:
             note(f"kept temp dir: {temp_root}")
@@ -1021,15 +1034,15 @@ def main(argv: list[str]) -> int:
     try:
         asyncio.run(run_all(args))
         return 0
-    except U2UFailure as exc:
-        print(f"\n❌ U2U FAILED: {exc}", file=sys.stderr, flush=True)
+    except U2UFailure:
         return 1
     except KeyboardInterrupt:
-        print("\nInterrupted.", file=sys.stderr, flush=True)
+        print("FAIL interrupted", file=sys.stderr, flush=True)
         return 130
     except Exception as exc:
-        print(f"\n💥 U2U CRASHED: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
-        traceback.print_exc()
+        print(f"FAIL u2u_test_suite: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+        if VERBOSE_OUTPUT:
+            traceback.print_exc()
         return 2
 
 
