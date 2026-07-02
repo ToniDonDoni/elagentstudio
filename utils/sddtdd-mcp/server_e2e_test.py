@@ -738,6 +738,109 @@ async def test_invalid_review_triggers_repair(client: MCPStdioClient, repo: Path
     ok(f"invalid reviewer output triggered repair and completed after {state.calls} sampling calls")
 
 
+
+#
+# Test that any repair sampling response with stopReason=maxTokens is retried before acceptance.
+async def test_repair_maxtokens_retries_before_accepting_result(client: MCPStdioClient, repo: Path) -> None:
+    event("SCENARIO_BEGIN: repair_maxtokens_retries_before_accepting_result")
+    state = ScenarioState("repair_maxtokens_retry")
+    raw_reviewer_response = "this primary reviewer answer is invalid and must trigger repair"
+    maxtokens_repair_json = valid_review_json(
+        "PASS",
+        "this repair JSON must not be accepted because stopReason=maxTokens",
+    )
+    saw_maxtokens_retry_prompt = False
+
+    async def sampling(params: Json) -> Json:
+        nonlocal saw_maxtokens_retry_prompt
+        state.calls += 1
+        event(f"MOCK_SAMPLING[{state.name}]: call={state.calls} params={summarize_json(params)}")
+        state.seen_params.append(params)
+        prompt_text = extract_text_content(params)
+
+        if state.calls == 1:
+            return text_result(raw_reviewer_response)
+
+        if state.calls == 2:
+            assert_true(
+                raw_reviewer_response in prompt_text,
+                "first repair prompt must include the original raw reviewer response",
+            )
+            return text_result(maxtokens_repair_json, stop_reason="maxTokens")
+
+        assert_true(
+            "maxTokens" in prompt_text,
+            "repair retry prompt after maxTokens repair output must mention maxTokens",
+        )
+        assert_true(
+            raw_reviewer_response in prompt_text,
+            "repair retry prompt must preserve the original raw reviewer response after maxTokens",
+        )
+        saw_maxtokens_retry_prompt = True
+        return text_result(valid_review_json("PASS", "repair retried after maxTokens output"))
+
+    client.sampling_handler = sampling
+    response = await call_review(client, repo, "U2U repair maxTokens retry scenario", timeout=5)
+    assert_eq(response["status"], "COMPLETED", "repair maxTokens retry review status")
+    assert_eq(response["verdict"], "PASS", "repair maxTokens retry review verdict")
+    assert_true(
+        saw_maxtokens_retry_prompt,
+        "repair response returned with stopReason=maxTokens must force a retry instead of being accepted",
+    )
+    assert_eq(state.calls, 3, "repair maxTokens scenario must use primary + maxTokens repair + successful retry")
+    event("SCENARIO_DONE: repair_maxtokens_retries_before_accepting_result")
+    ok("repair maxTokens output is retried before acceptance")
+
+
+# Test that primary sampling response with stopReason=maxTokens is retried before acceptance.
+async def test_primary_sampling_maxtokens_retries_before_accepting_result(
+    client: MCPStdioClient,
+    repo: Path,
+) -> None:
+    event("SCENARIO_BEGIN: primary_sampling_maxtokens_retries_before_accepting_result")
+    state = ScenarioState("primary_maxtokens_retry")
+    maxtokens_primary_json = valid_review_json(
+        "PASS",
+        "this primary JSON must not be accepted because stopReason=maxTokens",
+    )
+    saw_maxtokens_retry_prompt = False
+
+    async def sampling(params: Json) -> Json:
+        nonlocal saw_maxtokens_retry_prompt
+        state.calls += 1
+        event(f"MOCK_SAMPLING[{state.name}]: call={state.calls} params={summarize_json(params)}")
+        state.seen_params.append(params)
+        prompt_text = extract_text_content(params)
+
+        if state.calls == 1:
+            return text_result(maxtokens_primary_json, stop_reason="maxTokens")
+
+        assert_true(
+            "maxTokens" in prompt_text,
+            "primary retry prompt after maxTokens output must mention maxTokens",
+        )
+        saw_maxtokens_retry_prompt = True
+        return text_result(valid_review_json("PASS", "primary sampling retried after maxTokens output"))
+
+    client.sampling_handler = sampling
+    response = await call_review(
+        client,
+        repo,
+        "U2U primary maxTokens retry scenario",
+        timeout=5,
+    )
+
+    assert_eq(response["status"], "COMPLETED", "primary maxTokens retry review status")
+    assert_eq(response["verdict"], "PASS", "primary maxTokens retry review verdict")
+    assert_true(
+        saw_maxtokens_retry_prompt,
+        "primary response returned with stopReason=maxTokens must force a retry instead of being accepted",
+    )
+    assert_eq(state.calls, 2, "primary maxTokens scenario must use maxTokens response + successful retry")
+    event("SCENARIO_DONE: primary_sampling_maxtokens_retries_before_accepting_result")
+    ok("primary maxTokens output is retried before acceptance")
+
+
 # Test that repair sampling create_message does not block tools/list.
 async def test_repair_sampling_does_not_block_list_tools(client: MCPStdioClient, repo: Path) -> None:
     event("SCENARIO_BEGIN: repair_sampling_does_not_block_list_tools")
@@ -840,6 +943,14 @@ async def run_all(args: argparse.Namespace) -> None:
             )
             await run_named_test("test_invalid_review_triggers_repair", lambda: test_invalid_review_triggers_repair(client, repo))
             await run_named_test(
+                "test_repair_maxtokens_retries_before_accepting_result",
+                lambda: test_repair_maxtokens_retries_before_accepting_result(client, repo),
+            )
+            await run_named_test(
+                "test_primary_sampling_maxtokens_retries_before_accepting_result",
+                lambda: test_primary_sampling_maxtokens_retries_before_accepting_result(client, repo),
+            )
+            await run_named_test(
                 "test_repair_sampling_does_not_block_list_tools",
                 lambda: test_repair_sampling_does_not_block_list_tools(client, repo),
             )
@@ -848,7 +959,7 @@ async def run_all(args: argparse.Namespace) -> None:
         lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         started = [e for e in lines if e.get("event") == "review_started"]
         completed = [e for e in lines if e.get("event") == "review_completed"]
-        expected_review_events = 6 if not args.test else sum(
+        expected_review_events = 8 if not args.test else sum(
             1
             for name in (
                 "test_basic_review",
@@ -856,6 +967,8 @@ async def run_all(args: argparse.Namespace) -> None:
                 "test_tool_use_roundtrip",
                 "test_async_shell_command_does_not_block_list_tools",
                 "test_invalid_review_triggers_repair",
+                "test_repair_maxtokens_retries_before_accepting_result",
+                "test_primary_sampling_maxtokens_retries_before_accepting_result",
                 "test_repair_sampling_does_not_block_list_tools",
             )
             if matches_test_mask(name, args.test)
