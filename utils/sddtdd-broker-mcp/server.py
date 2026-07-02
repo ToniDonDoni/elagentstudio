@@ -1000,10 +1000,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             "head_sha_after": head_after,
             "status": status,
             "stale": stale,
-            "stop_reason": stop_reason,
             "duration_ms": duration_ms,
             "result": result,
-            "json_repair_attempts": json_repair_attempts,
         }
         log.append(completed_event)
         return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
