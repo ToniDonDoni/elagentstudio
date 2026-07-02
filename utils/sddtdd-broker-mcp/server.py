@@ -10,6 +10,7 @@ review. It only orchestrates the next task and checks process-gate state.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -205,7 +206,7 @@ def _safe_log_text(value: object, limit: int = 300) -> str:
     return text.encode("unicode_escape", "backslashreplace").decode("ascii")
 
 
-def _cleanup_process_groups(process_groups: list[int], leaked_pids: list[int]) -> None:
+async def _cleanup_process_groups(process_groups: list[int], leaked_pids: list[int]) -> None:
     """Terminate broker shell_command groups and observed leftover PIDs.
 
     Broker shell_command starts each command in a new session, so the command's
@@ -240,7 +241,7 @@ def _cleanup_process_groups(process_groups: list[int], leaked_pids: list[int]) -
         except Exception as exc:
             logger.warning("cleanup: SIGTERM failed leaked pid=%d error=%s", pid, exc)
 
-    time.sleep(1)
+    await asyncio.sleep(1)
 
     for pgid in pgids:
         try:
@@ -487,7 +488,7 @@ BROKER_TOOLS: list[types.Tool] = [
 ]
 
 
-def _execute_broker_tool(
+async def _execute_broker_tool(
     name: str,
     args: dict[str, Any],
     repo_path: str,
@@ -503,27 +504,43 @@ def _execute_broker_tool(
         try:
             # shlex.split catches obvious malformed quoting before shell=True.
             shlex.split(cmd)
-            process = subprocess.Popen(
+            process = await asyncio.create_subprocess_shell(
                 cmd,
-                shell=True,
                 cwd=repo_path,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
                 start_new_session=True,
             )
             process_groups.append(process.pid)
             timed_out = False
             try:
-                stdout, stderr = process.communicate(timeout=30)
-            except subprocess.TimeoutExpired:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=30,
+                )
+            except asyncio.TimeoutError:
                 timed_out = True
                 try:
                     os.killpg(process.pid, signal.SIGTERM)
-                    stdout, stderr = process.communicate(timeout=5)
-                except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
-                    stdout, stderr = process.communicate()
+                except ProcessLookupError:
+                    pass
+                except Exception as exc:
+                    logger.warning("BROKER_TOOL_TIMEOUT_SIGTERM_FAILED: pid=%s error=%s", process.pid, exc)
+
+                try:
+                    stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=5)
+                except asyncio.TimeoutError:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    except Exception as exc:
+                        logger.warning("BROKER_TOOL_TIMEOUT_SIGKILL_FAILED: pid=%s error=%s", process.pid, exc)
+                    stdout_bytes, stderr_bytes = await process.communicate()
+
+            stdout = stdout_bytes.decode(errors="replace") if isinstance(stdout_bytes, (bytes, bytearray)) else (stdout_bytes or "")
+            stderr = stderr_bytes.decode(errors="replace") if isinstance(stderr_bytes, (bytes, bytearray)) else (stderr_bytes or "")
+            if timed_out:
                 timeout_notice = (
                     "\n\n[TOOL_COMMAND_TIMED_OUT]\n"
                     "Timeout seconds: 30\n"
@@ -820,7 +837,7 @@ async def _sample_with_tools(
                 command = str(tool_args.get("command", ""))
                 arg_summary = f" command={_safe_log_text(command)!r}"
             logger.debug("sampling executing tool name=%s%s", tool_use.name, arg_summary)
-            output = _execute_broker_tool(tool_use.name, tool_args, repo_path, process_groups, leaked_pids)
+            output = await _execute_broker_tool(tool_use.name, tool_args, repo_path, process_groups, leaked_pids)
             logger.debug("sampling tool result name=%s output_len=%d", tool_use.name, len(output))
             tool_results.append(
                 types.ToolResultContent(
@@ -1068,7 +1085,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             )
         return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
     finally:
-        _cleanup_process_groups(process_groups, leaked_pids)
+        await _cleanup_process_groups(process_groups, leaked_pids)
         if log is not None:
             log.close()
 
@@ -1089,7 +1106,6 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    import asyncio
 
     try:
         asyncio.run(main())

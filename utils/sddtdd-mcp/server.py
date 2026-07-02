@@ -4,6 +4,7 @@ Single tool: review. Captures Git state, delegates to LLM via MCP sampling,
 records everything in an append-only JSON Lines access log.
 """
 import atexit
+import asyncio
 import json
 import logging
 import os
@@ -613,7 +614,7 @@ def _resolve_path(repo_path: str, raw: str) -> Path:
 
 # Per-review cleanup of process groups created by reviewer shell_command calls.
 
-def _cleanup_process_groups(process_groups: list[int], leaked_pids: list[int]) -> None:
+async def _cleanup_process_groups(process_groups: list[int], leaked_pids: list[int]) -> None:
     """Terminate command process groups and any previously observed leaked PIDs.
 
     The primary cleanup path is process-group based: every shell_command starts
@@ -650,7 +651,7 @@ def _cleanup_process_groups(process_groups: list[int], leaked_pids: list[int]) -
         except Exception as exc:
             logger.warning("cleanup: SIGTERM failed leaked pid=%d error=%s", pid, exc)
 
-    time.sleep(1)
+    await asyncio.sleep(1)
 
     for pgid in pgids:
         try:
@@ -728,7 +729,7 @@ def _format_shell_command_result(
     ).rstrip()
 
 
-def _execute_tool(
+async def _execute_tool(
     name: str,
     args: dict,
     repo_path: str,
@@ -740,44 +741,50 @@ def _execute_tool(
         cmd = str(args.get("command", "")).strip()
         if not cmd:
             return "ERROR: empty command"
-        # Run from repo root in a new process session so timeout can terminate
-        # the whole command tree, not just the intermediate shell. This protects
-        # against commands such as `npm run dev`, `vite preview`, watch-mode test
-        # runners, or e2e harnesses that spawn child processes and keep running.
-        # On timeout, send SIGTERM to the process group first, then SIGKILL if
-        # children do not exit promptly.
         try:
-            process = subprocess.Popen(
+            process = await asyncio.create_subprocess_shell(
                 cmd,
-                shell=True,
                 cwd=repo_path,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
                 start_new_session=True,
             )
             process_groups.append(process.pid)
             timed_out = False
             try:
-                stdout, stderr = process.communicate(timeout=MAX_SHELL_COMMAND_SECONDS)
-            except subprocess.TimeoutExpired:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=MAX_SHELL_COMMAND_SECONDS,
+                )
+            except asyncio.TimeoutError:
                 timed_out = True
                 try:
                     os.killpg(process.pid, signal.SIGTERM)
-                    stdout, stderr = process.communicate(timeout=5)
-                except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
-                    stdout, stderr = process.communicate()
-                timeout_notice = (
-                    f"\n\n[TOOL_COMMAND_TIMED_OUT]\n"
-                    f"Timeout seconds: {MAX_SHELL_COMMAND_SECONDS}\n"
-                    "The command exceeded the shell command timeout and its process group was terminated."
-                )
-                stderr = (stderr or "") + timeout_notice
+                except ProcessLookupError:
+                    pass
+                except Exception as exc:
+                    logger.warning("TOOL_TIMEOUT_SIGTERM_FAILED: pid=%s error=%s", process.pid, exc)
+
+                try:
+                    stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=5)
+                except asyncio.TimeoutError:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    except Exception as exc:
+                        logger.warning("TOOL_TIMEOUT_SIGKILL_FAILED: pid=%s error=%s", process.pid, exc)
+                    stdout_bytes, stderr_bytes = await process.communicate()
+
+            stdout = stdout_bytes.decode(errors="replace") if isinstance(stdout_bytes, (bytes, bytearray)) else (stdout_bytes or "")
+            stderr = stderr_bytes.decode(errors="replace") if isinstance(stderr_bytes, (bytes, bytearray)) else (stderr_bytes or "")
+            exit_code = process.returncode
+            if timed_out:
+                stderr = (stderr + "\n" if stderr else "") + "[TOOL_COMMAND_TIMED_OUT]"
 
             out = _format_shell_command_result(
                 command=cmd,
-                exit_code=process.returncode,
+                exit_code=exit_code,
                 timed_out=timed_out,
                 stdout=stdout or "",
                 stderr=stderr or "",
@@ -1237,7 +1244,7 @@ async def _sample_with_tools(
             if tu.name == "shell_command":
                 command = str(tool_args.get("command", ""))
                 arg_summary = f" command={_safe_log_text(command)!r}"
-            output = _execute_tool(tu.name, tool_args, repo_path, process_groups, leaked_pids)
+            output = await _execute_tool(tu.name, tool_args, repo_path, process_groups, leaked_pids)
             logger.debug(
                 "SAMPLING_TOOL: round=%d tool_index=%d/%d name=%s%s output_len=%d",
                 _round + 1,
@@ -1459,7 +1466,7 @@ async def call_tool(
         if log:
             log.append(_error_event(request_id, repo_path, review_type, task_id, result["response"]))
 
-    _cleanup_process_groups(process_groups, leaked_pids)
+    await _cleanup_process_groups(process_groups, leaked_pids)
     return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
