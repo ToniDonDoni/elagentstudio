@@ -876,7 +876,7 @@ async def _sample_with_tools(
     last_text = ""
     max_token_continues = 0
     for _round in range(max_rounds):
-        logger.info("SAMPLING: round %d of %d, messages=%d",
+        logger.debug("SAMPLING: round %d of %d, messages=%d",
                      _round + 1, max_rounds, len(messages))
         try:
             try:
@@ -918,7 +918,7 @@ async def _sample_with_tools(
 
         # If the LLM didn't ask for tools, we're done
         stop_reason = getattr(result, "stopReason", None) or "endTurn"
-        logger.info(
+        logger.debug(
             "SAMPLING: round %d stop_reason=%s text_len=%d requested_max_tokens=%d",
             _round + 1,
             stop_reason,
