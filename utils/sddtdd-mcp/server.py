@@ -299,12 +299,19 @@ Task ancestry and context reconstruction:
 5. Use parent tasks, requirement IDs, architecture references, acceptance criteria, and prior reviewed entries as mandatory review context.
 6. Sibling tasks are not parents. Do not infer task ancestry from execution order.
 
-General SDDTDD review invariants:
+    General SDDTDD review invariants:
 - Every agent-generated artifact must be reviewed by an independent reviewer before later work depends on it.
 - Every automatically testable behavior must go through reviewed RED-GREEN TDD.
 - Passing tests do not replace independent review.
 - Independent review does not replace RED-GREEN.
 - Journal entries and committed artifacts are part of the deliverable.
+- End-to-end tests are not defined by a specific framework name. Playwright is one possible tool, but the required property is that the test exercises the real user scenario through the running application boundary.
+- Functionality implemented only in an isolated class, module, helper, or facade is not sufficient evidence that the feature exists in the application. The reviewer must verify that the implemented code is actually wired into the app and is exercised through the user-visible flow.
+- When a requirement describes user-visible behavior or interaction, tests must prove that behavior end-to-end where practical: render/open the app, perform the user action, and observe the user-visible result. Tests that only check class methods, labels, object shapes, or internal state are insufficient unless the reviewer can justify why end-to-end coverage is impractical for that requirement.
+- Do not accept requirement coverage based only on requirement IDs appearing in test names, `describe` blocks, comments, grep output, coverage tables, component imports, or file existence. Those are traceability hints only; they are not proof that behavior is tested.
+- Do not accept application wiring based only on `import` statements or object construction. For user-visible features, wiring is proven only when the running app or rendered UI actually exposes the feature and the test drives the relevant user action.
+- For coverage audits, inspect the actual assertions and test actions for each requirement group. A PASS requires evidence that tests exercise observable behavior, not merely that tests mention the requirement ID or instantiate the implementation class.
+- If a user-visible requirement is covered only by unit/module tests while an end-to-end or rendered-application test is practical, FAIL and name the missing scenario.
 - A review response is not a completed workflow event until the implementer records it in the journal and commits it; you only return source verdict data.
 
 Stage-specific review rules:
@@ -351,7 +358,10 @@ REGRESSION_REVIEW:
 - Review regression evidence for the final committed implementation state.
 - Check exact commands, commit under test, test scope, pass/fail/skip/omit counts, failure details, environment/configuration, and limitations.
 - Ensure all relevant tests for affected projects/shared components were run or justified.
-- FAIL if required tests were silently omitted.
+- For test coverage audits, do not PASS by counting requirement IDs, test file names, `describe` labels, grep hits, or imports. Inspect what the tests actually do and what their assertions actually prove.
+- For each user-visible requirement group, verify that at least one practical end-to-end or rendered-application test opens/renders the app, performs the relevant user action, and observes the user-visible result. If coverage stops at class methods, labels, mocks, object shapes, or imports, FAIL.
+- If the implementation claims a component is wired into the app, verify application-boundary evidence, not just `src/main.js` imports. The feature must be reachable in the running/rendered app through the documented user flow.
+- FAIL if required tests were silently omitted or if tests do not exercise the observable behavior required by the specification.
 
 FINAL_REVIEW:
 - Review the complete committed solution and artifact chain.

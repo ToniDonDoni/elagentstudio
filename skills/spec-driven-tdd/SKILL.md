@@ -68,6 +68,9 @@ the journal chain (race protection).
 - `references/STAGES.md` — stage-by-stage procedure for standalone mode:
   Stage 0..7, RED-GREEN steps, commit rules, escalation, completion
   conditions.
+- `ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md` — guide for translating
+  user requirements into observable acceptance criteria, test-boundary
+  requirements, architecture/test-design requirements, tasks, and tests.
 
 ## Four mandatory principles
 
@@ -77,8 +80,15 @@ These are invariants. They do not replace each other.
    reviewer before later work may depend on it.** Independent review does not
    replace RED-GREEN.
 2. **Every behavior that can be verified automatically is implemented through
-   a reviewed RED-GREEN test-driven cycle.** Passing tests do not replace
-   independent review.
+   a reviewed RED-GREEN test-driven cycle.** Requirements must first be
+   translated into observable acceptance criteria and the highest practical
+   automated test boundary, following
+   `ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md`. User-visible, audible,
+   public-API, log, downstream-integration, and performance requirements must
+   be tested at the application boundary where practical; implementation-only
+   evidence such as classes, methods, imports, labels, mocks, or requirement
+   IDs in test names is not enough. Passing tests do not replace independent
+   review.
 3. **Every completed step, review result, correction, and dependency is
    recorded in `.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log` and committed.** The journal does
    not replace artifacts, reviews, or test evidence.
@@ -108,6 +118,23 @@ USER INPUT
 ```
 
 Every arrow means: the next artifact is derived only from reviewed inputs.
+During SPEC, ARCHITECTURE, TASKS, and RED-GREEN planning, requirements MUST be
+converted using `ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md`:
+
+```text
+user requirement
+→ observable acceptance criterion
+→ required test boundary
+→ architecture / test-design requirement
+→ task
+→ automated test
+```
+
+For example, a visible button requirement must become an acceptance criterion
+that the button is visible in the rendered app/browser and a test at the
+rendered-app or end-to-end boundary where practical. A backend log requirement
+must become an acceptance criterion that the running application writes the
+actual log entry to a real configured destination that the test reads.
 
 Standalone implementer reads the full stage-by-stage procedure in
 `references/STAGES.md` and the journal format in `references/JOURNAL.md`.
@@ -219,6 +246,14 @@ mitigation.
     from the task broker and execute only the task it returns.
 17. In broker mode, do not consume `SKILL-ORCHESTRATOR.md` as your own
     instructions. It is the broker's policy.
+18. Do not treat a requirement as test-ready until it has observable acceptance
+    criteria and an explicit highest practical test boundary, as defined in
+    `ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md`.
+19. Do not accept implementation-only evidence for user-visible, audible,
+    public-API, log, downstream-integration, or performance requirements when
+    application-boundary testing is practical. Classes, methods, imports,
+    labels, mocks, source strings, and requirement IDs in test names are
+    traceability hints, not proof of behavior.
 
 ## How to use this skill
 
@@ -256,3 +291,4 @@ A ready-to-copy user prompt template (broker mode) lives in
 - [references/JOURNAL.md](references/JOURNAL.md) — journal format and invariants.
 - [references/STAGES.md](references/STAGES.md) — stage-by-stage procedure for standalone mode.
 - [references/SPEC-EXAMPLE.md](references/SPEC-EXAMPLE.md) — canonical worked example.
+- [ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md](ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md) — how to translate requirements into observable acceptance criteria, architecture/test-design requirements, tasks, and automated tests at the right boundary.
