@@ -519,7 +519,14 @@ def assert_review_tool(list_result: Json) -> None:
     assert_true("review" in names, f"tools/list must include review, got {names!r}")
 
 
-async def call_review(client: MCPStdioClient, repo: Path, prompt: str, *, timeout: float = 5.0) -> Json:
+async def call_review(
+    client: MCPStdioClient,
+    repo: Path,
+    prompt: str,
+    *,
+    task_id: str = "T-U2U",
+    timeout: float = 5.0,
+) -> Json:
     result = await client.request(
         "tools/call",
         {
@@ -527,13 +534,68 @@ async def call_review(client: MCPStdioClient, repo: Path, prompt: str, *, timeou
             "arguments": {
                 "repo_path": str(repo),
                 "review_type": "U2U_REVIEW",
-                "task_id": "T-U2U",
+                "task_id": task_id,
                 "prompt": prompt,
             },
         },
         timeout=timeout,
     )
     return extract_tool_call_response(result)
+
+
+# --- Access log helpers and test ---
+
+def read_access_log_events(log_path: Path) -> list[Json]:
+    if not log_path.exists():
+        return []
+    return [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def count_access_events(log_path: Path, event_name: str) -> int:
+    return sum(1 for event_record in read_access_log_events(log_path) if event_record.get("event") == event_name)
+
+
+async def test_access_log_records_review_start_and_completion(
+    client: MCPStdioClient,
+    repo: Path,
+    log_path: Path,
+) -> None:
+    event("SCENARIO_BEGIN: access_log_records_review_start_and_completion")
+    state = ScenarioState("access_log_happy_path")
+    started_before = count_access_events(log_path, "review_started")
+    completed_before = count_access_events(log_path, "review_completed")
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        event(f"MOCK_SAMPLING[{state.name}]: call={state.calls} params={summarize_json(params)}")
+        state.seen_params.append(params)
+        return text_result(valid_review_json("PASS", "access log happy path response"))
+
+    client.sampling_handler = sampling
+    response = await call_review(
+        client,
+        repo,
+        "U2U access log happy path scenario",
+        task_id="T-U2U-ACCESS-LOG",
+    )
+    assert_eq(response["status"], "COMPLETED", "access log review status")
+    assert_eq(response["verdict"], "PASS", "access log review verdict")
+    assert_eq(state.calls, 1, "access log test must sample exactly once")
+
+    started_after = count_access_events(log_path, "review_started")
+    completed_after = count_access_events(log_path, "review_completed")
+    assert_eq(
+        started_after,
+        started_before + 1,
+        "access log must record exactly one review_started event for this review",
+    )
+    assert_eq(
+        completed_after,
+        completed_before + 1,
+        "access log must record exactly one review_completed event for this review",
+    )
+    event("SCENARIO_DONE: access_log_records_review_start_and_completion")
+    ok("access log records review_started and review_completed for a happy-path review")
 
 
 async def test_startup_and_list_tools(client: MCPStdioClient) -> None:
@@ -765,6 +827,10 @@ async def run_all(args: argparse.Namespace) -> None:
             await run_named_test("test_startup_and_list_tools", lambda: test_startup_and_list_tools(client))
             await run_named_test("test_basic_review", lambda: test_basic_review(client, repo))
             await run_named_test(
+                "test_access_log_records_review_start_and_completion",
+                lambda: test_access_log_records_review_start_and_completion(client, repo, log_path),
+            )
+            await run_named_test(
                 "test_tool_use_roundtrip",
                 lambda: test_tool_use_roundtrip(client, repo, tool_use_type=args.tool_use_type),
             )
@@ -782,10 +848,11 @@ async def run_all(args: argparse.Namespace) -> None:
         lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         started = [e for e in lines if e.get("event") == "review_started"]
         completed = [e for e in lines if e.get("event") == "review_completed"]
-        expected_review_events = 5 if not args.test else sum(
+        expected_review_events = 6 if not args.test else sum(
             1
             for name in (
                 "test_basic_review",
+                "test_access_log_records_review_start_and_completion",
                 "test_tool_use_roundtrip",
                 "test_async_shell_command_does_not_block_list_tools",
                 "test_invalid_review_triggers_repair",
