@@ -1003,7 +1003,6 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             "stop_reason": stop_reason,
             "duration_ms": duration_ms,
             "result": result,
-            "raw_response": response_text,
             "json_repair_attempts": json_repair_attempts,
         }
         log.append(completed_event)
