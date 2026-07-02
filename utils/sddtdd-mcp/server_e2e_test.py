@@ -791,6 +791,7 @@ async def test_repair_maxtokens_retries_before_accepting_result(client: MCPStdio
     ok("repair maxTokens output is retried before acceptance")
 
 
+
 # Test that primary sampling response with stopReason=maxTokens is retried before acceptance.
 async def test_primary_sampling_maxtokens_retries_before_accepting_result(
     client: MCPStdioClient,
@@ -838,6 +839,45 @@ async def test_primary_sampling_maxtokens_retries_before_accepting_result(
     assert_eq(state.calls, 2, "primary maxTokens scenario must use maxTokens response + successful retry")
     event("SCENARIO_DONE: primary_sampling_maxtokens_retries_before_accepting_result")
     ok("primary maxTokens output is retried before acceptance")
+
+
+# Test that a primary sampling result that still has stopReason=maxTokens after retry exhaustion
+# is not accepted as a completed review, even if the last text is valid reviewer JSON.
+async def test_primary_sampling_maxtokens_exhaustion_is_not_accepted_as_completed_review(
+    client: MCPStdioClient,
+    repo: Path,
+) -> None:
+    event("SCENARIO_BEGIN: primary_sampling_maxtokens_exhaustion_is_not_accepted_as_completed_review")
+    state = ScenarioState("primary_maxtokens_exhaustion")
+    maxtokens_primary_json = valid_review_json(
+        "PASS",
+        "this primary JSON must not be accepted after maxTokens retry exhaustion",
+    )
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        event(f"MOCK_SAMPLING[{state.name}]: call={state.calls} params={summarize_json(params)}")
+        state.seen_params.append(params)
+        return text_result(maxtokens_primary_json, stop_reason="maxTokens")
+
+    client.sampling_handler = sampling
+    response = await call_review(
+        client,
+        repo,
+        "U2U primary maxTokens exhaustion scenario",
+        timeout=8,
+    )
+
+    assert_true(
+        state.calls >= 2,
+        f"primary maxTokens exhaustion scenario should retry before giving up, calls={state.calls}",
+    )
+    assert_true(
+        not (response.get("status") == "COMPLETED" and response.get("verdict") == "PASS"),
+        "a final response returned with stopReason=maxTokens after retry exhaustion must not be accepted as COMPLETED/PASS, even if its text is valid JSON",
+    )
+    event("SCENARIO_DONE: primary_sampling_maxtokens_exhaustion_is_not_accepted_as_completed_review")
+    ok("primary maxTokens retry exhaustion is not accepted as completed PASS review")
 
 
 # Test that repair sampling create_message does not block tools/list.
@@ -963,6 +1003,10 @@ async def run_all(args: argparse.Namespace) -> None:
                 lambda: test_primary_sampling_maxtokens_retries_before_accepting_result(client, repo),
             )
             await run_named_test(
+                "test_primary_sampling_maxtokens_exhaustion_is_not_accepted_as_completed_review",
+                lambda: test_primary_sampling_maxtokens_exhaustion_is_not_accepted_as_completed_review(client, repo),
+            )
+            await run_named_test(
                 "test_repair_sampling_does_not_block_list_tools",
                 lambda: test_repair_sampling_does_not_block_list_tools(client, repo),
             )
@@ -971,7 +1015,7 @@ async def run_all(args: argparse.Namespace) -> None:
         lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         started = [e for e in lines if e.get("event") == "review_started"]
         completed = [e for e in lines if e.get("event") == "review_completed"]
-        expected_review_events = 8 if not args.test else sum(
+        expected_review_events = 9 if not args.test else sum(
             1
             for name in (
                 "test_basic_review",
@@ -981,6 +1025,7 @@ async def run_all(args: argparse.Namespace) -> None:
                 "test_invalid_review_triggers_repair",
                 "test_repair_maxtokens_retries_before_accepting_result",
                 "test_primary_sampling_maxtokens_retries_before_accepting_result",
+                "test_primary_sampling_maxtokens_exhaustion_is_not_accepted_as_completed_review",
                 "test_repair_sampling_does_not_block_list_tools",
             )
             if matches_test_mask(name, args.test)
