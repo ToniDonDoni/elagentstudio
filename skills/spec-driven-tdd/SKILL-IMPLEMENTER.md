@@ -345,3 +345,16 @@ Never remove or rename reviewer log file review-access.jsonl.
       entry.
 - [ ] The final report says the broker returned `complete` or
       describes the blocker.
+- [ ] The final report includes a "Compromises and deviations" section listing
+      every journaled `AGENT_DECISION`, compromise, deviation, or practical
+      substitution made during the delivery, including minor technical
+      compromises.
+- [ ] The final report includes a separate "Major acceptance changes" section
+      for every compromise that changed, weakened, replaced, or reinterpreted
+      an acceptance criterion, user-visible behavior, user-observable evidence,
+      or required test boundary. If there were no such major compromises, the
+      section explicitly says none occurred.
+- [ ] For each listed compromise, the final report includes the affected
+      artifact, task, criterion, or workflow rule; the accepted risk; the
+      mitigation or replacement boundary; and the relevant journal id when
+      available.
