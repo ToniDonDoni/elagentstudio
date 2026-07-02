@@ -673,7 +673,7 @@ async def test_async_shell_command_does_not_block_list_tools(
             result = tool_use_result(
                 tool_id="u2u-slow-tool",
                 name="shell_command",
-                arguments={"command": "sleep 3; printf SLOW_DONE"},
+                arguments={"command": "sleep 1.25; printf SLOW_DONE"},
                 tool_use_type=tool_use_type,
             )
             # Let the test send tools/list while the server is executing shell_command.
@@ -991,6 +991,345 @@ async def test_repair_sampling_does_not_block_list_tools(client: MCPStdioClient,
     ok(f"tools/list answered during pending repair sampling in {elapsed:.3f}s")
 
 
+
+async def test_sampling_jsonrpc_error_returns_error_and_logs_completion(
+    client: MCPStdioClient,
+    repo: Path,
+    log_path: Path,
+) -> None:
+    event("SCENARIO_BEGIN: sampling_jsonrpc_error_returns_error_and_logs_completion")
+    state = ScenarioState("sampling_jsonrpc_error")
+    completed_before = count_access_events(log_path, "review_completed")
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        raise RuntimeError("deliberate primary sampling failure")
+
+    client.sampling_handler = sampling
+    response = await call_review(client, repo, "U2U primary sampling JSON-RPC error scenario", timeout=5)
+    assert_eq(response["status"], "ERROR", "primary sampling error review status")
+    assert_eq(response["verdict"], None, "primary sampling error must not produce verdict")
+    assert_true("deliberate primary sampling failure" in response.get("response", ""), "error response must include sampling failure detail")
+    assert_eq(state.calls, 1, "primary sampling error should call sampling exactly once")
+    completed_after = count_access_events(log_path, "review_completed")
+    assert_eq(completed_after, completed_before + 1, "sampling error must still write review_completed")
+    last_completed = [e for e in read_access_log_events(log_path) if e.get("event") == "review_completed"][-1]
+    assert_eq(last_completed.get("status"), "ERROR", "sampling error access log status")
+    event("SCENARIO_DONE: sampling_jsonrpc_error_returns_error_and_logs_completion")
+    ok("sampling JSON-RPC error returns ERROR and writes review_completed")
+
+
+async def test_repair_sampling_error_returns_error_and_logs_completion(
+    client: MCPStdioClient,
+    repo: Path,
+    log_path: Path,
+) -> None:
+    event("SCENARIO_BEGIN: repair_sampling_error_returns_error_and_logs_completion")
+    state = ScenarioState("repair_sampling_error")
+    completed_before = count_access_events(log_path, "review_completed")
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        if state.calls == 1:
+            return text_result("this primary response is not parseable and must trigger repair")
+        raise RuntimeError("deliberate repair sampling failure")
+
+    client.sampling_handler = sampling
+    response = await call_review(client, repo, "U2U repair sampling JSON-RPC error scenario", timeout=5)
+    assert_eq(response["status"], "ERROR", "repair sampling error review status")
+    assert_eq(response["verdict"], None, "repair sampling error must not produce verdict")
+    assert_true("deliberate repair sampling failure" in response.get("response", ""), "error response must include repair sampling failure detail")
+    assert_eq(state.calls, 2, "repair sampling error should use primary + first repair attempt")
+    completed_after = count_access_events(log_path, "review_completed")
+    assert_eq(completed_after, completed_before + 1, "repair sampling error must still write review_completed")
+    last_completed = [e for e in read_access_log_events(log_path) if e.get("event") == "review_completed"][-1]
+    assert_eq(last_completed.get("status"), "ERROR", "repair sampling error access log status")
+    event("SCENARIO_DONE: repair_sampling_error_returns_error_and_logs_completion")
+    ok("repair sampling JSON-RPC error returns ERROR and writes review_completed")
+
+
+async def test_primary_sampling_maxrounds_exceeded_is_not_accepted_as_completed_review(
+    client: MCPStdioClient,
+    repo: Path,
+) -> None:
+    event("SCENARIO_BEGIN: primary_sampling_maxrounds_exceeded_is_not_accepted_as_completed_review")
+    state = ScenarioState("primary_maxrounds_exceeded")
+    maxrounds_primary_json = valid_review_json(
+        "PASS",
+        "this primary JSON must not be accepted because stopReason=maxRoundsExceeded",
+    )
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        return text_result(maxrounds_primary_json, stop_reason="maxRoundsExceeded")
+
+    client.sampling_handler = sampling
+    response = await call_review(client, repo, "U2U primary maxRoundsExceeded scenario", timeout=5)
+    assert_eq(response["status"], "ERROR", "primary maxRoundsExceeded review status")
+    assert_eq(response["verdict"], None, "primary maxRoundsExceeded must not produce verdict")
+    assert_eq(state.calls, 1, "primary maxRoundsExceeded should not repair valid-but-execution-error JSON")
+    event("SCENARIO_DONE: primary_sampling_maxrounds_exceeded_is_not_accepted_as_completed_review")
+    ok("primary maxRoundsExceeded output is not accepted as completed review")
+
+
+async def test_repair_maxrounds_exceeded_retries_before_accepting_result(client: MCPStdioClient, repo: Path) -> None:
+    event("SCENARIO_BEGIN: repair_maxrounds_exceeded_retries_before_accepting_result")
+    state = ScenarioState("repair_maxrounds_exceeded_retry")
+    raw_reviewer_response = "this primary reviewer answer is invalid and must trigger repair maxRoundsExceeded"
+    maxrounds_repair_json = valid_review_json(
+        "PASS",
+        "this repair JSON must not be accepted because stopReason=maxRoundsExceeded",
+    )
+    saw_retry_prompt = False
+
+    async def sampling(params: Json) -> Json:
+        nonlocal saw_retry_prompt
+        state.calls += 1
+        prompt_text = extract_text_content(params)
+        if state.calls == 1:
+            return text_result(raw_reviewer_response)
+        if state.calls == 2:
+            assert_true(raw_reviewer_response in prompt_text, "first repair prompt must include original raw reviewer response")
+            return text_result(maxrounds_repair_json, stop_reason="maxRoundsExceeded")
+        assert_true(
+            "maxRoundsExceeded" in prompt_text,
+            "repair retry prompt after maxRoundsExceeded repair output must mention maxRoundsExceeded",
+        )
+        assert_true(raw_reviewer_response in prompt_text, "repair retry prompt must preserve original raw reviewer response")
+        saw_retry_prompt = True
+        return text_result(valid_review_json("PASS", "repair retried after maxRoundsExceeded output"))
+
+    client.sampling_handler = sampling
+    response = await call_review(client, repo, "U2U repair maxRoundsExceeded retry scenario", timeout=5)
+    assert_eq(response["status"], "COMPLETED", "repair maxRoundsExceeded retry review status")
+    assert_eq(response["verdict"], "PASS", "repair maxRoundsExceeded retry verdict")
+    assert_true(saw_retry_prompt, "repair response returned with stopReason=maxRoundsExceeded must force retry")
+    assert_eq(state.calls, 3, "repair maxRoundsExceeded scenario must use primary + failed repair + retry")
+    event("SCENARIO_DONE: repair_maxrounds_exceeded_retries_before_accepting_result")
+    ok("repair maxRoundsExceeded output is retried before acceptance")
+
+
+async def test_unknown_tool_use_name_returns_error_tool_result_and_allows_final_verdict(
+    client: MCPStdioClient,
+    repo: Path,
+    *,
+    tool_use_type: str,
+) -> None:
+    event("SCENARIO_BEGIN: unknown_tool_use_name_returns_error_tool_result_and_allows_final_verdict")
+    state = ScenarioState("unknown_tool_use")
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        if state.calls == 1:
+            return tool_use_result(
+                tool_id="u2u-unknown-tool",
+                name="does_not_exist",
+                arguments={},
+                tool_use_type=tool_use_type,
+            )
+        tool_text = extract_text_content(params)
+        assert_true("ERROR: unknown tool: does_not_exist" in tool_text, "unknown tool must be returned as deterministic tool_result error")
+        return text_result(valid_review_json("PASS", "unknown tool error was surfaced and handled"))
+
+    client.sampling_handler = sampling
+    response = await call_review(client, repo, "U2U unknown toolUse name scenario", timeout=5)
+    assert_eq(response["status"], "COMPLETED", "unknown toolUse review status")
+    assert_eq(response["verdict"], "PASS", "unknown toolUse review verdict")
+    assert_eq(state.calls, 2, "unknown toolUse scenario must use tool call + final verdict")
+    event("SCENARIO_DONE: unknown_tool_use_name_returns_error_tool_result_and_allows_final_verdict")
+    ok("unknown toolUse name returns deterministic error tool_result and final verdict is handled")
+
+
+async def test_malformed_shell_command_tool_args_return_deterministic_errors(
+    client: MCPStdioClient,
+    repo: Path,
+    *,
+    tool_use_type: str,
+) -> None:
+    event("SCENARIO_BEGIN: malformed_shell_command_tool_args_return_deterministic_errors")
+    state = ScenarioState("malformed_shell_args")
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        if state.calls == 1:
+            return {
+                "role": "assistant",
+                "content": [
+                    {"type": tool_use_type, "id": "missing-command", "name": "shell_command", "input": {}},
+                    {"type": tool_use_type, "id": "empty-command", "name": "shell_command", "input": {"command": "   "}},
+                    {"type": tool_use_type, "id": "none-command", "name": "shell_command", "input": {"command": None}},
+                ],
+                "model": "u2u-mock-llm",
+                "stopReason": "toolUse",
+            }
+        tool_text = extract_text_content(params)
+        assert_true(tool_text.count("ERROR: empty command") >= 3, "malformed shell_command args must return deterministic empty-command errors")
+        return text_result(valid_review_json("PASS", "malformed shell_command arguments returned deterministic errors"))
+
+    client.sampling_handler = sampling
+    response = await call_review(client, repo, "U2U malformed shell_command tool args scenario", timeout=5)
+    assert_eq(response["status"], "COMPLETED", "malformed shell args review status")
+    assert_eq(response["verdict"], "PASS", "malformed shell args review verdict")
+    assert_eq(state.calls, 2, "malformed shell args scenario must use tool calls + final verdict")
+    event("SCENARIO_DONE: malformed_shell_command_tool_args_return_deterministic_errors")
+    ok("malformed shell_command tool args return deterministic tool_result errors")
+
+
+async def test_shell_command_timeout_returns_timed_out_result_and_continues(
+    client: MCPStdioClient,
+    repo: Path,
+    *,
+    tool_use_type: str,
+) -> None:
+    event("SCENARIO_BEGIN: shell_command_timeout_returns_timed_out_result_and_continues")
+    state = ScenarioState("shell_timeout")
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        if state.calls == 1:
+            return tool_use_result(
+                tool_id="u2u-timeout-tool",
+                name="shell_command",
+                arguments={"command": "python3 -c 'import time; time.sleep(10)'"},
+                tool_use_type=tool_use_type,
+            )
+        tool_text = extract_text_content(params)
+        assert_true("TIMED_OUT: true" in tool_text, "timeout tool_result must include TIMED_OUT: true")
+        assert_true("[TOOL_COMMAND_TIMED_OUT]" in tool_text, "timeout tool_result must include TOOL_COMMAND_TIMED_OUT marker")
+        return text_result(valid_review_json("PASS", "shell command timeout was surfaced and review continued"))
+
+    client.sampling_handler = sampling
+    started = time.monotonic()
+    response = await call_review(client, repo, "U2U shell command timeout scenario", timeout=8)
+    elapsed = time.monotonic() - started
+    assert_eq(response["status"], "COMPLETED", "shell timeout review status")
+    assert_eq(response["verdict"], "PASS", "shell timeout review verdict")
+    assert_true(elapsed < 7.5, f"timeout scenario should not hang indefinitely; elapsed={elapsed:.3f}s")
+    assert_eq(state.calls, 2, "shell timeout scenario must use tool call + final verdict")
+    event("SCENARIO_DONE: shell_command_timeout_returns_timed_out_result_and_continues")
+    ok("shell_command timeout returns TIMED_OUT marker and review continues")
+
+
+async def test_shell_command_process_leak_warning_and_cleanup(
+    client: MCPStdioClient,
+    repo: Path,
+    *,
+    tool_use_type: str,
+) -> None:
+    event("SCENARIO_BEGIN: shell_command_process_leak_warning_and_cleanup")
+    state = ScenarioState("process_leak_warning")
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        if state.calls == 1:
+            return tool_use_result(
+                tool_id="u2u-leak-tool",
+                name="shell_command",
+                arguments={"command": "sh -c 'sleep 30 & printf LEAK_PARENT_DONE'"},
+                tool_use_type=tool_use_type,
+            )
+        tool_text = extract_text_content(params)
+        assert_true("LEAK_PARENT_DONE" in tool_text, "process leak scenario must include parent command output")
+        assert_true("[PROCESS_LEAK_WARNING]" in tool_text, "process leak scenario must include PROCESS_LEAK_WARNING")
+        return text_result(valid_review_json("PASS", "process leak warning was surfaced"))
+
+    client.sampling_handler = sampling
+    response = await call_review(client, repo, "U2U process leak warning scenario", timeout=8)
+    assert_eq(response["status"], "COMPLETED", "process leak warning review status")
+    assert_eq(response["verdict"], "PASS", "process leak warning review verdict")
+    assert_eq(state.calls, 2, "process leak scenario must use tool call + final verdict")
+    event("SCENARIO_DONE: shell_command_process_leak_warning_and_cleanup")
+    ok("shell_command process leak warning is surfaced and cleanup path runs")
+
+
+async def test_large_tool_output_is_truncated(client: MCPStdioClient, repo: Path, *, tool_use_type: str) -> None:
+    event("SCENARIO_BEGIN: large_tool_output_is_truncated")
+    state = ScenarioState("large_tool_output_truncation")
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        if state.calls == 1:
+            return tool_use_result(
+                tool_id="u2u-large-output-tool",
+                name="shell_command",
+                arguments={"command": "python3 -c 'print(\"X\" * 5000)'"},
+                tool_use_type=tool_use_type,
+            )
+        tool_text = extract_text_content(params)
+        assert_true("[TOOL_OUTPUT_TRUNCATED]" in tool_text, "large tool output must include truncation marker")
+        assert_true("Original chars:" in tool_text, "large tool output truncation must report original size")
+        return text_result(valid_review_json("PASS", "large tool output truncation was surfaced"))
+
+    client.sampling_handler = sampling
+    response = await call_review(client, repo, "U2U large tool output truncation scenario", timeout=5)
+    assert_eq(response["status"], "COMPLETED", "large tool output truncation review status")
+    assert_eq(response["verdict"], "PASS", "large tool output truncation review verdict")
+    assert_eq(state.calls, 2, "large tool output scenario must use tool call + final verdict")
+    event("SCENARIO_DONE: large_tool_output_is_truncated")
+    ok("large shell_command output is truncated before being returned to sampler")
+
+
+async def test_malformed_tools_call_arguments_return_error(client: MCPStdioClient, repo: Path) -> None:
+    event("SCENARIO_BEGIN: malformed_tools_call_arguments_return_error")
+    malformed_calls = [
+        ({"review_type": "U2U_REVIEW", "prompt": "missing repo_path"}, "missing repo_path"),
+        ({"repo_path": str(repo), "prompt": "missing review_type"}, "missing review_type"),
+        ({"repo_path": str(repo), "review_type": "U2U_REVIEW"}, "missing prompt"),
+    ]
+    for arguments, label in malformed_calls:
+        result = await client.request("tools/call", {"name": "review", "arguments": arguments}, timeout=5)
+        assert_true(result.get("isError") is True, f"malformed tools/call arguments should return isError=true: {label}")
+        result_text = extract_text_content(result)
+        assert_true("Input validation error" in result_text, f"malformed tools/call error text: {label}: {result_text}")
+
+    non_git_dir = repo.parent / "not-a-git-repo"
+    non_git_dir.mkdir()
+    response = await call_review(client, non_git_dir, "U2U non-git repo_path scenario", timeout=5)
+    assert_eq(response["status"], "ERROR", "non-git repo_path review status")
+    assert_eq(response["verdict"], None, "non-git repo_path must not produce verdict")
+    event("SCENARIO_DONE: malformed_tools_call_arguments_return_error")
+    ok("malformed tools/call arguments and non-git repo_path return errors")
+
+
+async def test_plain_text_verdict_fallback_accepts_pass_with_body(client: MCPStdioClient, repo: Path) -> None:
+    event("SCENARIO_BEGIN: plain_text_verdict_fallback_accepts_pass_with_body")
+    state = ScenarioState("plain_text_verdict_fallback")
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        return text_result("PASS\nPlain text fallback review body.")
+
+    client.sampling_handler = sampling
+    response = await call_review(client, repo, "U2U plain-text PASS verdict fallback scenario", timeout=5)
+    assert_eq(response["status"], "COMPLETED", "plain-text fallback review status")
+    assert_eq(response["verdict"], "PASS", "plain-text fallback review verdict")
+    assert_true(response.get("response", "").startswith("PASS\n"), "plain-text fallback response must preserve verdict line and body")
+    assert_eq(state.calls, 1, "plain-text fallback should not invoke repair")
+    event("SCENARIO_DONE: plain_text_verdict_fallback_accepts_pass_with_body")
+    ok("plain-text PASS verdict fallback is accepted when it has a body")
+
+
+async def test_repair_exhaustion_returns_error_not_completed_review(client: MCPStdioClient, repo: Path) -> None:
+    event("SCENARIO_BEGIN: repair_exhaustion_returns_error_not_completed_review")
+    state = ScenarioState("repair_exhaustion")
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        if state.calls == 1:
+            return text_result("this primary response is invalid and must trigger repair exhaustion")
+        return text_result(valid_review_json("PASS", "valid JSON text must still not be accepted because repair stopReason=maxTokens"), stop_reason="maxTokens")
+
+    client.sampling_handler = sampling
+    response = await call_review(client, repo, "U2U repair exhaustion scenario", timeout=8)
+    assert_true(state.calls >= 2, f"repair exhaustion should attempt repairs before giving up, calls={state.calls}")
+    assert_true(
+        not (response.get("status") == "COMPLETED" and response.get("verdict") == "PASS"),
+        "repair exhaustion must not be accepted as COMPLETED/PASS, even when repair text is valid JSON with stopReason=maxTokens",
+    )
+    assert_eq(response["status"], "ERROR", "repair exhaustion review status")
+    event("SCENARIO_DONE: repair_exhaustion_returns_error_not_completed_review")
+    ok("repair exhaustion returns ERROR instead of completed review")
+
 async def run_all(args: argparse.Namespace) -> None:
     global VERBOSE_OUTPUT
     VERBOSE_OUTPUT = args.verbose
@@ -1009,6 +1348,8 @@ async def run_all(args: argparse.Namespace) -> None:
         env.setdefault("SDDTDD_REVIEW_MAX_SAMPLING_TOKENS", "20000")
         env.setdefault("SDDTDD_REVIEW_MAX_SAMPLING_ROUNDS", "50")
         env.setdefault("SDDTDD_REVIEW_VERDICT_REPAIR_ATTEMPTS", "5")
+        env.setdefault("SDDTDD_REVIEW_SHELL_COMMAND_SECONDS", "2")
+        env.setdefault("SDDTDD_REVIEW_TOOL_OUTPUT_CHARS", "2000")
         env.setdefault("PYTHONUNBUFFERED", "1")
 
         note(f"server: {server_path}")
@@ -1076,6 +1417,54 @@ async def run_all(args: argparse.Namespace) -> None:
                 "test_repair_sampling_does_not_block_list_tools",
                 lambda: test_repair_sampling_does_not_block_list_tools(client, repo),
             )
+            await run_named_test(
+                "test_sampling_jsonrpc_error_returns_error_and_logs_completion",
+                lambda: test_sampling_jsonrpc_error_returns_error_and_logs_completion(client, repo, log_path),
+            )
+            await run_named_test(
+                "test_repair_sampling_error_returns_error_and_logs_completion",
+                lambda: test_repair_sampling_error_returns_error_and_logs_completion(client, repo, log_path),
+            )
+            await run_named_test(
+                "test_primary_sampling_maxrounds_exceeded_is_not_accepted_as_completed_review",
+                lambda: test_primary_sampling_maxrounds_exceeded_is_not_accepted_as_completed_review(client, repo),
+            )
+            await run_named_test(
+                "test_repair_maxrounds_exceeded_retries_before_accepting_result",
+                lambda: test_repair_maxrounds_exceeded_retries_before_accepting_result(client, repo),
+            )
+            await run_named_test(
+                "test_unknown_tool_use_name_returns_error_tool_result_and_allows_final_verdict",
+                lambda: test_unknown_tool_use_name_returns_error_tool_result_and_allows_final_verdict(client, repo, tool_use_type=args.tool_use_type),
+            )
+            await run_named_test(
+                "test_malformed_shell_command_tool_args_return_deterministic_errors",
+                lambda: test_malformed_shell_command_tool_args_return_deterministic_errors(client, repo, tool_use_type=args.tool_use_type),
+            )
+            await run_named_test(
+                "test_shell_command_timeout_returns_timed_out_result_and_continues",
+                lambda: test_shell_command_timeout_returns_timed_out_result_and_continues(client, repo, tool_use_type=args.tool_use_type),
+            )
+            await run_named_test(
+                "test_shell_command_process_leak_warning_and_cleanup",
+                lambda: test_shell_command_process_leak_warning_and_cleanup(client, repo, tool_use_type=args.tool_use_type),
+            )
+            await run_named_test(
+                "test_large_tool_output_is_truncated",
+                lambda: test_large_tool_output_is_truncated(client, repo, tool_use_type=args.tool_use_type),
+            )
+            await run_named_test(
+                "test_malformed_tools_call_arguments_return_error",
+                lambda: test_malformed_tools_call_arguments_return_error(client, repo),
+            )
+            await run_named_test(
+                "test_plain_text_verdict_fallback_accepts_pass_with_body",
+                lambda: test_plain_text_verdict_fallback_accepts_pass_with_body(client, repo),
+            )
+            await run_named_test(
+                "test_repair_exhaustion_returns_error_not_completed_review",
+                lambda: test_repair_exhaustion_returns_error_not_completed_review(client, repo),
+            )
 
         assert_true(log_path.exists(), f"access log must exist at {log_path}")
         lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -1094,6 +1483,18 @@ async def run_all(args: argparse.Namespace) -> None:
                 "test_primary_sampling_maxtokens_retries_before_accepting_result",
                 "test_primary_sampling_maxtokens_exhaustion_is_not_accepted_as_completed_review",
                 "test_repair_sampling_does_not_block_list_tools",
+                "test_sampling_jsonrpc_error_returns_error_and_logs_completion",
+                "test_repair_sampling_error_returns_error_and_logs_completion",
+                "test_primary_sampling_maxrounds_exceeded_is_not_accepted_as_completed_review",
+                "test_repair_maxrounds_exceeded_retries_before_accepting_result",
+                "test_unknown_tool_use_name_returns_error_tool_result_and_allows_final_verdict",
+                "test_malformed_shell_command_tool_args_return_deterministic_errors",
+                "test_shell_command_timeout_returns_timed_out_result_and_continues",
+                "test_shell_command_process_leak_warning_and_cleanup",
+                "test_large_tool_output_is_truncated",
+                "test_malformed_tools_call_arguments_return_error",
+                "test_plain_text_verdict_fallback_accepts_pass_with_body",
+                "test_repair_exhaustion_returns_error_not_completed_review",
             )
             if matches_test_mask(name, args.test)
         )
