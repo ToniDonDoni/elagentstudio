@@ -1053,7 +1053,7 @@ the response field must keep concrete explanatory body text after the verdict li
                 "REVIEW_RESPONSE_REPAIR_EMPTY_RESULT_DUMP: attempt=%d/%d result=%s",
                 attempt,
                 max_attempts,
-                _safe_log_text(json.dumps(result_dump, ensure_ascii=False, default=str), limit=2000),
+                _safe_log_text(json.dumps(result_dump, ensure_ascii=False, default=str), limit=40000),
             )
             logger.warning(
                 "REVIEW_RESPONSE_REPAIR_EMPTY_OUTPUT: attempt=%d/%d stop_reason=%s preserving_original_len=%d and retrying repair",

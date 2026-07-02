@@ -67,5 +67,5 @@ mcp_servers:
       max_tool_rounds: 5555
     timeout: 1228
     connect_timeout: 30
-    max_tokens_cap: 20000
+    max_tokens_cap: 40000
 ```
