@@ -519,7 +519,7 @@ def assert_review_tool(list_result: Json) -> None:
     assert_true("review" in names, f"tools/list must include review, got {names!r}")
 
 
-async def call_review(client: MCPStdioClient, repo: Path, prompt: str, *, timeout: float = 30.0) -> Json:
+async def call_review(client: MCPStdioClient, repo: Path, prompt: str, *, timeout: float = 5.0) -> Json:
     result = await client.request(
         "tools/call",
         {
@@ -626,7 +626,7 @@ async def test_async_shell_command_does_not_block_list_tools(
     client.sampling_handler = sampling
 
     call_task = asyncio.create_task(
-        call_review(client, repo, "U2U async nonblocking shell_command scenario", timeout=20),
+        call_review(client, repo, "U2U async nonblocking shell_command scenario", timeout=8),
         name="slow-review-call",
     )
 
@@ -668,7 +668,7 @@ async def test_invalid_review_triggers_repair(client: MCPStdioClient, repo: Path
         return text_result(valid_review_json("PASS", "repair eventually produced valid JSON"))
 
     client.sampling_handler = sampling
-    response = await call_review(client, repo, "U2U invalid reviewer output repair scenario", timeout=30)
+    response = await call_review(client, repo, "U2U invalid reviewer output repair scenario", timeout=5)
     assert_eq(response["status"], "COMPLETED", "repair review status")
     assert_eq(response["verdict"], "PASS", "repair review verdict")
     assert_true(state.calls >= 4, f"repair scenario should use primary + repair attempts, calls={state.calls}")
@@ -699,7 +699,7 @@ async def test_repair_sampling_does_not_block_list_tools(client: MCPStdioClient,
 
     client.sampling_handler = sampling
     call_task = asyncio.create_task(
-        call_review(client, repo, "U2U repair sampling nonblocking scenario", timeout=30),
+        call_review(client, repo, "U2U repair sampling nonblocking scenario", timeout=5),
         name="repair-nonblocking-review-call",
     )
 
