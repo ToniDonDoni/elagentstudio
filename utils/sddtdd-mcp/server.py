@@ -984,6 +984,10 @@ async def _repair_verdict_with_sampling(
 Parser error:
 {current_error}
 
+The sampling max output budget for this repair attempt is {MAX_SAMPLING_TOKENS} tokens.
+Your previous attempt exceeded or approached that budget. Keep both your reasoning and final JSON output shorter so the whole answer fits within this budget.
+Return only the repaired JSON object; do not repeat the raw reviewer response.
+
 This is exactly the reviewer response that must be reformatted:
 ===== BEGIN RAW REVIEWER RESPONSE =====
 {current_response}
