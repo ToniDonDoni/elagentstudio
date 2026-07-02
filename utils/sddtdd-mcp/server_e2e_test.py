@@ -738,6 +738,7 @@ async def test_invalid_review_triggers_repair(client: MCPStdioClient, repo: Path
 
 
 
+
 #
 # Test that any repair sampling response with stopReason=maxTokens is retried before acceptance.
 async def test_repair_maxtokens_retries_before_accepting_result(client: MCPStdioClient, repo: Path) -> None:
@@ -789,6 +790,67 @@ async def test_repair_maxtokens_retries_before_accepting_result(client: MCPStdio
     assert_eq(state.calls, 3, "repair maxTokens scenario must use primary + maxTokens repair + successful retry")
     event("SCENARIO_DONE: repair_maxtokens_retries_before_accepting_result")
     ok("repair maxTokens output is retried before acceptance")
+
+
+# Test that a repair retry prompt after stopReason=maxTokens tells the sampler the current output budget
+# and explicitly asks it to keep reasoning and final JSON output shorter to fit that budget.
+async def test_repair_maxtokens_retry_prompt_includes_budget_guidance(
+    client: MCPStdioClient,
+    repo: Path,
+) -> None:
+    event("SCENARIO_BEGIN: repair_maxtokens_retry_prompt_includes_budget_guidance")
+    state = ScenarioState("repair_maxtokens_budget_guidance")
+    raw_reviewer_response = "this primary reviewer answer is invalid and must trigger repair budget guidance"
+    retry_prompt_text = ""
+
+    async def sampling(params: Json) -> Json:
+        nonlocal retry_prompt_text
+        state.calls += 1
+        event(f"MOCK_SAMPLING[{state.name}]: call={state.calls} params={summarize_json(params)}")
+        state.seen_params.append(params)
+        prompt_text = extract_text_content(params)
+
+        if state.calls == 1:
+            return text_result(raw_reviewer_response)
+
+        if state.calls == 2:
+            assert_true(
+                raw_reviewer_response in prompt_text,
+                "first repair prompt must include the original raw reviewer response",
+            )
+            return text_result("", stop_reason="maxTokens")
+
+        retry_prompt_text = prompt_text
+        return text_result(valid_review_json("PASS", "repair retried after maxTokens with budget guidance"))
+
+    client.sampling_handler = sampling
+    response = await call_review(client, repo, "U2U repair maxTokens budget guidance scenario", timeout=5)
+    assert_eq(response["status"], "COMPLETED", "repair maxTokens budget guidance review status")
+    assert_eq(response["verdict"], "PASS", "repair maxTokens budget guidance review verdict")
+    assert_true(retry_prompt_text, "did not observe repair retry prompt after maxTokens")
+    assert_true(
+        "stop_reason=maxTokens" in retry_prompt_text or "stopReason=maxTokens" in retry_prompt_text,
+        "repair retry prompt after maxTokens must mention maxTokens",
+    )
+    assert_true(
+        "sampling max output budget" in retry_prompt_text,
+        "repair retry prompt after maxTokens must mention the sampling max output budget",
+    )
+    assert_true(
+        "20000 tokens" in retry_prompt_text,
+        "repair retry prompt after maxTokens must include the configured sampling token budget",
+    )
+    assert_true(
+        "reasoning and final JSON output shorter" in retry_prompt_text,
+        "repair retry prompt after maxTokens must ask for shorter reasoning and final JSON output",
+    )
+    assert_true(
+        raw_reviewer_response in retry_prompt_text,
+        "repair retry prompt must preserve the original raw reviewer response after maxTokens",
+    )
+    assert_eq(state.calls, 3, "repair maxTokens budget guidance scenario must use primary + empty repair + successful retry")
+    event("SCENARIO_DONE: repair_maxtokens_retry_prompt_includes_budget_guidance")
+    ok("repair maxTokens retry prompt includes sampling budget guidance")
 
 
 
@@ -999,6 +1061,10 @@ async def run_all(args: argparse.Namespace) -> None:
                 lambda: test_repair_maxtokens_retries_before_accepting_result(client, repo),
             )
             await run_named_test(
+                "test_repair_maxtokens_retry_prompt_includes_budget_guidance",
+                lambda: test_repair_maxtokens_retry_prompt_includes_budget_guidance(client, repo),
+            )
+            await run_named_test(
                 "test_primary_sampling_maxtokens_retries_before_accepting_result",
                 lambda: test_primary_sampling_maxtokens_retries_before_accepting_result(client, repo),
             )
@@ -1015,7 +1081,7 @@ async def run_all(args: argparse.Namespace) -> None:
         lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         started = [e for e in lines if e.get("event") == "review_started"]
         completed = [e for e in lines if e.get("event") == "review_completed"]
-        expected_review_events = 9 if not args.test else sum(
+        expected_review_events = 10 if not args.test else sum(
             1
             for name in (
                 "test_basic_review",
@@ -1024,6 +1090,7 @@ async def run_all(args: argparse.Namespace) -> None:
                 "test_async_shell_command_does_not_block_list_tools",
                 "test_invalid_review_triggers_repair",
                 "test_repair_maxtokens_retries_before_accepting_result",
+                "test_repair_maxtokens_retry_prompt_includes_budget_guidance",
                 "test_primary_sampling_maxtokens_retries_before_accepting_result",
                 "test_primary_sampling_maxtokens_exhaustion_is_not_accepted_as_completed_review",
                 "test_repair_sampling_does_not_block_list_tools",
