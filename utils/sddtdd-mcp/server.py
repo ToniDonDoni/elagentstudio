@@ -20,6 +20,7 @@ from mcp.server.stdio import stdio_server
 
 # Logger for our own lifecycle tracing (goes to stderr → mcp-stderr.log)
 logger = logging.getLogger("sddtdd-mcp")
+
 logging.basicConfig(
     level=logging.DEBUG,
     force=True,
@@ -27,10 +28,26 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S',
 )
 
+class _DemoteMcpLowLevelInfoFilter(logging.Filter):
+    """Keep MCP low-level request chatter visible only as DEBUG records."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name == "mcp.server.lowlevel.server" and record.levelno == logging.INFO:
+            record.levelno = logging.DEBUG
+            record.levelname = "DEBUG"
+        return True
+
+
+for handler in logging.getLogger().handlers:
+    handler.addFilter(_DemoteMcpLowLevelInfoFilter())
+
 MAX_SAMPLING_ROUNDS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_ROUNDS", "5555"))
 MAX_SAMPLING_TOKENS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_TOKENS", "128000"))
 MAX_VERDICT_REPAIR_ATTEMPTS = int(os.environ.get("SDDTDD_REVIEW_VERDICT_REPAIR_ATTEMPTS", "21"))
+
 MAX_MAXTOKEN_CONTINUES = int(os.environ.get("SDDTDD_REVIEW_MAXTOKEN_CONTINUES", "6"))
+
+REVIEW_RETRY_RESPONSE = "Reviewer did not provide a usable review classification. Please retry the review."
 
 
 MAX_TOOL_OUTPUT_CHARS = int(os.environ.get("SDDTDD_REVIEW_TOOL_OUTPUT_CHARS", "200000"))
@@ -746,7 +763,12 @@ def _parse_review_json(text: str) -> tuple[str | None, str | None, str | None]:
         )
     if verdict in {"FAIL", "NEEDS_CLARIFICATION"}:
         lower_body = body_text.lower()
-        if "sampler returned empty response" in lower_body:
+        diagnostic_placeholders = (
+            "sampler returned empty response",
+            "no review content was provided",
+            "please retry the review",
+        )
+        if any(placeholder in lower_body for placeholder in diagnostic_placeholders):
             return (
                 None,
                 None,
@@ -765,7 +787,8 @@ async def _repair_verdict_with_sampling(
 ) -> tuple[str | None, str, list[dict]]:
     """Ask sampling to convert an unparseable reviewer response to JSON."""
     attempts: list[dict] = []
-    current_response = raw_response
+    original_response = raw_response
+    current_response = original_response
     current_error = parse_error
 
     for attempt in range(1, max_attempts + 1):
@@ -811,6 +834,47 @@ the response field must keep concrete explanatory body text after the verdict li
             if isinstance(block, types.TextContent):
                 repair_text_parts.append(block.text)
         repair_text = "\n".join(repair_text_parts)
+        empty_repair_text = not repair_text.strip()
+        if empty_repair_text:
+            raw_content = result.content if isinstance(result.content, list) else [result.content]
+            raw_content_summary = []
+            for index, block in enumerate(raw_content, start=1):
+                block_type = type(block).__name__
+                block_text = getattr(block, "text", None)
+                block_text_len = len(block_text) if isinstance(block_text, str) else None
+                raw_content_summary.append({
+                    "index": index,
+                    "type": block_type,
+                    "text_len": block_text_len,
+                    "repr": repr(block),
+                })
+            logger.debug(
+                "REVIEW_RESPONSE_REPAIR_EMPTY_RAW_RESULT: attempt=%d/%d stop_reason=%s content=%s",
+                attempt,
+                max_attempts,
+                getattr(result, "stopReason", None) or "endTurn",
+                _safe_log_text(json.dumps(raw_content_summary, ensure_ascii=False, default=str), limit=5000),
+            )
+            if hasattr(result, "model_dump"):
+                result_dump = result.model_dump()
+            elif hasattr(result, "dict"):
+                result_dump = result.dict()
+            else:
+                result_dump = repr(result)
+            logger.debug(
+                "REVIEW_RESPONSE_REPAIR_EMPTY_RESULT_DUMP: attempt=%d/%d result=%s",
+                attempt,
+                max_attempts,
+                _safe_log_text(json.dumps(result_dump, ensure_ascii=False, default=str), limit=2000),
+            )
+            logger.warning(
+                "REVIEW_RESPONSE_REPAIR_EMPTY_OUTPUT: attempt=%d/%d stop_reason=%s preserving_original_len=%d and returning retry response",
+                attempt,
+                max_attempts,
+                stop_reason,
+                len(original_response),
+            )
+            return None, REVIEW_RETRY_RESPONSE, attempts
 
         stop_reason = getattr(result, "stopReason", None) or "endTurn"
         verdict, response, error = _parse_review_json(repair_text.strip())
@@ -829,6 +893,8 @@ the response field must keep concrete explanatory body text after the verdict li
                 error,
                 _safe_log_text(repair_text, limit=300),
             )
+            if empty_repair_text:
+                return None, REVIEW_RETRY_RESPONSE, attempts
         else:
             logger.info(
                 "REVIEW_RESPONSE_PARSE: source=repair attempt=%d/%d stop_reason=%s success=True error=None",
@@ -840,7 +906,10 @@ the response field must keep concrete explanatory body text after the verdict li
         if error is None:
             return verdict, response, attempts
 
-        current_response = repair_text
+        if repair_text.strip():
+            current_response = repair_text
+        else:
+            current_response = original_response
         current_error = error
 
     return None, raw_response, attempts
@@ -933,8 +1002,7 @@ async def _sample_with_tools(
                     MAX_MAXTOKEN_CONTINUES,
                 )
                 return last_text, stop_reason
-
-            logger.info(
+            logger.debug(
                 "SAMPLING: maxTokens in round %d; output hit requested_max_tokens=%d; "
                 "text_len=%d chars; missing_tokens=unknown; asking sampler to continue (%d/%d)",
                 _round + 1,
@@ -1066,7 +1134,7 @@ async def call_tool(
             "reviewer_skill_paths": {k: str(v) for k, v in _review_skill_paths().items()},
         }
         log.append(started_event)
-        logger.info("call_tool: review_started logged, starting sampling")
+        logger.debug("call_tool: review_started logged, starting sampling")
 
         # 4: Build the reviewer role/policy prompt inside the MCP server,
         # then perform review via MCP sampling. The implementer prompt is
@@ -1096,13 +1164,7 @@ async def call_tool(
         execution_error = stop_reason in {"maxTokens", "maxRoundsExceeded"}
         if not response_text.strip():
             execution_error = True
-            response_text = (
-                "Reviewer did not produce a final textual verdict. "
-                f"Sampling stopped with stop_reason={stop_reason}. "
-                "This is a reviewer/MCP execution failure, not a semantic "
-                "review verdict. Retry the review or inspect the reviewer "
-                "access log."
-            )
+            response_text = REVIEW_RETRY_RESPONSE
             stop_reason = "emptyResponse"
 
         repair_attempts: list[dict] = []
@@ -1136,14 +1198,7 @@ async def call_tool(
 
         if verdict is None and not execution_error:
             execution_error = True
-            response_text = (
-                "Reviewer response could not be converted to the MCP review "
-                f"JSON schema after {MAX_VERDICT_REPAIR_ATTEMPTS} repair attempts. "
-                "This is a reviewer/MCP execution failure, not a semantic "
-                "review verdict. Retry the review or inspect the reviewer "
-                "access log.\n\n"
-                + response_text
-            )
+            response_text = REVIEW_RETRY_RESPONSE
 
         # 5: Capture Git state after
         head_after = git.head_sha()
@@ -1171,7 +1226,7 @@ async def call_tool(
             "response": response_text,
             "stale": stale,
             "duration_ms": duration_ms,
-            "verdict_repair_attempts": repair_attempts,
+            # "verdict_repair_attempts": repair_attempts,  # Removed from reviewer access log
         }
         log.append(completed_event)
         logger.info("call_tool: review_completed verdict=%s status=%s duration_ms=%d",

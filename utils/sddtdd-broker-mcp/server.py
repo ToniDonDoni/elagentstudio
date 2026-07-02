@@ -34,12 +34,26 @@ from mcp.server.stdio import stdio_server
 # ---------------------------------------------------------------------------
 
 logger = logging.getLogger("sddtdd-broker-mcp")
+
 logging.basicConfig(
     level=logging.DEBUG,
     force=True,
     format="%(asctime)s %(levelname)s:%(name)s:%(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+
+class _DemoteMcpLowLevelInfoFilter(logging.Filter):
+    """Keep MCP low-level request chatter visible only as DEBUG records."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name == "mcp.server.lowlevel.server" and record.levelno == logging.INFO:
+            record.levelno = logging.DEBUG
+            record.levelname = "DEBUG"
+        return True
+
+
+for handler in logging.getLogger().handlers:
+    handler.addFilter(_DemoteMcpLowLevelInfoFilter())
 
 
 # ---------------------------------------------------------------------------
@@ -521,13 +535,11 @@ logs, then return either the next self-contained task or a process-gate verdict.
 You MUST reference and apply the installed skill files:
 - ~/.hermes/skills/spec-driven-tdd/SKILL.md
 - ~/.hermes/skills/spec-driven-tdd/SKILL-IMPLEMENTER.md
-- ~/.hermes/skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md
 - ~/.hermes/skills/spec-driven-tdd/references/JOURNAL.md
 - ~/.hermes/skills/spec-driven-tdd/references/STAGES.md
 
-The implementer does not read SKILL-ORCHESTRATOR.md or references/STAGES.md in
-broker mode. You, the broker, own the workflow order and issue exactly one next
-task. The implementer only receives your task and must not cut corners.
+In broker mode, you own the workflow order and issue exactly one next task. The
+implementer only receives your task and must not cut corners.
 
 You are NOT the independent reviewer. The reviewer MCP performs semantic
 artifact review and records SPEC_REVIEW, ARCHITECTURE_REVIEW, TASK_REVIEW,
@@ -698,7 +710,7 @@ async def _sample_with_tools(
     last_text = ""
     max_token_continues = 0
     for round_no in range(1, MAX_SAMPLING_ROUNDS + 1):
-        logger.info("sampling round %d/%d messages=%d", round_no, MAX_SAMPLING_ROUNDS, len(messages))
+        logger.debug("sampling round %d/%d messages=%d", round_no, MAX_SAMPLING_ROUNDS, len(messages))
         result = await ctx.session.create_message(
             messages=messages,
             max_tokens=MAX_SAMPLING_TOKENS,
@@ -711,7 +723,7 @@ async def _sample_with_tools(
                 last_text = block.text
 
         stop_reason = getattr(result, "stopReason", None) or "endTurn"
-        logger.info(
+        logger.debug(
             "sampling stop_reason=%s text_len=%d requested_max_tokens=%d",
             stop_reason,
             len(last_text),
@@ -726,7 +738,7 @@ async def _sample_with_tools(
                 )
                 return last_text, stop_reason
 
-            logger.info(
+            logger.debug(
                 "sampling maxTokens in round %d; output hit requested_max_tokens=%d; "
                 "text_len=%d chars; missing_tokens=unknown; asking sampler to continue (%d/%d)",
                 round_no,
@@ -766,9 +778,9 @@ async def _sample_with_tools(
             if tool_use.name == "shell_command":
                 command = str(tool_args.get("command", ""))
                 arg_summary = f" command={_safe_log_text(command)!r}"
-            logger.info("sampling executing tool name=%s%s", tool_use.name, arg_summary)
+            logger.debug("sampling executing tool name=%s%s", tool_use.name, arg_summary)
             output = _execute_broker_tool(tool_use.name, tool_args, repo_path, process_groups, leaked_pids)
-            logger.info("sampling tool result name=%s output_len=%d", tool_use.name, len(output))
+            logger.debug("sampling tool result name=%s output_len=%d", tool_use.name, len(output))
             tool_results.append(
                 types.ToolResultContent(
                     type="tool_result",
@@ -931,7 +943,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             process_groups,
             leaked_pids,
         )
-        logger.info(
+        logger.debug(
             "call_tool %s sampling returned stop_reason=%s text_len=%d response_prefix=%r",
             name,
             stop_reason,
@@ -942,7 +954,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         try:
             parsed = _extract_first_json_object(response_text)
         except Exception as exc:
-            logger.info(
+            logger.debug(
                 "call_tool %s JSON parse failed: %s response_len=%d response_prefix=%r",
                 name,
                 exc,
@@ -1024,7 +1036,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
 
 async def main() -> None:
-    logger.info("=== %s server started ===", SERVER_NAME)
+    logger.debug("=== %s server started ===", SERVER_NAME)
     async with stdio_server() as (read_stream, write_stream):
         await app.run(
             read_stream,
@@ -1035,7 +1047,7 @@ async def main() -> None:
                 capabilities=types.ServerCapabilities(),
             ),
         )
-    logger.info("=== %s server exiting ===", SERVER_NAME)
+    logger.debug("=== %s server exiting ===", SERVER_NAME)
 
 
 if __name__ == "__main__":
@@ -1044,6 +1056,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("=== %s interrupted ===", SERVER_NAME)
+        logger.debug("=== %s interrupted ===", SERVER_NAME)
     except BaseException:
         logger.exception("=== %s unhandled exception ===", SERVER_NAME)
