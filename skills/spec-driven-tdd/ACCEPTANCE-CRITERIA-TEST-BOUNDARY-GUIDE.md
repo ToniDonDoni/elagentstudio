@@ -102,27 +102,28 @@ Those are traceability hints or implementation details. They are not acceptance 
 
 ### Correct reasoning chain
 
-1. This is audible browser behavior.
-2. Therefore, acceptance must prove that sound is triggered through the real app/browser interaction path.
-3. It is not enough that an `AudioManager` class has a `play()` method.
-4. The test must prove that the browser/app audio path is invoked after the required user action.
-5. The test boundary should be a browser/rendered-app test with an observable or instrumented audio signal.
+1. This is audible application behavior, not an internal method call.
+2. Therefore, acceptance must prove that audio reaches the browser/application audio output path after the real user flow triggers it.
+3. It is not enough that an `AudioManager` class has a `play()` method, that a flag says `audioEnabled`, or that an oscillator/node object was constructed in isolation.
+4. The test must prove that the app/browser audio path is invoked from the rendered/running application after the required user action.
+5. The test boundary should be a browser/rendered-app test with an observable or instrumented audio output signal.
+6. The test does not need to physically listen through speakers, but it must observe the browser/application audio output boundary, not only a module boundary.
 
 ### Acceptance criterion
 
-> Given the app is opened in the browser and the user performs the required enabling gesture, when the sound-triggering event occurs, then the app triggers browser audio playback through the application audio path.
+> Given the app is opened in the browser and the user performs the required enabling gesture, when the sound-triggering event occurs, then audio is sent to the browser/application audio output path through the real app flow.
 
 ### Architecture / test design requirement
 
-> The test must be able to observe browser audio behavior. This may be done by browser automation with Web Audio instrumentation, a mocked/stubbed `AudioContext` at the browser boundary, or another test harness that proves the app attempted real browser audio playback from the user flow.
+> The test must be able to observe audio at the browser/application boundary. This may be done by browser automation with Web Audio instrumentation, a mocked/stubbed `AudioContext` installed in the browser page before the app runs, an analyser/sink node, or another test harness that proves the rendered/running app submitted audio to the browser/application audio output path from the user flow.
 
 ### Task shape
 
-> Add an automated browser/rendered-app test that performs the user action required to enable sound, triggers the sound-producing event, and verifies that browser audio playback was invoked.
+> Add an automated browser/rendered-app test that performs the user action required to enable sound, triggers the sound-producing event through the app UI/flow, and verifies that audio reached or was submitted to the browser/application audio output path.
 
 ### Good test evidence
 
-> The test opens the app, performs the user gesture, triggers the sound event through the UI/app flow, and verifies that the browser audio path was called or became active.
+> The test opens/renders the app, installs browser-level audio instrumentation before app startup, performs the required user gesture, triggers the sound event through the UI/app flow, and verifies that audio was submitted to the browser/application audio output path, for example by observing `AudioContext` creation/resume plus oscillator/buffer/source connection to a destination or test sink.
 
 ### Bad test evidence
 
@@ -130,6 +131,8 @@ Those are traceability hints or implementation details. They are not acceptance 
 - A unit test calls `playSound()` directly.
 - A boolean `audioEnabled` changes in isolation.
 - A file imports `AudioManager`.
+- A mocked `AudioContext` is used only inside an isolated module test, without opening/rendering the app or driving the user flow.
+- A test asserts that a sound label or configuration exists but does not observe the browser/application audio output path.
 
 ---
 
@@ -292,14 +295,16 @@ Required acceptance criteria:
 
 - Given the app has received a user gesture,
 - when the question resolves,
-- then the app triggers the sound cue through the application audio path.
+- then audio is sent to the browser/application audio output path through the real app flow.
 - Sound must not start before a user gesture.
 - The user can mute/unmute sound if a toggle is required.
+- If Web Audio is mocked or instrumented, the mock/instrumentation must be installed at the browser/application boundary and exercised by the rendered/running app, not by directly calling the audio module.
 
 Required test boundary:
 
-- App-boundary test with mocked/stubbed Web Audio or another observable browser audio signal.
-- It does not need to hear real sound through speakers, but it must prove the app triggers audio from the real user flow.
+- Browser/rendered-app boundary test with mocked/stubbed/instrumented Web Audio or another observable browser audio output signal.
+- It does not need to hear real sound through speakers, but it must prove the running/rendered app submits audio to the browser/application audio output path from the real user flow.
+- A module-level `AudioManager` test is not enough for audible application behavior when a browser/rendered-app boundary is practical.
 
 Bad test:
 
@@ -307,7 +312,7 @@ Bad test:
 
 Good test:
 
-> Open/render app, perform user gesture, trigger question resolution through app flow, assert mocked `AudioContext` / audio node / chime path was invoked, and assert no audio context was created before user gesture.
+> Open/render app, install browser-level audio instrumentation before startup, perform user gesture, trigger question resolution through app flow, assert that the app created/resumed `AudioContext` and connected or started a source toward a destination/test sink, and assert no audio context was created before user gesture.
 
 ---
 
