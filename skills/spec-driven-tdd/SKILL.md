@@ -200,6 +200,25 @@ a truthful pass/fail verdict is possible. Never modifies files, never
 implements, never writes the journal, never advances the pipeline. A reviewer
 that changes the artifact would be evaluating its own work.
 
+When a reviewer identifies a deliberate compromise, deviation, or practical
+substitution in an artifact, the reviewer MUST NOT silently accept it as an
+ordinary `PASS`. If the compromise has not already been recorded in the
+committed journal, the reviewer MUST return `FAIL` or `NEEDS_CLARIFICATION`
+and require the implementer to record a committed `AGENT_DECISION` before the
+pipeline continues. The `AGENT_DECISION` MUST identify the affected acceptance
+criterion, test boundary, artifact, or workflow rule; explain why the
+compromise is necessary; state the accepted risk; and describe the mitigation
+or replacement boundary.
+
+If the compromise changes, weakens, replaces, or reinterprets an acceptance
+criterion, user-visible behavior, user-observable evidence, or required test
+boundary, the reviewer MUST require the implementer to report the compromise
+to the user or owner before continuing. The reviewer MUST NOT return a clean
+`PASS` for such a stage until the journaled decision and required user/owner
+notification have happened. A compromise that does not change the acceptance
+contract still MUST be journaled, but it does not require user/owner
+notification unless another rule requires escalation.
+
 ### Broker / orchestrator
 
 In broker mode only. Invoked through the broker MCP server. Owns the
@@ -229,8 +248,8 @@ mitigation.
 11. Do not declare completion without regression and final review.
 12. Do not create artifacts that cannot be traced to reviewed inputs.
 13. Do not represent forced continuation as an ordinary review `PASS`.
-14. Record every deliberate deviation as a committed `AGENT_DECISION`
-    before continuing.
+14. Record every deliberate deviation, compromise, or practical substitution
+    as a committed `AGENT_DECISION` before continuing.
 15. Do not treat an MCP review response as a completed review until the
     corresponding review entry is journaled and committed.
 16. In broker mode, do not self-select the next workflow task; request it
@@ -245,6 +264,15 @@ mitigation.
     application-boundary testing is practical. Classes, methods, imports,
     labels, mocks, source strings, and requirement IDs in test names are
     traceability hints, not proof of behavior.
+
+20. Do not silently continue after a compromise that changes, weakens,
+    replaces, or reinterprets an acceptance criterion, user-visible behavior,
+    user-observable evidence, or required test boundary. The implementer MUST
+    report the compromise to the user or owner before continuing.
+21. Do not let a reviewer return an ordinary `PASS` for an unjournaled
+    compromise. The reviewer MUST require a committed `AGENT_DECISION` first,
+    and MUST require user/owner notification when the compromise changes the
+    acceptance contract.
 
 ## How to use this skill
 
