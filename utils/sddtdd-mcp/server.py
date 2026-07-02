@@ -738,7 +738,10 @@ async def _execute_tool(
 ) -> str:
     """Execute a reviewer tool call. Returns the text result."""
     if name == "shell_command":
-        cmd = str(args.get("command", "")).strip()
+        raw_command = args.get("command", "")
+        if not isinstance(raw_command, str):
+            return "ERROR: empty command"
+        cmd = raw_command.strip()
         if not cmd:
             return "ERROR: empty command"
         try:
@@ -802,7 +805,10 @@ async def _execute_tool(
                     + "Run a narrower command to inspect the missing content."
                 )
 
-            # Minimal process-leak warning for shell_command tool result
+            # Minimal process-leak warning for shell_command tool result.
+            # Give freshly forked background children a short chance to appear in /proc
+            # after the parent command has closed its pipes and returned.
+            await asyncio.sleep(0.05)
             leftover_pids = _process_group_pids(process.pid)
             if leftover_pids:
                 leaked_pids.extend(leftover_pids)
@@ -1315,15 +1321,16 @@ async def call_tool(
     leaked_pids: list[int] = []
 
     log = None
+    started_logged = False
     try:
-        # 1-2: Capture Git state before + open log
+        # 1-2: Open log + capture Git state before
+        log_path = _get_log_path(repo_path)
+        log = LogWriter(log_path)
+
         git = GitCapturer(repo_path)
         branch = git.branch()
         head_before = git.head_sha()
         dirty = git.is_dirty()
-
-        log_path = _get_log_path(repo_path)
-        log = LogWriter(log_path)
 
         # 3: Write review_started event
         started_event = {
@@ -1343,6 +1350,7 @@ async def call_tool(
             },
         }
         log.append(started_event)
+        started_logged = True
         logger.debug("call_tool: review_started logged, starting sampling")
 
         # 4: Build the reviewer role/policy prompt inside the MCP server,
@@ -1471,11 +1479,15 @@ async def call_tool(
         logger.error("call_tool: GitError — %s", exc, exc_info=True)
         result = _error_result(request_id, f"Git error: {exc}")
         if log:
+            if not started_logged:
+                log.append(_error_started_event(request_id, repo_path, review_type, task_id, prompt))
             log.append(_error_event(request_id, repo_path, review_type, task_id, result["response"]))
     except Exception as exc:
         logger.error("call_tool: EXCEPTION (%s) — %s", type(exc).__name__, exc, exc_info=True)
         result = _error_result(request_id, str(exc))
         if log:
+            if not started_logged:
+                log.append(_error_started_event(request_id, repo_path, review_type, task_id, prompt))
             log.append(_error_event(request_id, repo_path, review_type, task_id, result["response"]))
 
     await _cleanup_process_groups(process_groups, leaked_pids)
@@ -1491,6 +1503,22 @@ def _error_result(request_id: str, message: str) -> dict:
         "stale": False,
     }
 
+
+
+def _error_started_event(request_id: str, repo_path: str, review_type: str, task_id: str | None, prompt: str) -> dict:
+    return {
+        "event": "review_started",
+        "request_id": request_id,
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "repo_path": repo_path,
+        "branch": None,
+        "head_sha": None,
+        "working_tree_dirty": None,
+        "review_type": review_type,
+        "task_id": task_id,
+        "prompt": prompt,
+        "error_before_git_capture": True,
+    }
 
 def _error_event(request_id: str, repo_path: str, review_type: str, task_id: str | None, message: str) -> dict:
     return {
