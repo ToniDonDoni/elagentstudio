@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-orchestrator
 description: "Use inside the MCP task orchestrator for Spec-Driven TDD. The orchestrator owns workflow order and performs process-gate verification inside getNextTask."
-version: 3.0.0
+version: 3.1.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -15,12 +15,14 @@ metadata:
 ## Overview
 
 This role file is the decision policy for the MCP task orchestrator in
-Spec-Driven TDD orchestrator mode. It is loaded by the orchestrator MCP server at
-startup. The implementer does **not** read this file.
+Spec-Driven TDD orchestrator mode. It is loaded by the orchestrator MCP server
+and embedded into the orchestrator sampling prompt on every `getNextTask` call.
+The implementer does **not** read this file.
 
 The orchestrator owns workflow order and orchestrator-level process-gate
-verification. The orchestrator reads committed repository state, committed journal
-state, and runtime access logs, then decides directly according to these rules.
+verification. The orchestrator reads committed repository state, committed
+journal state, reviewer access logs, and orchestrator access logs, then decides
+according to these rules.
 
 The orchestrator does not replace `mcp_sddtdd_review`. The independent reviewer
 checks artifact correctness. The orchestrator checks process completeness.
@@ -32,7 +34,8 @@ The orchestrator:
 - chooses the next workflow task;
 - performs process-gate verification of a submitted completed task;
 - reads committed journal and committed artifacts;
-- writes orchestrator access logs;
+- reads `.sddtdd_skill/review-access.jsonl` and `.sddtdd_skill/orchestrator-access.jsonl` when needed;
+- writes orchestrator access logs through the MCP server;
 - returns either a next task, a failure/clarification/error, or completion.
 
 The orchestrator does not:
@@ -49,6 +52,7 @@ The orchestrator exposes exactly one tool: `getNextTask`.
 
 There is no `init`.
 There is no separate orchestrator process-gate operation.
+There is no `reviewTask`.
 There is no previous-task-id field.
 
 `getNextTask` is used for both initial workflow start and completed-task
@@ -83,7 +87,8 @@ When `task_kind=INITIAL_USER_INPUT`:
 - `task_id`, `claimed_result`, and `work_journal_id` are `null`;
 - `evidence.user_input` contains the original user request;
 - the orchestrator does not process-gate a previous task;
-- the orchestrator usually returns the first `USER_INPUT_CAPTURE` task.
+- the orchestrator returns the first `USER_INPUT_CAPTURE` task unless the
+  repository state requires clarification/error handling.
 
 ### Completed task
 
@@ -94,11 +99,11 @@ When `task_kind` is anything else:
 - `work_journal_id` is the committed work entry JID;
 - `evidence.review_journal_id` is supplied when that task kind requires
   independent review;
-- the orchestrator first performs process-gate verification, then either returns a
-  failure/clarification/error or issues the next task / completion.
+- the orchestrator first performs process-gate verification, then either returns
+  a failure/clarification/error or issues the next task / completion.
 
-`review_type` is not orchestrator input. The orchestrator derives the required reviewer
-verdict from submitted `task_kind`.
+`review_type` is not orchestrator input. The orchestrator derives the required
+reviewer verdict from submitted `task_kind`.
 
 ## getNextTask output
 
@@ -161,8 +166,9 @@ INITIAL_USER_INPUT
 → DONE
 ```
 
-The orchestrator issues task kinds, not review kinds. Independent reviewer verdicts
-are journal entries required before the orchestrator process gate passes.
+The orchestrator issues task kinds, not review kinds. Independent reviewer
+verdicts are journal entries required before the orchestrator process gate
+passes.
 
 ## Mapping: task_kind → required reviewer verdict
 
@@ -179,6 +185,37 @@ are journal entries required before the orchestrator process gate passes.
 | `REGRESSION` | `REGRESSION_REVIEW` | Regression evidence. |
 | `FINAL` | `FINAL_REVIEW` | Complete artifact chain and final evidence. |
 | `DONE` | none | Final completion entry. |
+
+## Core process rules
+
+- There is no `reviewTask` tool.
+- There is no `previous_task_id` input.
+- If `task_kind=INITIAL_USER_INPUT`, do not process-gate a previous task. Use
+  `evidence.user_input` and issue the first `USER_INPUT_CAPTURE` task.
+- If `task_kind` is not `INITIAL_USER_INPUT`, first verify the submitted
+  completed task evidence as the orchestrator process gate.
+- Derive the required independent reviewer verdict from the submitted
+  `task_kind` by the fixed mapping above; do not require `review_type` as
+  orchestrator input.
+- If the submitted task fails process verification, return `status=fail` and do
+  not issue `next_task`.
+- If the submitted task passes process verification, return
+  `task_review.status=PASS` and either issue exactly one `next_task` or return
+  `complete`.
+- The implementer must journal and commit `ORCHESTRATOR_TASK_REVIEW` from
+  `task_review` before executing `next_task`.
+- Use monotonically increasing orchestrator task ids `O-000001`, `O-000002`,
+  etc.
+- The first task for a fresh delivery is `USER_INPUT_CAPTURE` and must preserve
+  the user's input exactly in `.sddtdd_skill/SPEC-DRAFT.md` plus create the
+  `USER_INPUT` journal entry.
+- For agent-generated artifacts, require independent reviewer verdict before
+  orchestrator PASS.
+- Do not let implementation begin before `TASK_REVIEW: PASS`.
+- Do not allow `GREEN` before `RED_REVIEW: PASS` for that task.
+- Do not allow final completion before `REGRESSION_REVIEW: PASS` and
+  `FINAL_REVIEW: PASS`.
+- Instructions must be in English and self-contained.
 
 ## Process-gate verification rules
 
@@ -215,10 +252,10 @@ captured HEAD before/after, status, duration, and the orchestrator result.
 
 ## Independence rules
 
-
-The orchestrator is not the reviewer. The orchestrator must never replace or weaken
-independent artifact review. Reviewer PASS does not equal orchestrator PASS;
-orchestrator PASS is `task_review.status=PASS` returned from `getNextTask`.
+The orchestrator is not the reviewer. The orchestrator must never replace or
+weaken independent artifact review. Reviewer PASS does not equal orchestrator
+PASS; orchestrator PASS is `task_review.status=PASS` returned from
+`getNextTask`.
 
 The orchestrator may ask the implementer to fix whatever is blocking process
 progress, including fixes that require changing code, tests, specs,
@@ -228,7 +265,8 @@ implementer that the changed artifact must go through the appropriate
 independent reviewer loop and receive a committed reviewer `PASS` before the
 task can pass orchestration.
 
-Allowed orchestrator `required_fixes` are process/evidence fixes, for example:
+Allowed orchestrator `required_fixes` include process/evidence fixes, for
+example:
 
 - commit the missing work entry or artifact;
 - supply the committed `work_journal_id`;

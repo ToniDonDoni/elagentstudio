@@ -353,6 +353,52 @@ def _format_policy_bundle(policy_bundle: dict[str, str]) -> str:
     return "\n".join(parts).rstrip()
 
 
+def _orchestrator_skill_root() -> Path:
+    """Resolve the installed SDDTDD skill root for orchestrator policy.
+
+    The orchestrator policy lives in Markdown. Read it at request time so
+    policy edits are picked up by the next getNextTask call without requiring
+    a Python MCP server restart.
+    """
+    return Path(
+        os.environ.get(
+            "SDDTDD_ORCHESTRATOR_SKILL_ROOT",
+            os.environ.get("SDDTDD_REVIEW_SKILL_ROOT", "~/.hermes/skills/spec-driven-tdd"),
+        )
+    ).expanduser()
+
+
+def _orchestrator_policy_file_paths() -> dict[str, Path]:
+    """Return all Markdown policy files under the installed SDDTDD skill root."""
+    skill_root = _orchestrator_skill_root()
+    policy_files: dict[str, Path] = {}
+    if skill_root.exists():
+        for path in sorted(skill_root.rglob("*.md")):
+            if not path.is_file():
+                continue
+            policy_files[path.relative_to(skill_root).as_posix()] = path
+
+    if policy_files:
+        return policy_files
+
+    return {
+        "SKILL.md": skill_root / "SKILL.md",
+        "SKILL-ORCHESTRATOR.md": skill_root / "SKILL-ORCHESTRATOR.md",
+        "SKILL-IMPLEMENTER.md": skill_root / "SKILL-IMPLEMENTER.md",
+        "references/JOURNAL.md": skill_root / "references" / "JOURNAL.md",
+        "references/STAGES.md": skill_root / "references" / "STAGES.md",
+    }
+
+
+def _orchestrator_policy_bundle_text() -> str:
+    """Read installed orchestrator/shared skill Markdown for the current request."""
+    policy_bundle = {
+        relative_path: _read_text_if_exists(path)
+        for relative_path, path in _orchestrator_policy_file_paths().items()
+    }
+    return _format_policy_bundle(policy_bundle)
+
+
 def _build_reviewer_prompt(
     *,
     repo_path: str,
@@ -444,58 +490,14 @@ Task ancestry and context reconstruction:
 - A review response is not a completed workflow event until the implementer records it in the journal and commits it; you only return source verdict data.
 
 Stage-specific review rules:
-SPEC_REVIEW:
-- Review committed `.sddtdd_skill/SPEC.md`.
-- Check fidelity to `.sddtdd_skill/SPEC-DRAFT.md` and recorded clarifications.
-- Check completeness, consistency, absence of unsupported assumptions, testability, measurable NFRs, observable acceptance criteria, ambiguities, and edge cases.
-- Do not review `.sddtdd_skill/SPEC-DRAFT.md` semantically; it is immutable raw input.
-
-ARCHITECTURE_REVIEW:
-- Review committed `.sddtdd_skill/ARCHITECTURE.md`.
-- Check that architecture is derived from and covers reviewed `.sddtdd_skill/SPEC.md`.
-- Check component boundaries, data ownership, interfaces, persistence, security, performance, reliability, deployment assumptions, traceability to requirement IDs, trade-offs, rejected alternatives, and risks.
-- FAIL if architecture omits relevant requirements or invents unsupported complexity.
-
-TASK_REVIEW:
-- Review committed `.sddtdd_skill/TASKS.md`.
-- Check that tasks decompose reviewed `.sddtdd_skill/SPEC.md` and reviewed `.sddtdd_skill/ARCHITECTURE.md`.
-- Check coverage of all functional requirements and automatically testable NFRs.
-- Check task fields: TASK_ID, PARENT_TASK_ID, ROOT_USER_INPUT_ID, REQUIREMENT_IDS, ARCHITECTURE_REFERENCES, ACCEPTANCE, DEPENDENCIES.
-- Check correct parent-child hierarchy, dependencies, independence, granularity, no missing work, no duplicate work, and feasible execution order.
-
-RED_REVIEW:
-- Review the committed tests and RED evidence for the selected task.
-- Tests must derive from reviewed requirements, reviewed architecture, task acceptance criteria, and parent task context.
-- The primary test should be acceptance-oriented at the highest practical stable boundary.
-- The reviewer must identify the chosen test boundary and decide whether it is the highest practical stable boundary for the task.
-- If behavior is covered only by unit tests, check whether an acceptance-oriented, integration, or end-to-end test was practical.
-- Unit-only coverage is acceptable only when the reviewer can identify why a higher-level observable boundary is impractical, unstable, unavailable, or disproportionate for the task.
-- If a higher-level observable test was practical but omitted, FAIL the RED review or require a concrete justification before PASS.
-- Unit tests may supplement but must not replace acceptance-oriented proof when a higher boundary is practical.
-- RED evidence must show the new test was run before implementation and failed because required behavior was absent, not because of an unrelated setup problem.
-- Check that an incorrect implementation would be detected.
-- FAIL if the test merely tests implementation details without proving required behavior.
-
-GREEN_REVIEW:
-- Review the committed implementation and GREEN evidence for the selected task.
-- Implementation must satisfy the reviewed task, requirements, architecture, and reviewed RED tests.
-- It must be minimal for the task and must not add unrelated behavior or cut corners.
-- GREEN evidence must show reviewed task tests pass and relevant previously passing tests still pass against the committed state.
-- Check correctness, architecture compliance, security/reliability concerns, maintainability, and absence of regressions in scope.
-
-REGRESSION_REVIEW:
-- Review regression evidence for the final committed implementation state.
-- Check exact commands, commit under test, test scope, pass/fail/skip/omit counts, failure details, environment/configuration, and limitations.
-- Ensure all relevant tests for affected projects/shared components were run or justified.
-- For test coverage audits, do not PASS by counting requirement IDs, test file names, `describe` labels, grep hits, or imports. Inspect what the tests actually do and what their assertions actually prove.
-- For each user-visible requirement group, verify that at least one practical end-to-end or rendered-application test opens/renders the app, performs the relevant user action, and observes the user-visible result. If coverage stops at class methods, labels, mocks, object shapes, or imports, FAIL.
-- If the implementation claims a component is wired into the app, verify application-boundary evidence, not just `src/main.js` imports. The feature must be reachable in the running/rendered app through the documented user flow.
-- FAIL if required tests were silently omitted or if tests do not exercise the observable behavior required by the specification.
-
-FINAL_REVIEW:
-- Review the complete committed solution and artifact chain.
-- Check SPEC-DRAFT preservation, SPEC/ARCHITECTURE/TASKS review PASS entries, task traceability, reviewed RED-GREEN evidence for every automatically testable behavior, passing regression, non-automatable evidence, architecture-implementation consistency, journal completeness, deviation records, and clean working tree.
-- DONE may only follow FINAL_REVIEW PASS.
+- Use the embedded installed SDDTDD Markdown policy as the authoritative source
+  for SPEC_REVIEW, ARCHITECTURE_REVIEW, TASK_REVIEW, RED_REVIEW,
+  GREEN_REVIEW, REGRESSION_REVIEW, and FINAL_REVIEW rules.
+- In particular, apply SKILL.md, SKILL-IMPLEMENTER.md, references/STAGES.md,
+  references/JOURNAL.md, and all other embedded policy files.
+- If this short prompt summary conflicts with the embedded Markdown policy,
+  the embedded Markdown policy wins, except for read-only safety and JSON-output
+  requirements.
 
 Output format:
 - Return JSON only. No markdown. No code fence. No text before or after the JSON object.
@@ -677,15 +679,12 @@ journal, change the working tree, stage files, commit, run formatters, or alter
 repository state. You only inspect committed repository state and runtime orchestrator
 logs, then return a single getNextTask response containing any process-gate verdict and the next self-contained task.
 
-You MUST reference and apply the installed orchestrator policy and shared skill files:
-- ~/.hermes/skills/spec-driven-tdd/SKILL.md
-- ~/.hermes/skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md
-- ~/.hermes/skills/spec-driven-tdd/SKILL-IMPLEMENTER.md
-- ~/.hermes/skills/spec-driven-tdd/references/JOURNAL.md
-- ~/.hermes/skills/spec-driven-tdd/references/STAGES.md
-
-SKILL-ORCHESTRATOR.md is your role policy. Apply it as the primary
-orchestrator/orchestrator decision contract.
+You MUST apply the installed Spec-Driven TDD policy Markdown embedded below.
+SKILL-ORCHESTRATOR.md is your primary role policy. The shared SKILL.md,
+SKILL-IMPLEMENTER.md, references/JOURNAL.md, references/STAGES.md, and all other
+installed Markdown files are supporting policy. If this short system prompt
+conflicts with embedded Markdown policy, the embedded Markdown policy wins except
+for read-only safety and JSON-output requirements.
 
 In orchestrator mode, you own the workflow order. getNextTask is the only orchestrator tool: it verifies a submitted completed task when present and issues at most one next task. The implementer only receives your task and must not cut corners.
 
@@ -744,29 +743,9 @@ For getNextTask, return exactly one JSON object with this shape:
   "rationale": "overall explanation of the orchestrator decision"
 }
 
-Status rules:
-- task: task_review is null only for INITIAL_USER_INPUT; next_task is non-null.
-- fail: task_review.status is FAIL; next_task is null.
-- needs_clarification: task_review.status is NEEDS_CLARIFICATION or task_review is null; next_task is null.
-- error: task_review.status is ERROR or task_review is null; next_task is null.
-- complete: next_task is null. task_review is PASS when a completed task was submitted; null only if no previous task was submitted.
-
-Process rules:
-- There is no reviewTask tool.
-- There is no previous_task_id input.
-- If task_kind=INITIAL_USER_INPUT, do not process-gate a previous task. Use evidence.user_input and issue the first USER_INPUT_CAPTURE task.
-- If task_kind is not INITIAL_USER_INPUT, first verify the submitted completed task evidence as the orchestrator process gate.
-- Derive the required independent reviewer verdict from the submitted task_kind by the fixed mapping; do not require review_type as orchestrator input.
-- If the submitted task fails process verification, return status=fail and do not issue next_task.
-- If the submitted task passes process verification, return task_review.status=PASS and either issue exactly one next_task or return complete.
-- The implementer must journal and commit ORCHESTRATOR_TASK_REVIEW from task_review before executing next_task.
-- Use monotonically increasing orchestrator task ids O-000001, O-000002, etc.
-- The first task for a fresh delivery is USER_INPUT_CAPTURE and must preserve the user's input exactly in .sddtdd_skill/SPEC-DRAFT.md plus create the USER_INPUT journal entry.
-- For agent-generated artifacts, require independent reviewer verdict before orchestrator PASS.
-- Do not let implementation begin before TASK_REVIEW PASS.
-- Do not allow GREEN before RED_REVIEW PASS for that task.
-- Do not allow final completion before regression review PASS and final review PASS.
-- Instructions must be in English and self-contained.
+Status and process policy are defined in the embedded installed Markdown policy,
+especially SKILL-ORCHESTRATOR.md. There is no reviewTask tool. There is no
+previous_task_id input. Derive the required independent reviewer verdict from the submitted task_kind by the fixed mapping in SKILL-ORCHESTRATOR.md. Return JSON only.
 """.strip()
 
 
@@ -798,7 +777,7 @@ def _get_next_prompt(repo_path: str, git: GitCapturer, args: dict[str, Any]) -> 
     }
     return (
         GET_NEXT_SCHEMA
-        + "\n\nInspect the repository using tools before deciding. Read the skill files listed above as needed. "
+        + "\n\nInspect the repository using tools before deciding. Apply the embedded installed policy from the system prompt. "
         + "Return JSON only.\n\nREQUEST:\n"
         + json.dumps(payload, ensure_ascii=False, indent=2)
     )
@@ -1629,13 +1608,20 @@ async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[
         })
 
         prompt = _get_next_prompt(repo_path, git, arguments)
+        orchestrator_policy_text = _orchestrator_policy_bundle_text()
+        system_prompt = (
+            ORCHESTRATOR_SYSTEM_PROMPT
+            + "\n\n===== BEGIN INSTALLED SDDTDD POLICY FILES =====\n"
+            + orchestrator_policy_text
+            + "\n===== END INSTALLED SDDTDD POLICY FILES ====="
+        )
         response_text, stop_reason = await _sample_with_tools(
             ctx=app.request_context,
             initial_prompt=prompt,
             repo_path=repo_path,
             process_groups=process_groups,
             leaked_pids=leaked_pids,
-            system_prompt=ORCHESTRATOR_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             max_rounds=MAX_SAMPLING_ROUNDS,
         )
 
