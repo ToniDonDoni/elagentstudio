@@ -738,6 +738,50 @@ async def test_invalid_review_triggers_repair(client: MCPStdioClient, repo: Path
 
 
 
+async def test_empty_response_with_verdict_returns_retry_error_without_repair(client: MCPStdioClient, repo: Path) -> None:
+    event("SCENARIO_BEGIN: empty_response_with_verdict_returns_retry_error_without_repair")
+    state = ScenarioState("empty_response_with_verdict")
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        event(f"MOCK_SAMPLING[{state.name}]: call={state.calls} params={summarize_json(params)}")
+        state.seen_params.append(params)
+        if state.calls == 1:
+            return text_result(json_dumps({"verdict": "PASS", "response": ""}))
+        return text_result(valid_review_json("PASS", "repair must not replace an empty review response"))
+
+    client.sampling_handler = sampling
+    response = await call_review(client, repo, "U2U empty response with verdict scenario", timeout=5)
+    assert_eq(response["status"], "ERROR", "empty response with verdict status")
+    assert_eq(response["verdict"], None, "empty response with verdict must not produce a verdict")
+    assert_true("retry the review" in response["response"].lower(), "empty response with verdict must ask caller to retry")
+    assert_eq(state.calls, 1, "empty response with verdict must not enter repair sampling")
+    event("SCENARIO_DONE: empty_response_with_verdict_returns_retry_error_without_repair")
+    ok("empty response with verdict returns retry ERROR without repair")
+
+
+async def test_empty_response_without_verdict_returns_retry_error_without_repair(client: MCPStdioClient, repo: Path) -> None:
+    event("SCENARIO_BEGIN: empty_response_without_verdict_returns_retry_error_without_repair")
+    state = ScenarioState("empty_response_without_verdict")
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        event(f"MOCK_SAMPLING[{state.name}]: call={state.calls} params={summarize_json(params)}")
+        state.seen_params.append(params)
+        if state.calls == 1:
+            return text_result(json_dumps({"response": ""}))
+        return text_result(valid_review_json("PASS", "repair must not replace an empty review response"))
+
+    client.sampling_handler = sampling
+    response = await call_review(client, repo, "U2U empty response without verdict scenario", timeout=5)
+    assert_eq(response["status"], "ERROR", "empty response without verdict status")
+    assert_eq(response["verdict"], None, "empty response without verdict must not produce a verdict")
+    assert_true("retry the review" in response["response"].lower(), "empty response without verdict must ask caller to retry")
+    assert_eq(state.calls, 1, "empty response without verdict must not enter repair sampling")
+    event("SCENARIO_DONE: empty_response_without_verdict_returns_retry_error_without_repair")
+    ok("empty response without verdict returns retry ERROR without repair")
+
+
 
 #
 # Test that any repair sampling response with stopReason=maxTokens is retried before acceptance.
@@ -1200,7 +1244,7 @@ async def test_shell_command_timeout_returns_timed_out_result_and_continues(
 
     client.sampling_handler = sampling
     started = time.monotonic()
-    response = await call_review(client, repo, "U2U shell command timeout scenario", timeout=8)
+    response = await call_review(client, repo, "U2U shell command timeout scenario", timeout=15)
     elapsed = time.monotonic() - started
     assert_eq(response["status"], "COMPLETED", "shell timeout review status")
     assert_eq(response["verdict"], "PASS", "shell timeout review verdict")
@@ -1399,6 +1443,14 @@ async def run_all(args: argparse.Namespace) -> None:
             )
             await run_named_test("test_invalid_review_triggers_repair", lambda: test_invalid_review_triggers_repair(client, repo))
             await run_named_test(
+                "test_empty_response_with_verdict_returns_retry_error_without_repair",
+                lambda: test_empty_response_with_verdict_returns_retry_error_without_repair(client, repo),
+            )
+            await run_named_test(
+                "test_empty_response_without_verdict_returns_retry_error_without_repair",
+                lambda: test_empty_response_without_verdict_returns_retry_error_without_repair(client, repo),
+            )
+            await run_named_test(
                 "test_repair_maxtokens_retries_before_accepting_result",
                 lambda: test_repair_maxtokens_retries_before_accepting_result(client, repo),
             )
@@ -1479,6 +1531,8 @@ async def run_all(args: argparse.Namespace) -> None:
                 "test_tool_use_roundtrip",
                 "test_async_shell_command_does_not_block_list_tools",
                 "test_invalid_review_triggers_repair",
+                "test_empty_response_with_verdict_returns_retry_error_without_repair",
+                "test_empty_response_without_verdict_returns_retry_error_without_repair",
                 "test_repair_maxtokens_retries_before_accepting_result",
                 "test_repair_maxtokens_retry_prompt_includes_budget_guidance",
                 "test_primary_sampling_maxtokens_retries_before_accepting_result",
