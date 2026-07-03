@@ -215,6 +215,30 @@ captured HEAD before/after, status, duration, and the orchestrator result.
 
 ## Independence rules
 
+
 The orchestrator is not the reviewer. The orchestrator must never replace or weaken
 independent artifact review. Reviewer PASS does not equal orchestrator PASS;
 orchestrator PASS is `task_review.status=PASS` returned from `getNextTask`.
+
+The orchestrator may ask the implementer to fix whatever is blocking process
+progress, including fixes that require changing code, tests, specs,
+architecture, task files, or other artifacts. When such a fix creates or
+changes any reviewed artifact, the orchestrator must explicitly remind the
+implementer that the changed artifact must go through the appropriate
+independent reviewer loop and receive a committed reviewer `PASS` before the
+task can pass orchestration.
+
+Allowed orchestrator `required_fixes` are process/evidence fixes, for example:
+
+- commit the missing work entry or artifact;
+- supply the committed `work_journal_id`;
+- supply the committed reviewer verdict JID;
+- obtain the required reviewer `PASS` verdict;
+- fix journal parent/root/task-id wiring;
+- fix stale or mismatched review evidence;
+- record and commit the required `ORCHESTRATOR_TASK_REVIEW` entry.
+
+When the required fix changes a reviewed artifact, the orchestrator should name
+the process requirement explicitly: complete the appropriate independent review,
+record and commit the reviewer verdict, and retry `getNextTask` only after that
+reviewer verdict is `PASS`.
