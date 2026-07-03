@@ -1040,6 +1040,12 @@ the response field must keep concrete explanatory body text after the verdict li
             max_attempts,
             _safe_log_text(prompt, limit=3000),
         )
+        logger.debug(
+            "REVIEW_RESPONSE_REPAIR: creating message attempt=%d/%d requested_max_tokens=%d",
+            attempt,
+            max_attempts,
+            MAX_SAMPLING_TOKENS,
+        )
         result = await ctx.session.create_message(
             messages=[
                 types.SamplingMessage(
@@ -1048,6 +1054,12 @@ the response field must keep concrete explanatory body text after the verdict li
                 )
             ],
             max_tokens=MAX_SAMPLING_TOKENS,
+        )
+        logger.debug(
+            "REVIEW_RESPONSE_REPAIR: created message attempt=%d/%d stop_reason=%s",
+            attempt,
+            max_attempts,
+            getattr(result, "stopReason", None) or "endTurn",
         )
 
         repair_text_parts = []
@@ -1185,11 +1197,24 @@ async def _sample_with_tools(
                      _round + 1, max_rounds, len(messages))
         try:
             try:
+                logger.debug(
+                    "SAMPLING: creating message round=%d messages=%d requested_max_tokens=%d has_system_prompt=%s",
+                    _round + 1,
+                    len(messages),
+                    MAX_SAMPLING_TOKENS,
+                    system_prompt is not None,
+                )
                 result = await ctx.session.create_message(
                     messages=messages,
                     max_tokens=MAX_SAMPLING_TOKENS,
                     tools=REVIEWER_TOOLS,
                     system_prompt=system_prompt,
+                )
+                logger.debug(
+                    "SAMPLING: created message round=%d messages=%d stop_reason=%s",
+                    _round + 1,
+                    len(messages),
+                    getattr(result, "stopReason", None) or "endTurn",
                 )
             except TypeError as exc:
                 if "system_prompt" not in str(exc):
@@ -1204,10 +1229,22 @@ async def _sample_with_tools(
                         ),
                     )
                 ] + messages[1:]
+                logger.debug(
+                    "SAMPLING: creating message fallback_inline_prompt round=%d messages=%d requested_max_tokens=%d",
+                    _round + 1,
+                    len(inline_messages),
+                    MAX_SAMPLING_TOKENS,
+                )
                 result = await ctx.session.create_message(
                     messages=inline_messages,
                     max_tokens=MAX_SAMPLING_TOKENS,
                     tools=REVIEWER_TOOLS,
+                )
+                logger.debug(
+                    "SAMPLING: created message fallback_inline_prompt round=%d messages=%d stop_reason=%s",
+                    _round + 1,
+                    len(inline_messages),
+                    getattr(result, "stopReason", None) or "endTurn",
                 )
         except Exception as exc:
             logger.error("SAMPLING: create_message() raised: %s", exc, exc_info=True)
