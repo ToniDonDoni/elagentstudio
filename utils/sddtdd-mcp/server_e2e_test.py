@@ -94,6 +94,40 @@ def sampling_prompt_text(params: Json) -> str:
     return "\n".join(parts)
 
 
+# Helper to dump the sampling prompt for debugging.
+def dump_sampling_prompt_for_debug(label: str, params: Json) -> None:
+    if not VERBOSE_OUTPUT:
+        return
+
+    system_prompt = params.get("systemPrompt")
+    if isinstance(system_prompt, str):
+        print(f"\n===== BEGIN {label} SYSTEM PROMPT =====", flush=True)
+        print(system_prompt, flush=True)
+        print(f"===== END {label} SYSTEM PROMPT =====\n", flush=True)
+    else:
+        print(f"\n===== {label} SYSTEM PROMPT MISSING OR NON-STRING =====", flush=True)
+        print(repr(system_prompt), flush=True)
+        print(f"===== END {label} SYSTEM PROMPT MISSING OR NON-STRING =====\n", flush=True)
+
+    messages = params.get("messages") or []
+    print(f"\n===== BEGIN {label} MESSAGES =====", flush=True)
+    for message_index, message in enumerate(messages):
+        role = message.get("role") if isinstance(message, dict) else None
+        print(f"----- BEGIN {label} MESSAGE {message_index} role={role!r} -----", flush=True)
+        content = message.get("content") if isinstance(message, dict) else None
+        blocks = content if isinstance(content, list) else [content]
+        for block_index, block in enumerate(blocks):
+            if isinstance(block, dict) and block.get("type") == "text":
+                print(f"----- BEGIN {label} MESSAGE {message_index} TEXT BLOCK {block_index} -----", flush=True)
+                print(str(block.get("text", "")), flush=True)
+                print(f"----- END {label} MESSAGE {message_index} TEXT BLOCK {block_index} -----", flush=True)
+            else:
+                print(f"----- BEGIN {label} MESSAGE {message_index} NON-TEXT BLOCK {block_index} -----", flush=True)
+                print(repr(block), flush=True)
+                print(f"----- END {label} MESSAGE {message_index} NON-TEXT BLOCK {block_index} -----", flush=True)
+        print(f"----- END {label} MESSAGE {message_index} role={role!r} -----", flush=True)
+    print(f"===== END {label} MESSAGES =====\n", flush=True)
+
 # === Test runner helpers ===
 
 def banner(title: str) -> None:
@@ -572,7 +606,151 @@ async def call_mcp_tool(
     return extract_tool_call_response(result)
 
 
-# --- Access log helpers and test ---
+
+# --- Required installed skill policy file helpers and tests ---
+
+REVIEW_REQUIRED_POLICY_FILES = [
+    "SKILL.md",
+    "SKILL-IMPLEMENTER.md",
+    "ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md",
+    "references/STAGES.md",
+    "references/JOURNAL.md",
+]
+
+ORCHESTRATOR_REQUIRED_POLICY_FILES = [
+    "SKILL.md",
+    "SKILL-ORCHESTRATOR.md",
+    "SKILL-IMPLEMENTER.md",
+    "ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md",
+    "references/STAGES.md",
+    "references/JOURNAL.md",
+]
+
+
+def create_installed_skill_policy_root(root: Path, *, missing_file: str | None = None) -> Path:
+    skill_root = root / ("installed-skill-missing-" + (missing_file or "none").replace("/", "-"))
+    if skill_root.exists():
+        shutil.rmtree(skill_root)
+    (skill_root / "references").mkdir(parents=True)
+
+    all_files = sorted(set(REVIEW_REQUIRED_POLICY_FILES + ORCHESTRATOR_REQUIRED_POLICY_FILES))
+    for relative_path in all_files:
+        if relative_path == missing_file:
+            continue
+        target = skill_root / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            f"# U2U installed policy file: {relative_path}\n\n"
+            "This file exists only so missing-policy tests can isolate one absent required file.\n"
+            "UI user journey rule\n"
+            "Canvas onboarding journey\n",
+            encoding="utf-8",
+        )
+    return skill_root
+
+
+async def assert_missing_review_policy_file_returns_error(
+    *,
+    server_path: Path,
+    base_env: dict[str, str],
+    repo: Path,
+    temp_root: Path,
+    missing_file: str,
+) -> None:
+    skill_root = create_installed_skill_policy_root(temp_root, missing_file=missing_file)
+
+    env = dict(base_env)
+    env["SDDTDD_REVIEW_SKILL_ROOT"] = str(skill_root)
+    env["SDDTDD_ORCHESTRATOR_SKILL_ROOT"] = str(skill_root)
+    env["SDDTDD_LOG_PATH"] = str(temp_root / f"missing-review-{missing_file.replace('/', '-')}.jsonl")
+    env["SDDTDD_ORCHESTRATOR_LOG_PATH"] = str(temp_root / f"missing-orchestrator-{missing_file.replace('/', '-')}.jsonl")
+
+    async with MCPStdioClient(server_path=server_path, env=env, verbose=VERBOSE_OUTPUT) as isolated_client:
+        await isolated_client.initialize()
+        state = ScenarioState(f"missing_review_policy_{missing_file}")
+
+        async def sampling(params: Json) -> Json:
+            state.calls += 1
+            fail(f"sampling must not be called when reviewer policy file is missing: {missing_file}")
+
+        isolated_client.sampling_handler = sampling
+        response = await call_review(
+            isolated_client,
+            repo,
+            f"U2U missing reviewer installed skill policy file scenario: {missing_file}",
+            task_id="T-U2U-MISSING-REVIEW-POLICY",
+            timeout=5,
+        )
+        assert_eq(
+            response["status"],
+            "ERROR",
+            f"review must fail before sampling when reviewer policy file is missing: {missing_file}",
+        )
+        assert_true(
+            "Missing required installed SDDTDD skill policy files" in response["response"],
+            f"review error must explain missing installed skill policy file: {missing_file}",
+        )
+        assert_true(
+            missing_file in response["response"],
+            f"review error must name the missing reviewer policy file: {missing_file}",
+        )
+        assert_eq(state.calls, 0, f"review missing policy file must fail before sampling: {missing_file}")
+
+
+async def assert_missing_orchestrator_policy_file_returns_error(
+    *,
+    server_path: Path,
+    base_env: dict[str, str],
+    repo: Path,
+    temp_root: Path,
+    missing_file: str,
+) -> None:
+    skill_root = create_installed_skill_policy_root(temp_root, missing_file=missing_file)
+
+    env = dict(base_env)
+    env["SDDTDD_REVIEW_SKILL_ROOT"] = str(skill_root)
+    env["SDDTDD_ORCHESTRATOR_SKILL_ROOT"] = str(skill_root)
+    env["SDDTDD_LOG_PATH"] = str(temp_root / f"missing-review-{missing_file.replace('/', '-')}.jsonl")
+    env["SDDTDD_ORCHESTRATOR_LOG_PATH"] = str(temp_root / f"missing-orchestrator-{missing_file.replace('/', '-')}.jsonl")
+
+    async with MCPStdioClient(server_path=server_path, env=env, verbose=VERBOSE_OUTPUT) as isolated_client:
+        await isolated_client.initialize()
+        state = ScenarioState(f"missing_orchestrator_policy_{missing_file}")
+
+        async def sampling(params: Json) -> Json:
+            state.calls += 1
+            fail(f"sampling must not be called when orchestrator policy file is missing: {missing_file}")
+
+        isolated_client.sampling_handler = sampling
+        response = await call_mcp_tool(
+            isolated_client,
+            "getNextTask",
+            {
+                "repo_path": str(repo),
+                "task_kind": "INITIAL_USER_INPUT",
+                "task_id": None,
+                "claimed_result": None,
+                "work_journal_id": None,
+                "evidence": {
+                    "user_input": f"U2U missing orchestrator installed skill policy file scenario: {missing_file}",
+                },
+            },
+            timeout=5,
+        )
+        assert_eq(
+            response["status"],
+            "ERROR",
+            f"getNextTask must fail before sampling when orchestrator policy file is missing: {missing_file}",
+        )
+        assert_true(
+            "Missing required installed SDDTDD skill policy files" in response["error"],
+            f"getNextTask error must explain missing installed skill policy file: {missing_file}",
+        )
+        assert_true(
+            missing_file in response["error"],
+            f"getNextTask error must name the missing orchestrator policy file: {missing_file}",
+        )
+        assert_eq(state.calls, 0, f"orchestrator missing policy file must fail before sampling: {missing_file}")
 
 def read_access_log_events(log_path: Path) -> list[Json]:
     if not log_path.exists():
@@ -663,6 +841,7 @@ async def test_reviewer_system_prompt_happy_path(client: MCPStdioClient, repo: P
         state.calls += 1
         event(f"MOCK_SAMPLING[{state.name}]: call={state.calls} params={summarize_json(params)}")
         state.seen_params.append(params)
+        dump_sampling_prompt_for_debug("reviewer_system_prompt_happy_path", params)
 
         system_prompt = params.get("systemPrompt")
         assert_true(isinstance(system_prompt, str), "sampling/createMessage must receive a string systemPrompt")
@@ -686,6 +865,18 @@ async def test_reviewer_system_prompt_happy_path(client: MCPStdioClient, repo: P
             "You are the orchestrator" not in system_prompt and "You are the orchestrator" not in system_prompt,
             "review sampling systemPrompt must not use orchestrator/orchestrator identity",
         )
+        assert_true(
+            "ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md" in system_prompt,
+            "review sampling systemPrompt must include the acceptance criteria boundary guide filename",
+        )
+        assert_true(
+            "UI user journey rule" in system_prompt,
+            "review sampling systemPrompt must include the UI user journey rule from the acceptance boundary guide",
+        )
+        assert_true(
+            "Canvas onboarding journey" in system_prompt,
+            "review sampling systemPrompt must include the acceptance boundary guide examples",
+        )
 
         return text_result(valid_review_json("PASS", "reviewer system prompt happy path response"))
 
@@ -706,6 +897,7 @@ async def test_orchestrator_get_next_task_system_prompt_happy_path(client: MCPSt
         state.calls += 1
         event(f"MOCK_SAMPLING[{state.name}]: call={state.calls} params={summarize_json(params)}")
         state.seen_params.append(params)
+        dump_sampling_prompt_for_debug("orchestrator_get_next_task_system_prompt_happy_path", params)
 
         system_prompt = params.get("systemPrompt")
         assert_true(isinstance(system_prompt, str), "getNextTask sampling/createMessage must receive a string systemPrompt")
@@ -728,6 +920,18 @@ async def test_orchestrator_get_next_task_system_prompt_happy_path(client: MCPSt
         assert_true(
             "You are the implementer" not in system_prompt,
             "getNextTask systemPrompt must not use implementer identity",
+        )
+        assert_true(
+            "ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md" in system_prompt,
+            "getNextTask systemPrompt must include the acceptance criteria boundary guide filename",
+        )
+        assert_true(
+            "UI user journey rule" in system_prompt,
+            "getNextTask systemPrompt must include the UI user journey rule from the acceptance boundary guide",
+        )
+        assert_true(
+            "Canvas onboarding journey" in system_prompt,
+            "getNextTask systemPrompt must include the acceptance boundary guide examples",
         )
 
         prompt_text = sampling_prompt_text(params)
@@ -785,6 +989,7 @@ async def test_orchestrator_get_next_task_completed_task_process_gate_happy_path
         state.calls += 1
         event(f"MOCK_SAMPLING[{state.name}]: call={state.calls} params={summarize_json(params)}")
         state.seen_params.append(params)
+        dump_sampling_prompt_for_debug("orchestrator_get_next_task_completed_task_process_gate_happy_path", params)
 
         system_prompt = params.get("systemPrompt")
         assert_true(isinstance(system_prompt, str), "completed-task getNextTask sampling/createMessage must receive a string systemPrompt")
@@ -803,6 +1008,18 @@ async def test_orchestrator_get_next_task_completed_task_process_gate_happy_path
         assert_true(
             "independent Spec-Driven TDD reviewer MCP" not in system_prompt,
             "completed-task getNextTask systemPrompt must not use reviewer identity",
+        )
+        assert_true(
+            "ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md" in system_prompt,
+            "completed-task getNextTask systemPrompt must include the acceptance criteria boundary guide filename",
+        )
+        assert_true(
+            "UI user journey rule" in system_prompt,
+            "completed-task getNextTask systemPrompt must include the UI user journey rule from the acceptance boundary guide",
+        )
+        assert_true(
+            "Canvas onboarding journey" in system_prompt,
+            "completed-task getNextTask systemPrompt must include the acceptance boundary guide examples",
         )
 
         prompt_text = sampling_prompt_text(params)
@@ -865,82 +1082,31 @@ async def test_missing_installed_skill_policy_returns_error(
     temp_root: Path,
 ) -> None:
     event("SCENARIO_BEGIN: missing_installed_skill_policy_returns_error")
-    missing_skill_root = temp_root / "incomplete-installed-skill"
-    missing_skill_root.mkdir()
-    (missing_skill_root / "README.md").write_text(
-        "# incomplete installed skill\n\nThis directory intentionally lacks required role files.\n",
-        encoding="utf-8",
-    )
 
-    env = dict(base_env)
-    env["SDDTDD_REVIEW_SKILL_ROOT"] = str(missing_skill_root)
-    env["SDDTDD_ORCHESTRATOR_SKILL_ROOT"] = str(missing_skill_root)
-    env["SDDTDD_LOG_PATH"] = str(temp_root / "missing-skill-review-access.jsonl")
-    env["SDDTDD_ORCHESTRATOR_LOG_PATH"] = str(temp_root / "missing-skill-orchestrator-access.jsonl")
+    for missing_file in REVIEW_REQUIRED_POLICY_FILES:
+        event(f"MISSING_POLICY_SUBCASE_BEGIN: reviewer missing {missing_file}")
+        await assert_missing_review_policy_file_returns_error(
+            server_path=server_path,
+            base_env=base_env,
+            repo=repo,
+            temp_root=temp_root,
+            missing_file=missing_file,
+        )
+        event(f"MISSING_POLICY_SUBCASE_DONE: reviewer missing {missing_file}")
 
-    async with MCPStdioClient(server_path=server_path, env=env, verbose=VERBOSE_OUTPUT) as isolated_client:
-        await isolated_client.initialize()
-        state = ScenarioState("missing_installed_skill_policy")
-
-        async def sampling(params: Json) -> Json:
-            state.calls += 1
-            fail("sampling must not be called when required installed skill policy files are missing")
-
-        isolated_client.sampling_handler = sampling
-
-        review_response = await call_review(
-            isolated_client,
-            repo,
-            "U2U missing installed reviewer skill policy scenario",
-            task_id="T-U2U-MISSING-SKILL",
-            timeout=5,
+    for missing_file in ORCHESTRATOR_REQUIRED_POLICY_FILES:
+        event(f"MISSING_POLICY_SUBCASE_BEGIN: orchestrator missing {missing_file}")
+        await assert_missing_orchestrator_policy_file_returns_error(
+            server_path=server_path,
+            base_env=base_env,
+            repo=repo,
+            temp_root=temp_root,
+            missing_file=missing_file,
         )
-        assert_eq(
-            review_response["status"],
-            "ERROR",
-            "review must fail before sampling when required skill policy is missing",
-        )
-        assert_true(
-            "Missing required installed SDDTDD skill policy files" in review_response["response"],
-            "review error must explain missing required installed skill policy files",
-        )
-        assert_true(
-            "SKILL.md" in review_response["response"] and "SKILL-IMPLEMENTER.md" in review_response["response"],
-            "review error must name missing required reviewer policy files",
-        )
-
-        orchestrator_response = await call_mcp_tool(
-            isolated_client,
-            "getNextTask",
-            {
-                "repo_path": str(repo),
-                "task_kind": "INITIAL_USER_INPUT",
-                "task_id": None,
-                "claimed_result": None,
-                "work_journal_id": None,
-                "evidence": {
-                    "user_input": "U2U missing installed orchestrator skill policy scenario",
-                },
-            },
-            timeout=5,
-        )
-        assert_eq(
-            orchestrator_response["status"],
-            "ERROR",
-            "getNextTask must fail before sampling when required skill policy is missing",
-        )
-        assert_true(
-            "Missing required installed SDDTDD skill policy files" in orchestrator_response["error"],
-            "getNextTask error must explain missing required installed skill policy files",
-        )
-        assert_true(
-            "SKILL-ORCHESTRATOR.md" in orchestrator_response["error"],
-            "getNextTask error must name the missing orchestrator role file",
-        )
-        assert_eq(state.calls, 0, "missing skill policy must fail before any sampling call")
+        event(f"MISSING_POLICY_SUBCASE_DONE: orchestrator missing {missing_file}")
 
     event("SCENARIO_DONE: missing_installed_skill_policy_returns_error")
-    ok("missing required installed skill policy files return ERROR before sampling")
+    ok("each missing required installed skill policy file returns ERROR before sampling")
 
 
 async def test_tool_use_roundtrip(client: MCPStdioClient, repo: Path, *, tool_use_type: str) -> None:
