@@ -274,6 +274,7 @@ class SkillPolicyError(RuntimeError):
 REQUIRED_REVIEW_POLICY_FILES: tuple[str, ...] = (
     "SKILL.md",
     "SKILL-IMPLEMENTER.md",
+    "ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md",
     "references/STAGES.md",
     "references/JOURNAL.md",
 )
@@ -282,6 +283,7 @@ REQUIRED_ORCHESTRATOR_POLICY_FILES: tuple[str, ...] = (
     "SKILL.md",
     "SKILL-ORCHESTRATOR.md",
     "SKILL-IMPLEMENTER.md",
+    "ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md",
     "references/JOURNAL.md",
     "references/STAGES.md",
 )
