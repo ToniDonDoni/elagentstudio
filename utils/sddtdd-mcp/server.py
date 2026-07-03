@@ -15,6 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from functools import wraps
 
 import mcp.server as mcp_server
 import mcp.types as types
@@ -23,6 +24,26 @@ from mcp.server.stdio import stdio_server
 
 # Logger for our own lifecycle tracing (goes to stderr → mcp-stderr.log)
 logger = logging.getLogger("sddtdd-mcp")
+
+def _trace_function(func):
+    if  asyncio.iscoroutinefunction(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            logger.debug("entering to %s", func.__qualname__)
+            try:
+                return await func(*args, **kwargs)
+            finally:
+                logger.debug("exiting from %s", func.__qualname__)
+        return wrapper
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        logger.debug("entering to %s", func.__qualname__)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            logger.debug("exiting from %s", func.__qualname__)
+    return wrapper
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -537,6 +558,7 @@ app = mcp_server.Server("sddtdd-mcp")
 
 
 @app.list_tools()
+@_trace_function
 async def list_tools() -> list[types.Tool]:
     return [
         types.Tool(
@@ -724,7 +746,7 @@ Process gate rules:
 - Do not require BROKER_TASK_REVIEW to already exist for the task being reviewed; the implementer writes it after your PASS/FAIL response.
 """.strip()
 
-
+@_trace_function
 def _broker_base_repo_context(repo_path: str, git: GitCapturer) -> dict[str, Any]:
     return {
         "repo_path": repo_path,
@@ -739,7 +761,7 @@ def _broker_base_repo_context(repo_path: str, git: GitCapturer) -> dict[str, Any
         },
     }
 
-
+@_trace_function
 def _get_next_prompt(repo_path: str, git: GitCapturer, args: dict[str, Any]) -> str:
     payload = {
         "operation": "getNextTask",
@@ -754,7 +776,7 @@ def _get_next_prompt(repo_path: str, git: GitCapturer, args: dict[str, Any]) -> 
         + json.dumps(payload, ensure_ascii=False, indent=2)
     )
 
-
+@_trace_function
 def _review_task_prompt(repo_path: str, git: GitCapturer, args: dict[str, Any]) -> str:
     payload = {
         "operation": "reviewTask",
@@ -773,7 +795,7 @@ def _review_task_prompt(repo_path: str, git: GitCapturer, args: dict[str, Any]) 
         + json.dumps(payload, ensure_ascii=False, indent=2)
     )
 
-
+@_trace_function
 def _extract_first_json_object(text: str) -> dict[str, Any]:
     stripped = text.strip()
     if stripped.startswith("```"):
@@ -847,7 +869,7 @@ REVIEWER_TOOLS: list[types.Tool] = [
     ),
 ]
 
-
+@_trace_function
 def _resolve_path(repo_path: str, raw: str) -> Path:
     """Resolve a user-supplied path to an absolute path inside repo_path.
 
@@ -865,7 +887,7 @@ def _resolve_path(repo_path: str, raw: str) -> Path:
 
 
 # Per-review cleanup of process groups created by reviewer shell_command calls.
-
+@_trace_function
 async def _cleanup_process_groups(process_groups: list[int], leaked_pids: list[int]) -> None:
     """Terminate command process groups and any previously observed leaked PIDs.
 
@@ -925,6 +947,7 @@ async def _cleanup_process_groups(process_groups: list[int], leaked_pids: list[i
 
 
 # Minimal process-leak helper: enumerate live PIDs in a process group.
+@_trace_function
 def _process_group_pids(pgid: int) -> list[int]:
     """Return live process IDs that still belong to a process group."""
     pids: list[int] = []
@@ -950,7 +973,7 @@ def _process_group_pids(pgid: int) -> list[int]:
 
     return sorted(pids)
 
-
+@_trace_function
 def _format_shell_command_result(
     *,
     command: str,
@@ -980,7 +1003,7 @@ def _format_shell_command_result(
         ]
     ).rstrip()
 
-
+@_trace_function
 async def _execute_tool(
     name: str,
     args: dict,
@@ -1083,7 +1106,7 @@ async def _execute_tool(
 
     return f"ERROR: unknown tool: {name}"
 
-
+@_trace_function
 def _unwrap_top_level_json_code_fence(text: str) -> str:
     """Strip one top-level Markdown JSON code fence before json.loads.
 
@@ -1108,7 +1131,7 @@ def _unwrap_top_level_json_code_fence(text: str) -> str:
 
     return "\n".join(lines[1:-1]).strip()
 
-
+@_trace_function
 def _has_empty_review_response_field(text: str) -> bool:
     """Return True when a sampler JSON payload explicitly contains an empty response.
 
@@ -1132,7 +1155,7 @@ def _has_empty_review_response_field(text: str) -> bool:
         return not response.strip()
     return False
 
-
+@_trace_function
 def _parse_review_json(text: str) -> tuple[str | None, str | None, str | None]:
     """Parse and validate the canonical review JSON response.
 
@@ -1203,7 +1226,7 @@ def _parse_review_json(text: str) -> tuple[str | None, str | None, str | None]:
 
     return verdict, response, None
 
-
+@_trace_function
 def _parse_plain_review_text(text: str) -> tuple[str | None, str | None, str | None]:
     """Parse non-JSON reviewer text that already starts with a verdict line.
 
@@ -1246,7 +1269,7 @@ def _parse_plain_review_text(text: str) -> tuple[str | None, str | None, str | N
 
     return verdict, response, None
 
-
+@_trace_function
 async def _repair_verdict_with_sampling(
     ctx,
     *,
@@ -1403,7 +1426,7 @@ the response field must keep concrete explanatory body text after the verdict li
     return None, raw_response, attempts
 
 
-
+@_trace_function
 async def _sample_with_tools(
     ctx,
     initial_prompt: str,
@@ -1568,7 +1591,7 @@ async def _sample_with_tools(
     return last_text, "maxRoundsExceeded"
 
 
-
+@_trace_function
 async def _call_broker_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
     repo_path = arguments["repo_path"]
     request_id = uuid.uuid4().hex
@@ -1672,8 +1695,8 @@ async def _call_broker_tool(name: str, arguments: dict[str, Any]) -> list[types.
     return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
 
 
-
 @app.call_tool()
+@_trace_function
 async def call_tool(
     name: str,
     arguments: dict,
@@ -1880,7 +1903,7 @@ async def call_tool(
     await _cleanup_process_groups(process_groups, leaked_pids)
     return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
-
+@_trace_function
 def _error_result(request_id: str, message: str) -> dict:
     return {
         "request_id": request_id,
@@ -1890,8 +1913,7 @@ def _error_result(request_id: str, message: str) -> dict:
         "stale": False,
     }
 
-
-
+@_trace_function
 def _error_started_event(request_id: str, repo_path: str, review_type: str, task_id: str | None, prompt: str) -> dict:
     return {
         "event": "review_started",
@@ -1907,6 +1929,7 @@ def _error_started_event(request_id: str, repo_path: str, review_type: str, task
         "error_before_git_capture": True,
     }
 
+@_trace_function
 def _error_event(request_id: str, repo_path: str, review_type: str, task_id: str | None, message: str) -> dict:
     return {
         "event": "review_completed",
@@ -1920,7 +1943,6 @@ def _error_event(request_id: str, repo_path: str, review_type: str, task_id: str
         "response": message,
         "stale": False,
     }
-
 
 async def main():
     _install_signal_lifecycle_logging()
