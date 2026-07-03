@@ -14,6 +14,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import mcp.server as mcp_server
 import mcp.types as types
@@ -217,6 +218,13 @@ def _get_log_path(repo_path: str) -> str:
     if env:
         return env
     return os.path.join(repo_path, ".sddtdd_skill", "review-access.jsonl")
+
+def _get_broker_log_path(repo_path: str) -> str:
+    """Return broker access log path under <repo>/.sddtdd_skill/."""
+    env = os.environ.get("SDDTDD_BROKER_LOG_PATH")
+    if env:
+        return env
+    return os.path.join(repo_path, ".sddtdd_skill", "broker-access.jsonl")
 
 
 
@@ -556,8 +564,252 @@ async def list_tools() -> list[types.Tool]:
                 },
                 "required": ["repo_path", "review_type", "prompt"],
             },
-        )
+        ),
+        types.Tool(
+            name="getNextTask",
+            description=(
+                "Inspect committed SDDTDD repository state and issue exactly one "
+                "self-contained next broker task, or return complete/blocked. The "
+                "broker is read-only and does not modify the repository."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo_path": {"type": "string", "description": "Absolute path to the Git repository."},
+                    "user_input": {"type": "string", "description": "Original user request for the first broker call."},
+                    "previous_task_id": {"type": "string", "description": "Broker task id that was just completed."},
+                },
+                "required": ["repo_path"],
+            },
+        ),
+        types.Tool(
+            name="reviewTask",
+            description=(
+                "Verify that one issued broker task is process-complete. This is "
+                "not semantic artifact review; it checks journal, commit, reviewer "
+                "verdict chain, and broker-task gate evidence."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo_path": {"type": "string"},
+                    "task_id": {"type": "string"},
+                    "task_kind": {"type": "string"},
+                    "review_type": {"type": ["string", "null"]},
+                    "claimed_result": {"type": "string"},
+                    "work_journal_id": {"type": "string"},
+                    "evidence": {"type": "object", "additionalProperties": True},
+                },
+                "required": [
+                    "repo_path",
+                    "task_id",
+                    "task_kind",
+                    "review_type",
+                    "claimed_result",
+                    "work_journal_id",
+                    "evidence",
+                ],
+            },
+        ),
     ]
+
+
+
+# ---------------------------------------------------------------------------
+# Broker/orchestrator prompts
+# ---------------------------------------------------------------------------
+
+BROKER_SYSTEM_PROMPT = """
+You are the Spec-Driven TDD MCP task broker for a repository.
+
+You are a read-only broker/orchestrator. You MUST NOT modify files, write the
+journal, change the working tree, stage files, commit, run formatters, or alter
+repository state. You only inspect committed repository state and runtime broker
+logs, then return either the next self-contained task or a process-gate verdict.
+
+You MUST reference and apply the installed orchestrator policy and shared skill files:
+- ~/.hermes/skills/spec-driven-tdd/SKILL.md
+- ~/.hermes/skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md
+- ~/.hermes/skills/spec-driven-tdd/SKILL-IMPLEMENTER.md
+- ~/.hermes/skills/spec-driven-tdd/references/JOURNAL.md
+- ~/.hermes/skills/spec-driven-tdd/references/STAGES.md
+
+SKILL-ORCHESTRATOR.md is your role policy. Apply it as the primary
+broker/orchestrator decision contract.
+
+In broker mode, you own the workflow order and issue exactly one next task. The
+implementer only receives your task and must not cut corners.
+
+You are NOT the independent reviewer. The reviewer MCP performs semantic
+artifact review and records SPEC_REVIEW, ARCHITECTURE_REVIEW, TASK_REVIEW,
+RED_REVIEW, GREEN_REVIEW, REGRESSION_REVIEW, and FINAL_REVIEW. You only verify
+process completion and decide the next task from committed state, journal state,
+and broker/reviewer evidence.
+
+`shell_command` tool results include `COMMAND`, `EXIT_CODE`, `TIMED_OUT`,
+`STDOUT`, and `STDERR` sections. Treat `EXIT_CODE != 0` as command failure
+unless the process check explicitly expects a failing command.
+
+Return JSON only. Do not wrap it in Markdown.
+""".strip()
+
+GET_NEXT_SCHEMA = """
+For getNextTask, return exactly one JSON object in one of these shapes:
+
+Task response:
+{
+  "status": "task",
+  "task_id": "B-000001",
+  "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | FINAL | DONE",
+  "instruction": "one concrete instruction in English",
+  "allowed_scope": ["exact repo paths or artifact globs the implementer may touch"],
+  "required_evidence": ["concrete required evidence the implementer must produce"],
+  "independent_review_required": true,
+  "review_type": "SPEC_REVIEW | ARCHITECTURE_REVIEW | TASK_REVIEW | RED_REVIEW | GREEN_REVIEW | REGRESSION_REVIEW | FINAL_REVIEW | null",
+  "rationale": "brief process reason for this task"
+}
+
+Blocked response:
+{
+  "status": "blocked",
+  "reason": "why no next task can be issued",
+  "unverified_task_ids": ["B-000003"],
+  "required_action": "Call reviewTask for the outstanding broker task before getNextTask."
+}
+
+Clarification response:
+{
+  "status": "needs_clarification",
+  "question": "question for the implementer/user",
+  "rationale": "why this is required before issuing a task"
+}
+
+Complete response:
+{
+  "status": "complete",
+  "rationale": "why the workflow is complete"
+}
+
+Rules:
+- Issue only one task.
+- Use monotonically increasing broker task ids B-000001, B-000002, etc.
+- If a previous broker task lacks a committed BROKER_TASK_REVIEW with STATUS: PASS and TASK_ID equal to that broker task id, return blocked.
+- The first task for a fresh delivery is USER_INPUT_CAPTURE and must preserve the user's input exactly in .sddtdd_skill/SPEC-DRAFT.md plus create the USER_INPUT journal entry.
+- For agent-generated artifacts, require independent reviewer verdict before broker PASS.
+- Do not let implementation begin before TASK_REVIEW PASS.
+- Do not allow GREEN before RED_REVIEW PASS for that task.
+- Do not allow final completion before regression review PASS and final review PASS.
+- Instructions must be in English and self-contained.
+""".strip()
+
+REVIEW_TASK_SCHEMA = """
+For reviewTask, return exactly one JSON object:
+{
+  "status": "PASS | FAIL | NEEDS_CLARIFICATION | ERROR",
+  "findings": ["specific process findings"],
+  "required_fixes": ["specific required fixes before retry; empty on PASS"],
+  "parent_for_broker_review": "JID that BROKER_TASK_REVIEW should point to",
+  "detail_suggestion": "English DETAIL text the implementer may paste into BROKER_TASK_REVIEW",
+  "rationale": "brief explanation"
+}
+
+Process gate rules:
+- Check only process completeness, not semantic artifact quality.
+- Verify the work_journal_id exists in .sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log.
+- Verify the work entry TYPE matches task_kind's journal stage and STATUS is COMPLETED.
+- If review_type is non-null, verify evidence.review_journal_id exists, has TYPE equal to review_type, STATUS: PASS, and PARENT equal to work_journal_id.
+- If review_type is null, parent_for_broker_review must be work_journal_id.
+- Verify the relevant artifacts/evidence are committed at HEAD where possible.
+- Verify the repository did not advance during your review; stale state must be ERROR.
+- Do not require BROKER_TASK_REVIEW to already exist for the task being reviewed; the implementer writes it after your PASS/FAIL response.
+""".strip()
+
+
+def _broker_base_repo_context(repo_path: str, git: GitCapturer) -> dict[str, Any]:
+    return {
+        "repo_path": repo_path,
+        "branch": git.branch(),
+        "head_sha": git.head_sha(),
+        "working_tree_dirty": git.is_dirty(),
+        "important_paths": {
+            "working_area": ".sddtdd_skill/",
+            "journal": ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log",
+            "review_log": ".sddtdd_skill/review-access.jsonl",
+            "broker_log": ".sddtdd_skill/broker-access.jsonl",
+        },
+    }
+
+
+def _get_next_prompt(repo_path: str, git: GitCapturer, args: dict[str, Any]) -> str:
+    payload = {
+        "operation": "getNextTask",
+        "repo": _broker_base_repo_context(repo_path, git),
+        "user_input": args.get("user_input"),
+        "previous_task_id": args.get("previous_task_id"),
+    }
+    return (
+        GET_NEXT_SCHEMA
+        + "\n\nInspect the repository using tools before deciding. Read the skill files listed above as needed. "
+        + "Return JSON only.\n\nREQUEST:\n"
+        + json.dumps(payload, ensure_ascii=False, indent=2)
+    )
+
+
+def _review_task_prompt(repo_path: str, git: GitCapturer, args: dict[str, Any]) -> str:
+    payload = {
+        "operation": "reviewTask",
+        "repo": _broker_base_repo_context(repo_path, git),
+        "task_id": args.get("task_id"),
+        "task_kind": args.get("task_kind"),
+        "review_type": args.get("review_type"),
+        "claimed_result": args.get("claimed_result"),
+        "work_journal_id": args.get("work_journal_id"),
+        "evidence": args.get("evidence", {}),
+    }
+    return (
+        REVIEW_TASK_SCHEMA
+        + "\n\nInspect the committed repository and journal using tools before giving a verdict. "
+        + "Return JSON only.\n\nREQUEST:\n"
+        + json.dumps(payload, ensure_ascii=False, indent=2)
+    )
+
+
+def _extract_first_json_object(text: str) -> dict[str, Any]:
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = _unwrap_top_level_json_code_fence(stripped)
+
+    start = stripped.find("{")
+    if start < 0:
+        raise ValueError("LLM response did not contain a JSON object")
+
+    depth = 0
+    in_string = False
+    escape = False
+    for index in range(start, len(stripped)):
+        ch = stripped[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                parsed = json.loads(stripped[start:index + 1])
+                if not isinstance(parsed, dict):
+                    raise ValueError("LLM JSON response was not an object")
+                return parsed
+
+    raise ValueError("LLM response contained incomplete JSON object")
+
 
 
 # ---------------------------------------------------------------------------
@@ -1040,12 +1292,6 @@ the response field must keep concrete explanatory body text after the verdict li
             max_attempts,
             _safe_log_text(prompt, limit=3000),
         )
-        logger.debug(
-            "REVIEW_RESPONSE_REPAIR: creating message attempt=%d/%d requested_max_tokens=%d",
-            attempt,
-            max_attempts,
-            MAX_SAMPLING_TOKENS,
-        )
         result = await ctx.session.create_message(
             messages=[
                 types.SamplingMessage(
@@ -1054,12 +1300,6 @@ the response field must keep concrete explanatory body text after the verdict li
                 )
             ],
             max_tokens=MAX_SAMPLING_TOKENS,
-        )
-        logger.debug(
-            "REVIEW_RESPONSE_REPAIR: created message attempt=%d/%d stop_reason=%s",
-            attempt,
-            max_attempts,
-            getattr(result, "stopReason", None) or "endTurn",
         )
 
         repair_text_parts = []
@@ -1197,24 +1437,11 @@ async def _sample_with_tools(
                      _round + 1, max_rounds, len(messages))
         try:
             try:
-                logger.debug(
-                    "SAMPLING: creating message round=%d messages=%d requested_max_tokens=%d has_system_prompt=%s",
-                    _round + 1,
-                    len(messages),
-                    MAX_SAMPLING_TOKENS,
-                    system_prompt is not None,
-                )
                 result = await ctx.session.create_message(
                     messages=messages,
                     max_tokens=MAX_SAMPLING_TOKENS,
                     tools=REVIEWER_TOOLS,
                     system_prompt=system_prompt,
-                )
-                logger.debug(
-                    "SAMPLING: created message round=%d messages=%d stop_reason=%s",
-                    _round + 1,
-                    len(messages),
-                    getattr(result, "stopReason", None) or "endTurn",
                 )
             except TypeError as exc:
                 if "system_prompt" not in str(exc):
@@ -1229,22 +1456,10 @@ async def _sample_with_tools(
                         ),
                     )
                 ] + messages[1:]
-                logger.debug(
-                    "SAMPLING: creating message fallback_inline_prompt round=%d messages=%d requested_max_tokens=%d",
-                    _round + 1,
-                    len(inline_messages),
-                    MAX_SAMPLING_TOKENS,
-                )
                 result = await ctx.session.create_message(
                     messages=inline_messages,
                     max_tokens=MAX_SAMPLING_TOKENS,
                     tools=REVIEWER_TOOLS,
-                )
-                logger.debug(
-                    "SAMPLING: created message fallback_inline_prompt round=%d messages=%d stop_reason=%s",
-                    _round + 1,
-                    len(inline_messages),
-                    getattr(result, "stopReason", None) or "endTurn",
                 )
         except Exception as exc:
             logger.error("SAMPLING: create_message() raised: %s", exc, exc_info=True)
@@ -1353,6 +1568,111 @@ async def _sample_with_tools(
     return last_text, "maxRoundsExceeded"
 
 
+
+async def _call_broker_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+    repo_path = arguments["repo_path"]
+    request_id = uuid.uuid4().hex
+    timestamp_before = datetime.now(timezone.utc).isoformat()
+    t_before = time.monotonic()
+
+    process_groups: list[int] = []
+    leaked_pids: list[int] = []
+    log: LogWriter | None = None
+
+    try:
+        git = GitCapturer(repo_path)
+        head_before = git.head_sha()
+        branch = git.branch()
+        dirty = git.is_dirty()
+        log = LogWriter(_get_broker_log_path(repo_path))
+
+        log.append({
+            "event": f"{name}_started",
+            "request_id": request_id,
+            "timestamp_utc": timestamp_before,
+            "repo_path": repo_path,
+            "branch": branch,
+            "head_sha": head_before,
+            "working_tree_dirty": dirty,
+            "arguments": arguments,
+        })
+
+        prompt = _get_next_prompt(repo_path, git, arguments) if name == "getNextTask" else _review_task_prompt(repo_path, git, arguments)
+        response_text, stop_reason = await _sample_with_tools(
+            ctx=app.request_context,
+            initial_prompt=prompt,
+            repo_path=repo_path,
+            process_groups=process_groups,
+            leaked_pids=leaked_pids,
+            system_prompt=BROKER_SYSTEM_PROMPT,
+            max_rounds=MAX_SAMPLING_ROUNDS,
+        )
+
+        parsed = _extract_first_json_object(response_text)
+        head_after = git.head_sha()
+        stale = head_after != head_before
+        status = "STALE" if stale else "COMPLETED"
+
+        if stale:
+            result: dict[str, Any] = {
+                "request_id": request_id,
+                "status": "ERROR",
+                "error": "Repository HEAD changed during broker operation; retry against current HEAD.",
+                "stale": True,
+                "head_sha_before": head_before,
+                "head_sha_after": head_after,
+            }
+        else:
+            result = {
+                "request_id": request_id,
+                "status": status,
+                "stale": False,
+                "head_sha": head_before,
+                "broker_result": parsed,
+            }
+
+        log.append({
+            "event": f"{name}_completed",
+            "request_id": request_id,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "repo_path": repo_path,
+            "head_sha_before": head_before,
+            "head_sha_after": head_after,
+            "status": result["status"],
+            "stale": result["stale"],
+            "duration_ms": int((time.monotonic() - t_before) * 1000),
+            "result": result,
+            "stop_reason": stop_reason,
+        })
+    except Exception as exc:
+        logger.error("call_tool: broker %s EXCEPTION (%s) — %s", name, type(exc).__name__, exc, exc_info=True)
+        result = {
+            "request_id": request_id,
+            "status": "ERROR",
+            "stale": False,
+            "error": str(exc),
+        }
+        if log:
+            try:
+                log.append({
+                    "event": f"{name}_completed",
+                    "request_id": request_id,
+                    "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                    "repo_path": repo_path,
+                    "status": "ERROR",
+                    "stale": False,
+                    "duration_ms": int((time.monotonic() - t_before) * 1000),
+                    "result": result,
+                })
+            except Exception:
+                logger.exception("call_tool: failed to write broker error event")
+    finally:
+        await _cleanup_process_groups(process_groups, leaked_pids)
+
+    return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+
+
+
 @app.call_tool()
 async def call_tool(
     name: str,
@@ -1365,6 +1685,9 @@ async def call_tool(
         log_args["prompt"] = _safe_log_text(prompt, limit=200)
     safe_args = _safe_log_text(json.dumps(log_args, ensure_ascii=False, default=str), limit=1000)
     logger.debug("call_tool: name=%s args=%s", name, safe_args)
+
+    if name in {"getNextTask", "reviewTask"}:
+        return await _call_broker_tool(name, arguments)
 
     if name != "review":
         raise ValueError(f"Unknown tool: {name}")
