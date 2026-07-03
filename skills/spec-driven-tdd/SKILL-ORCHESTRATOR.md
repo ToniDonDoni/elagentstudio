@@ -209,6 +209,14 @@ passes.
 - The first task for a fresh delivery is `USER_INPUT_CAPTURE` and must preserve
   the user's input exactly in `.sddtdd_skill/SPEC-DRAFT.md` plus create the
   `USER_INPUT` journal entry.
+- If committed evidence shows that the user added a new product requirement
+  during an active delivery and the implementer appended it to
+  `.sddtdd_skill/SPEC-DRAFT.md` as an `ADDITION:` raw input entry, treat it as a
+  scope-change gate. Do not allow ongoing implementation to continue against
+  stale derived artifacts. Issue the next task needed to update
+  `.sddtdd_skill/SPEC.md`, then require the appropriate independent review and
+  downstream updates to architecture, task decomposition, RED, and GREEN work as
+  needed.
 - For agent-generated artifacts, require independent reviewer verdict before
   orchestrator PASS.
 - Do not let implementation begin before `TASK_REVIEW: PASS`.

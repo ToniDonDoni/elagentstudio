@@ -143,6 +143,31 @@ The orchestrator returns:
 }
 ```
 
+## Mid-work user product requirement additions
+
+If the user provides a new product requirement during an active delivery, do not
+overwrite `.sddtdd_skill/SPEC-DRAFT.md`, `.sddtdd_skill/SPEC.md`,
+`.sddtdd_skill/ARCHITECTURE.md`, or `.sddtdd_skill/TASKS.md`.
+
+Treat the message as new raw user input:
+
+1. Stop the current implementation step unless the user's message is unrelated
+   to product behavior.
+2. Append the user's exact message to `.sddtdd_skill/SPEC-DRAFT.md` as a new
+   `ADDITION:` raw input entry. Preserve wording and language exactly.
+3. Add a journal entry recording the additional user input.
+4. Commit the updated `.sddtdd_skill/SPEC-DRAFT.md` and journal entry.
+5. Call `mcp_sddtdd_getNextTask` and report that the user added a new product
+   requirement, that it was appended to `.sddtdd_skill/SPEC-DRAFT.md`, and that
+   the orchestrator must plan the required downstream updates.
+6. Do not directly edit `.sddtdd_skill/SPEC.md`, `ARCHITECTURE.md`,
+   `TASKS.md`, tests, or implementation until the orchestrator issues the next
+   task.
+
+The expected downstream workflow is to update and review the specification,
+then update and review architecture and task decomposition as needed, then run
+any required RED/GREEN cycles.
+
 ## Orchestrator loop
 
 1. Load this role file and `references/JOURNAL.md`.

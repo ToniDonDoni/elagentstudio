@@ -126,7 +126,12 @@ review and does not modify the repository.
 
 ## Required invariants
 
-- `.sddtdd_skill/SPEC-DRAFT.md` preserves raw user input and is immutable.
+- `.sddtdd_skill/SPEC-DRAFT.md` is an append-only raw user input ledger.
+- Already captured user input in `.sddtdd_skill/SPEC-DRAFT.md` must never be
+  rewritten, normalized, deleted, replaced, or silently merged.
+- If the user provides a new product requirement during an active delivery, 
+  append it as a new raw user input entry, journal it, and commit it before 
+  any derived artifact is updated.
 - `.sddtdd_skill/SPEC.md`, `ARCHITECTURE.md`, and `TASKS.md` require
   independent review before downstream work depends on them.
 - RED tests must fail for the expected missing-behavior reason before GREEN.
