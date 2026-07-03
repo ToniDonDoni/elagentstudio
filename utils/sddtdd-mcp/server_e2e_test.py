@@ -542,6 +542,21 @@ async def call_review(
     return extract_tool_call_response(result)
 
 
+async def call_mcp_tool(
+    client: MCPStdioClient,
+    name: str,
+    arguments: Json,
+    *,
+    timeout: float = 5.0,
+) -> Json:
+    result = await client.request(
+        "tools/call",
+        {"name": name, "arguments": arguments},
+        timeout=timeout,
+    )
+    return extract_tool_call_response(result)
+
+
 # --- Access log helpers and test ---
 
 def read_access_log_events(log_path: Path) -> list[Json]:
@@ -666,6 +681,133 @@ async def test_reviewer_system_prompt_happy_path(client: MCPStdioClient, repo: P
     assert_eq(state.calls, 1, "reviewer system prompt test must sample exactly once")
     event("SCENARIO_DONE: reviewer_system_prompt_happy_path")
     ok("sampling/createMessage receives reviewer systemPrompt, not implementer/broker prompt")
+
+
+async def test_broker_get_next_task_system_prompt_happy_path(client: MCPStdioClient, repo: Path) -> None:
+    event("SCENARIO_BEGIN: broker_get_next_task_system_prompt_happy_path")
+    state = ScenarioState("broker_get_next_task_system_prompt_happy_path")
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        event(f"MOCK_SAMPLING[{state.name}]: call={state.calls} params={summarize_json(params)}")
+        state.seen_params.append(params)
+
+        system_prompt = params.get("systemPrompt")
+        assert_true(isinstance(system_prompt, str), "getNextTask sampling/createMessage must receive a string systemPrompt")
+        assert_true(
+            "You are the Spec-Driven TDD MCP task broker for a repository." in system_prompt,
+            "getNextTask systemPrompt must identify the broker/orchestrator role",
+        )
+        assert_true(
+            "read-only broker/orchestrator" in system_prompt,
+            "getNextTask systemPrompt must preserve read-only broker/orchestrator identity",
+        )
+        assert_true(
+            "You are NOT the independent reviewer." in system_prompt,
+            "getNextTask systemPrompt must explicitly separate broker from reviewer role",
+        )
+        assert_true(
+            "independent Spec-Driven TDD reviewer MCP" not in system_prompt,
+            "getNextTask systemPrompt must not use reviewer identity",
+        )
+        assert_true(
+            "You are the implementer" not in system_prompt,
+            "getNextTask systemPrompt must not use implementer identity",
+        )
+
+        return text_result(json_dumps({
+            "status": "task",
+            "task_id": "B-000001",
+            "task_kind": "USER_INPUT_CAPTURE",
+            "instruction": "Capture the user's request in .sddtdd_skill/SPEC-DRAFT.md and journal it.",
+            "allowed_scope": [".sddtdd_skill/SPEC-DRAFT.md", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
+            "required_evidence": ["Committed SPEC-DRAFT.md and USER_INPUT journal entry."],
+            "independent_review_required": False,
+            "review_type": None,
+            "rationale": "Fresh workflow starts by preserving user input.",
+        }))
+
+    client.sampling_handler = sampling
+    response = await call_mcp_tool(
+        client,
+        "getNextTask",
+        {
+            "repo_path": str(repo),
+            "user_input": "U2U broker getNextTask happy path scenario",
+        },
+        timeout=5,
+    )
+    assert_eq(response["status"], "COMPLETED", "getNextTask MCP status")
+    assert_eq(response["stale"], False, "getNextTask stale flag")
+    assert_eq(response["broker_result"]["status"], "task", "getNextTask broker result status")
+    assert_eq(response["broker_result"]["task_id"], "B-000001", "getNextTask broker task id")
+    assert_eq(state.calls, 1, "getNextTask system prompt test must sample exactly once")
+    event("SCENARIO_DONE: broker_get_next_task_system_prompt_happy_path")
+    ok("getNextTask sampling/createMessage receives broker/orchestrator systemPrompt")
+
+
+async def test_broker_review_task_system_prompt_happy_path(client: MCPStdioClient, repo: Path) -> None:
+    event("SCENARIO_BEGIN: broker_review_task_system_prompt_happy_path")
+    state = ScenarioState("broker_review_task_system_prompt_happy_path")
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        event(f"MOCK_SAMPLING[{state.name}]: call={state.calls} params={summarize_json(params)}")
+        state.seen_params.append(params)
+
+        system_prompt = params.get("systemPrompt")
+        assert_true(isinstance(system_prompt, str), "reviewTask sampling/createMessage must receive a string systemPrompt")
+        assert_true(
+            "You are the Spec-Driven TDD MCP task broker for a repository." in system_prompt,
+            "reviewTask systemPrompt must identify the broker/orchestrator role",
+        )
+        assert_true(
+            "read-only broker/orchestrator" in system_prompt,
+            "reviewTask systemPrompt must preserve read-only broker/orchestrator identity",
+        )
+        assert_true(
+            "You are NOT the independent reviewer." in system_prompt,
+            "reviewTask systemPrompt must explicitly separate broker from reviewer role",
+        )
+        assert_true(
+            "independent Spec-Driven TDD reviewer MCP" not in system_prompt,
+            "reviewTask systemPrompt must not use reviewer identity",
+        )
+        assert_true(
+            "You are the implementer" not in system_prompt,
+            "reviewTask systemPrompt must not use implementer identity",
+        )
+
+        return text_result(json_dumps({
+            "status": "PASS",
+            "findings": ["The USER_INPUT_CAPTURE work entry is present and process-complete."],
+            "required_fixes": [],
+            "parent_for_broker_review": "J-U2U-WORK-0001",
+            "detail_suggestion": "Broker gate PASS for B-000001.",
+            "rationale": "Required process evidence is present.",
+        }))
+
+    client.sampling_handler = sampling
+    response = await call_mcp_tool(
+        client,
+        "reviewTask",
+        {
+            "repo_path": str(repo),
+            "task_id": "B-000001",
+            "task_kind": "USER_INPUT_CAPTURE",
+            "review_type": None,
+            "claimed_result": "Captured user input.",
+            "work_journal_id": "J-U2U-WORK-0001",
+            "evidence": {"files": [".sddtdd_skill/SPEC-DRAFT.md"]},
+        },
+        timeout=5,
+    )
+    assert_eq(response["status"], "COMPLETED", "reviewTask MCP status")
+    assert_eq(response["stale"], False, "reviewTask stale flag")
+    assert_eq(response["broker_result"]["status"], "PASS", "reviewTask broker result status")
+    assert_eq(state.calls, 1, "reviewTask system prompt test must sample exactly once")
+    event("SCENARIO_DONE: broker_review_task_system_prompt_happy_path")
+    ok("reviewTask sampling/createMessage receives broker/orchestrator systemPrompt")
 
 
 async def test_tool_use_roundtrip(client: MCPStdioClient, repo: Path, *, tool_use_type: str) -> None:
@@ -1340,7 +1482,7 @@ async def test_large_tool_output_is_truncated(client: MCPStdioClient, repo: Path
             return tool_use_result(
                 tool_id="u2u-large-output-tool",
                 name="shell_command",
-                arguments={"command": "python3 -c 'print(\"X\" * 5000)'"},
+                arguments={"command": "printf '%*s' 5000 '' | tr ' ' X"},
                 tool_use_type=tool_use_type,
             )
         tool_text = extract_text_content(params)
@@ -1456,6 +1598,8 @@ async def run_all(args: argparse.Namespace) -> None:
             print(f"PASS {test_name}", flush=True)
             event(f"RUN_TEST_DONE: {test_name}")
 
+            test_results: list[tuple[str, bool, str | None]] = []
+
             async def run_named_test(test_name: str, test_fn: Callable[[], Awaitable[None]]) -> None:
                 if not matches_test_mask(test_name, args.test):
                     event(f"RUN_TEST_SKIP: {test_name} masks={args.test!r}")
@@ -1465,16 +1609,30 @@ async def run_all(args: argparse.Namespace) -> None:
                 try:
                     await test_fn()
                 except Exception as exc:
-                    print(f"FAIL {test_name}: {type(exc).__name__}: {exc}", flush=True)
-                    raise
-                print(f"PASS {test_name}", flush=True)
-                event(f"RUN_TEST_DONE: {test_name}")
+                    message = f"{type(exc).__name__}: {exc}"
+                    test_results.append((test_name, False, message))
+                    print(f"FAIL {test_name}: {message}", flush=True)
+                    if VERBOSE_OUTPUT:
+                        traceback.print_exc()
+                    event(f"RUN_TEST_FAIL: {test_name} error={message}")
+                else:
+                    test_results.append((test_name, True, None))
+                    print(f"PASS {test_name}", flush=True)
+                    event(f"RUN_TEST_DONE: {test_name}")
 
             await run_named_test("test_startup_and_list_tools", lambda: test_startup_and_list_tools(client))
             await run_named_test("test_basic_review", lambda: test_basic_review(client, repo))
             await run_named_test(
                 "test_reviewer_system_prompt_happy_path",
                 lambda: test_reviewer_system_prompt_happy_path(client, repo),
+            )
+            await run_named_test(
+                "test_broker_get_next_task_system_prompt_happy_path",
+                lambda: test_broker_get_next_task_system_prompt_happy_path(client, repo),
+            )
+            await run_named_test(
+                "test_broker_review_task_system_prompt_happy_path",
+                lambda: test_broker_review_task_system_prompt_happy_path(client, repo),
             )
             await run_named_test(
                 "test_access_log_records_review_start_and_completion",
@@ -1566,10 +1724,6 @@ async def run_all(args: argparse.Namespace) -> None:
                 lambda: test_repair_exhaustion_returns_error_not_completed_review(client, repo),
             )
 
-        assert_true(log_path.exists(), f"access log must exist at {log_path}")
-        lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-        started = [e for e in lines if e.get("event") == "review_started"]
-        completed = [e for e in lines if e.get("event") == "review_completed"]
         expected_review_events = 10 if not args.test else sum(
             1
             for name in (
@@ -1601,18 +1755,33 @@ async def run_all(args: argparse.Namespace) -> None:
             )
             if matches_test_mask(name, args.test)
         )
-        assert_true(
-            len(started) >= expected_review_events,
-            f"expected at least {expected_review_events} review_started events, got {len(started)}",
-        )
-        assert_true(
-            len(completed) >= expected_review_events,
-            f"expected at least {expected_review_events} review_completed events, got {len(completed)}",
-        )
-        if VERBOSE_OUTPUT:
-            ok("access log contains review_started/review_completed records")
+        if expected_review_events > 0:
+            assert_true(log_path.exists(), f"access log must exist at {log_path}")
+            lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            started = [e for e in lines if e.get("event") == "review_started"]
+            completed = [e for e in lines if e.get("event") == "review_completed"]
+            assert_true(
+                len(started) >= expected_review_events,
+                f"expected at least {expected_review_events} review_started events, got {len(started)}",
+            )
+            assert_true(
+                len(completed) >= expected_review_events,
+                f"expected at least {expected_review_events} review_completed events, got {len(completed)}",
+            )
+            if VERBOSE_OUTPUT:
+                ok("access log contains review_started/review_completed records")
+        elif VERBOSE_OUTPUT:
+            ok("no reviewer access-log events expected for selected broker-only tests")
 
-        print("PASS u2u_test_suite", flush=True)
+        total = len(test_results)
+        passed = sum(1 for _, ok_result, _ in test_results if ok_result)
+        failed = total - passed
+        print(f"SUMMARY u2u_test_suite: passed={passed} failed={failed} total={total}", flush=True)
+        if failed:
+            failed_names = ", ".join(name for name, ok_result, _ in test_results if not ok_result)
+            print(f"FAIL u2u_test_suite: {passed}/{total} passed; failed tests: {failed_names}", flush=True)
+            return 1
+        print(f"PASS u2u_test_suite: {passed}/{total} passed", flush=True)
     finally:
         if args.keep_temp:
             note(f"kept temp dir: {temp_root}")
