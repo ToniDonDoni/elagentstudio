@@ -386,12 +386,12 @@ independent reviewer verdict (only when the task requires one)
    STATUS = PASS (or FAIL during rework)
    PARENT = work journal entry
 
-broker.process-gate verification (reviewTask, no journal entry)
+broker process-gate verification (`task_review` in getNextTask response)
 
 BROKER_TASK_REVIEW
    STATUS = PASS                       → implementer calls getNextTask
    STATUS = FAIL                       → implementer fixes the process gaps the
-                                          broker listed, re-calls reviewTask
+                                          broker listed, retries getNextTask with corrected completed-task evidence
    STATUS = NEEDS_CLARIFICATION        → implementer asks the user
    STATUS = ERROR                      → implementer resolves state
 ```
@@ -576,3 +576,17 @@ Both tasks originate from the same user input task:
 ```text
 ROOT_USER_INPUT_ID: T-000001
 ```
+
+---
+
+## Broker process-gate source
+
+`BROKER_TASK_REVIEW` records the broker process-gate verdict returned in
+`task_review` by `mcp_sddtdd_getNextTask`.
+
+There is no separate broker process-gate operation. For completed tasks, the
+implementer submits completed-task evidence to `getNextTask`; if
+`task_review.status` is `PASS`, the implementer records `BROKER_TASK_REVIEW`
+using `task_review.parent_for_broker_review` as `PARENT` and
+`task_review.detail_suggestion` as `DETAIL`, commits it, and only then executes
+the returned `next_task`.

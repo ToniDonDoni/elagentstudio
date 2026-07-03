@@ -81,6 +81,19 @@ def summarize_json(value: Any, *, limit: int = 1200) -> str:
     return text
 
 
+
+def sampling_prompt_text(params: Json) -> str:
+    messages = params.get("messages") or []
+    parts: list[str] = []
+    for message in messages:
+        content = message.get("content") if isinstance(message, dict) else None
+        blocks = content if isinstance(content, list) else [content]
+        for block in blocks:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(str(block.get("text", "")))
+    return "\n".join(parts)
+
+
 # === Test runner helpers ===
 
 def banner(title: str) -> None:
@@ -516,6 +529,8 @@ def assert_review_tool(list_result: Json) -> None:
     tools = list_result.get("tools") or []
     names = [tool.get("name") for tool in tools]
     assert_true("review" in names, f"tools/list must include review, got {names!r}")
+    assert_true("getNextTask" in names, f"tools/list must include getNextTask, got {names!r}")
+    assert_true("reviewTask" not in names, f"tools/list must not include removed reviewTask, got {names!r}")
 
 
 async def call_review(
@@ -715,16 +730,25 @@ async def test_broker_get_next_task_system_prompt_happy_path(client: MCPStdioCli
             "getNextTask systemPrompt must not use implementer identity",
         )
 
+        prompt_text = sampling_prompt_text(params)
+        assert_true('"task_kind": "INITIAL_USER_INPUT"' in prompt_text, "initial getNextTask prompt must include task_kind=INITIAL_USER_INPUT")
+        assert_true('"user_input": "U2U broker getNextTask happy path scenario"' in prompt_text, "initial getNextTask prompt must carry user_input in evidence")
+        assert_true("There is no reviewTask tool." in prompt_text, "getNextTask schema must remove reviewTask tool")
+
         return text_result(json_dumps({
             "status": "task",
-            "task_id": "B-000001",
-            "task_kind": "USER_INPUT_CAPTURE",
-            "instruction": "Capture the user's request in .sddtdd_skill/SPEC-DRAFT.md and journal it.",
-            "allowed_scope": [".sddtdd_skill/SPEC-DRAFT.md", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
-            "required_evidence": ["Committed SPEC-DRAFT.md and USER_INPUT journal entry."],
-            "independent_review_required": False,
-            "review_type": None,
-            "rationale": "Fresh workflow starts by preserving user input.",
+            "task_review": None,
+            "next_task": {
+                "task_id": "B-000001",
+                "task_kind": "USER_INPUT_CAPTURE",
+                "instruction": "Capture the user's request in .sddtdd_skill/SPEC-DRAFT.md and journal it.",
+                "allowed_scope": [".sddtdd_skill/SPEC-DRAFT.md", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
+                "required_evidence": ["Committed SPEC-DRAFT.md and USER_INPUT journal entry."],
+                "independent_review_required": False,
+                "review_type": None,
+                "rationale": "Fresh workflow starts by preserving user input.",
+            },
+            "rationale": "Initial user input received; issuing first task.",
         }))
 
     client.sampling_handler = sampling
@@ -733,22 +757,29 @@ async def test_broker_get_next_task_system_prompt_happy_path(client: MCPStdioCli
         "getNextTask",
         {
             "repo_path": str(repo),
-            "user_input": "U2U broker getNextTask happy path scenario",
+            "task_kind": "INITIAL_USER_INPUT",
+            "task_id": None,
+            "claimed_result": None,
+            "work_journal_id": None,
+            "evidence": {
+                "user_input": "U2U broker getNextTask happy path scenario",
+            },
         },
         timeout=5,
     )
     assert_eq(response["status"], "COMPLETED", "getNextTask MCP status")
     assert_eq(response["stale"], False, "getNextTask stale flag")
     assert_eq(response["broker_result"]["status"], "task", "getNextTask broker result status")
-    assert_eq(response["broker_result"]["task_id"], "B-000001", "getNextTask broker task id")
+    assert_eq(response["broker_result"]["task_review"], None, "initial getNextTask must not return task_review")
+    assert_eq(response["broker_result"]["next_task"]["task_id"], "B-000001", "getNextTask broker next task id")
     assert_eq(state.calls, 1, "getNextTask system prompt test must sample exactly once")
     event("SCENARIO_DONE: broker_get_next_task_system_prompt_happy_path")
     ok("getNextTask sampling/createMessage receives broker/orchestrator systemPrompt")
 
 
-async def test_broker_review_task_system_prompt_happy_path(client: MCPStdioClient, repo: Path) -> None:
-    event("SCENARIO_BEGIN: broker_review_task_system_prompt_happy_path")
-    state = ScenarioState("broker_review_task_system_prompt_happy_path")
+async def test_broker_get_next_task_completed_task_process_gate_happy_path(client: MCPStdioClient, repo: Path) -> None:
+    event("SCENARIO_BEGIN: broker_get_next_task_completed_task_process_gate_happy_path")
+    state = ScenarioState("broker_get_next_task_completed_task_process_gate_happy_path")
 
     async def sampling(params: Json) -> Json:
         state.calls += 1
@@ -756,58 +787,75 @@ async def test_broker_review_task_system_prompt_happy_path(client: MCPStdioClien
         state.seen_params.append(params)
 
         system_prompt = params.get("systemPrompt")
-        assert_true(isinstance(system_prompt, str), "reviewTask sampling/createMessage must receive a string systemPrompt")
+        assert_true(isinstance(system_prompt, str), "completed-task getNextTask sampling/createMessage must receive a string systemPrompt")
         assert_true(
             "You are the Spec-Driven TDD MCP task broker for a repository." in system_prompt,
-            "reviewTask systemPrompt must identify the broker/orchestrator role",
+            "completed-task getNextTask systemPrompt must identify the broker/orchestrator role",
         )
         assert_true(
             "read-only broker/orchestrator" in system_prompt,
-            "reviewTask systemPrompt must preserve read-only broker/orchestrator identity",
+            "completed-task getNextTask systemPrompt must preserve read-only broker/orchestrator identity",
         )
         assert_true(
             "You are NOT the independent reviewer." in system_prompt,
-            "reviewTask systemPrompt must explicitly separate broker from reviewer role",
+            "completed-task getNextTask systemPrompt must explicitly separate broker from reviewer role",
         )
         assert_true(
             "independent Spec-Driven TDD reviewer MCP" not in system_prompt,
-            "reviewTask systemPrompt must not use reviewer identity",
-        )
-        assert_true(
-            "You are the implementer" not in system_prompt,
-            "reviewTask systemPrompt must not use implementer identity",
+            "completed-task getNextTask systemPrompt must not use reviewer identity",
         )
 
+        prompt_text = sampling_prompt_text(params)
+        assert_true('"task_kind": "USER_INPUT_CAPTURE"' in prompt_text, "completed-task getNextTask prompt must include submitted task_kind")
+        assert_true('"task_id": "B-000001"' in prompt_text, "completed-task getNextTask prompt must include submitted task_id")
+        assert_true('"work_journal_id": "J-U2U-WORK-0001"' in prompt_text, "completed-task getNextTask prompt must include work_journal_id")
+        assert_true("Derive the required independent reviewer verdict from the submitted task_kind" in prompt_text, "schema must tell broker to derive review type from task_kind")
+
         return text_result(json_dumps({
-            "status": "PASS",
-            "findings": ["The USER_INPUT_CAPTURE work entry is present and process-complete."],
-            "required_fixes": [],
-            "parent_for_broker_review": "J-U2U-WORK-0001",
-            "detail_suggestion": "Broker gate PASS for B-000001.",
-            "rationale": "Required process evidence is present.",
+            "status": "task",
+            "task_review": {
+                "status": "PASS",
+                "findings": ["The USER_INPUT_CAPTURE work entry is present and process-complete."],
+                "required_fixes": [],
+                "parent_for_broker_review": "J-U2U-WORK-0001",
+                "detail_suggestion": "Broker gate PASS for B-000001.",
+                "rationale": "Required process evidence is present.",
+            },
+            "next_task": {
+                "task_id": "B-000002",
+                "task_kind": "SPEC_SPEC",
+                "instruction": "Derive .sddtdd_skill/SPEC.md from the captured raw user input.",
+                "allowed_scope": [".sddtdd_skill/SPEC.md", ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log"],
+                "required_evidence": ["Committed SPEC.md and SPEC_SPEC journal entry."],
+                "independent_review_required": True,
+                "review_type": "SPEC_REVIEW",
+                "rationale": "Captured user input is process-complete, so SPEC_SPEC is next.",
+            },
+            "rationale": "Previous task passed process verification; issuing the next task.",
         }))
 
     client.sampling_handler = sampling
     response = await call_mcp_tool(
         client,
-        "reviewTask",
+        "getNextTask",
         {
             "repo_path": str(repo),
-            "task_id": "B-000001",
             "task_kind": "USER_INPUT_CAPTURE",
-            "review_type": None,
+            "task_id": "B-000001",
             "claimed_result": "Captured user input.",
             "work_journal_id": "J-U2U-WORK-0001",
             "evidence": {"files": [".sddtdd_skill/SPEC-DRAFT.md"]},
         },
         timeout=5,
     )
-    assert_eq(response["status"], "COMPLETED", "reviewTask MCP status")
-    assert_eq(response["stale"], False, "reviewTask stale flag")
-    assert_eq(response["broker_result"]["status"], "PASS", "reviewTask broker result status")
-    assert_eq(state.calls, 1, "reviewTask system prompt test must sample exactly once")
-    event("SCENARIO_DONE: broker_review_task_system_prompt_happy_path")
-    ok("reviewTask sampling/createMessage receives broker/orchestrator systemPrompt")
+    assert_eq(response["status"], "COMPLETED", "completed-task getNextTask MCP status")
+    assert_eq(response["stale"], False, "completed-task getNextTask stale flag")
+    assert_eq(response["broker_result"]["status"], "task", "completed-task getNextTask broker result status")
+    assert_eq(response["broker_result"]["task_review"]["status"], "PASS", "completed-task process gate status")
+    assert_eq(response["broker_result"]["next_task"]["task_id"], "B-000002", "completed-task broker next task id")
+    assert_eq(state.calls, 1, "completed-task getNextTask system prompt test must sample exactly once")
+    event("SCENARIO_DONE: broker_get_next_task_completed_task_process_gate_happy_path")
+    ok("completed-task getNextTask performs process gate and returns next task")
 
 
 async def test_tool_use_roundtrip(client: MCPStdioClient, repo: Path, *, tool_use_type: str) -> None:
@@ -1631,8 +1679,8 @@ async def run_all(args: argparse.Namespace) -> None:
                 lambda: test_broker_get_next_task_system_prompt_happy_path(client, repo),
             )
             await run_named_test(
-                "test_broker_review_task_system_prompt_happy_path",
-                lambda: test_broker_review_task_system_prompt_happy_path(client, repo),
+                "test_broker_get_next_task_completed_task_process_gate_happy_path",
+                lambda: test_broker_get_next_task_completed_task_process_gate_happy_path(client, repo),
             )
             await run_named_test(
                 "test_access_log_records_review_start_and_completion",

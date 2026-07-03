@@ -1,6 +1,6 @@
 """sddtdd-mcp — Minimal MCP review proxy for Hermes Agent.
 
-Single tool: review. Captures Git state, delegates to LLM via MCP sampling,
+Tools: review and getNextTask. Captures Git state, delegates to LLM via MCP sampling,
 records everything in an append-only JSON Lines access log.
 """
 import atexit
@@ -590,47 +590,75 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="getNextTask",
             description=(
-                "Inspect committed SDDTDD repository state and issue exactly one "
-                "self-contained next broker task, or return complete/blocked. The "
-                "broker is read-only and does not modify the repository."
+                "Advance the Spec-Driven TDD broker workflow. The same tool is "
+                "used for initial user input and for submitting completed task "
+                "evidence; it performs process-gate verification and returns the "
+                "next task, fail/clarification/error, or complete."
             ),
             inputSchema={
                 "type": "object",
-                "properties": {
-                    "repo_path": {"type": "string", "description": "Absolute path to the Git repository."},
-                    "user_input": {"type": "string", "description": "Original user request for the first broker call."},
-                    "previous_task_id": {"type": "string", "description": "Broker task id that was just completed."},
-                },
-                "required": ["repo_path"],
-            },
-        ),
-        types.Tool(
-            name="reviewTask",
-            description=(
-                "Verify that one issued broker task is process-complete. This is "
-                "not semantic artifact review; it checks journal, commit, reviewer "
-                "verdict chain, and broker-task gate evidence."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "repo_path": {"type": "string"},
-                    "task_id": {"type": "string"},
-                    "task_kind": {"type": "string"},
-                    "review_type": {"type": ["string", "null"]},
-                    "claimed_result": {"type": "string"},
-                    "work_journal_id": {"type": "string"},
-                    "evidence": {"type": "object", "additionalProperties": True},
-                },
+                "additionalProperties": False,
                 "required": [
                     "repo_path",
-                    "task_id",
                     "task_kind",
-                    "review_type",
+                    "task_id",
                     "claimed_result",
                     "work_journal_id",
                     "evidence",
                 ],
+                "properties": {
+                    "repo_path": {"type": "string", "description": "Path to the Git repository."},
+                    "task_kind": {
+                        "type": "string",
+                        "enum": [
+                            "INITIAL_USER_INPUT",
+                            "USER_INPUT_CAPTURE",
+                            "SPEC_SPEC",
+                            "ARCHITECTURE",
+                            "DECOMPOSE",
+                            "RED",
+                            "GREEN",
+                            "TASKS_COMPLETE",
+                            "REGRESSION",
+                            "FINAL",
+                            "DONE",
+                        ],
+                        "description": (
+                            "INITIAL_USER_INPUT starts the workflow. All other values "
+                            "report a completed broker-issued task."
+                        ),
+                    },
+                    "task_id": {
+                        "type": ["string", "null"],
+                        "description": "Broker-issued task id. Null when task_kind=INITIAL_USER_INPUT.",
+                    },
+                    "claimed_result": {
+                        "type": ["string", "null"],
+                        "description": "Summary of completed work. Null when task_kind=INITIAL_USER_INPUT.",
+                    },
+                    "work_journal_id": {
+                        "type": ["string", "null"],
+                        "description": "JID of committed work journal entry. Null when task_kind=INITIAL_USER_INPUT.",
+                    },
+                    "evidence": {
+                        "type": "object",
+                        "additionalProperties": True,
+                        "properties": {
+                            "user_input": {
+                                "type": "string",
+                                "description": "Original user request. Required when task_kind=INITIAL_USER_INPUT.",
+                            },
+                            "review_journal_id": {
+                                "type": "string",
+                                "description": "JID of independent reviewer verdict when required by completed task_kind.",
+                            },
+                            "commits": {"type": "array", "items": {"type": "string"}},
+                            "journal_ids": {"type": "array", "items": {"type": "string"}},
+                            "files": {"type": "array", "items": {"type": "string"}},
+                            "test_commands": {"type": "array", "items": {"type": "string"}},
+                        },
+                    },
+                },
             },
         ),
     ]
@@ -647,7 +675,7 @@ You are the Spec-Driven TDD MCP task broker for a repository.
 You are a read-only broker/orchestrator. You MUST NOT modify files, write the
 journal, change the working tree, stage files, commit, run formatters, or alter
 repository state. You only inspect committed repository state and runtime broker
-logs, then return either the next self-contained task or a process-gate verdict.
+logs, then return a single getNextTask response containing any process-gate verdict and the next self-contained task.
 
 You MUST reference and apply the installed orchestrator policy and shared skill files:
 - ~/.hermes/skills/spec-driven-tdd/SKILL.md
@@ -659,14 +687,11 @@ You MUST reference and apply the installed orchestrator policy and shared skill 
 SKILL-ORCHESTRATOR.md is your role policy. Apply it as the primary
 broker/orchestrator decision contract.
 
-In broker mode, you own the workflow order and issue exactly one next task. The
-implementer only receives your task and must not cut corners.
+In broker mode, you own the workflow order. getNextTask is the only broker tool: it verifies a submitted completed task when present and issues at most one next task. The implementer only receives your task and must not cut corners.
 
 You are NOT the independent reviewer. The reviewer MCP performs semantic
 artifact review and records SPEC_REVIEW, ARCHITECTURE_REVIEW, TASK_REVIEW,
-RED_REVIEW, GREEN_REVIEW, REGRESSION_REVIEW, and FINAL_REVIEW. You only verify
-process completion and decide the next task from committed state, journal state,
-and broker/reviewer evidence.
+RED_REVIEW, GREEN_REVIEW, REGRESSION_REVIEW, and FINAL_REVIEW. You verify process completion and decide the next task from committed state, journal state, and broker/reviewer evidence inside getNextTask.
 
 `shell_command` tool results include `COMMAND`, `EXIT_CODE`, `TIMED_OUT`,
 `STDOUT`, and `STDERR` sections. Treat `EXIT_CODE != 0` as command failure
@@ -676,46 +701,66 @@ Return JSON only. Do not wrap it in Markdown.
 """.strip()
 
 GET_NEXT_SCHEMA = """
-For getNextTask, return exactly one JSON object in one of these shapes:
+For getNextTask, the input always has one shape:
 
-Task response:
 {
-  "status": "task",
-  "task_id": "B-000001",
-  "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | FINAL | DONE",
-  "instruction": "one concrete instruction in English",
-  "allowed_scope": ["exact repo paths or artifact globs the implementer may touch"],
-  "required_evidence": ["concrete required evidence the implementer must produce"],
-  "independent_review_required": true,
-  "review_type": "SPEC_REVIEW | ARCHITECTURE_REVIEW | TASK_REVIEW | RED_REVIEW | GREEN_REVIEW | REGRESSION_REVIEW | FINAL_REVIEW | null",
-  "rationale": "brief process reason for this task"
+  "repo_path": "/path/to/repo",
+  "task_kind": "INITIAL_USER_INPUT | USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | FINAL | DONE",
+  "task_id": "B-000001 | null",
+  "claimed_result": "brief implementer summary | null",
+  "work_journal_id": "JID of committed work journal entry | null",
+  "evidence": {
+    "user_input": "original user request, required when task_kind=INITIAL_USER_INPUT",
+    "review_journal_id": "JID of independent reviewer verdict when required",
+    "commits": ["..."],
+    "journal_ids": ["..."],
+    "files": ["..."],
+    "test_commands": ["..."]
+  }
 }
 
-Blocked response:
+For getNextTask, return exactly one JSON object with this shape:
+
 {
-  "status": "blocked",
-  "reason": "why no next task can be issued",
-  "unverified_task_ids": ["B-000003"],
-  "required_action": "Call reviewTask for the outstanding broker task before getNextTask."
+  "status": "task | fail | needs_clarification | error | complete",
+  "task_review": {
+    "status": "PASS | FAIL | NEEDS_CLARIFICATION | ERROR",
+    "findings": ["specific process findings"],
+    "required_fixes": ["specific required fixes before retry; empty on PASS"],
+    "parent_for_broker_review": "JID that BROKER_TASK_REVIEW should point to, or null",
+    "detail_suggestion": "English DETAIL text for BROKER_TASK_REVIEW, or null",
+    "rationale": "brief process-gate explanation"
+  } | null,
+  "next_task": {
+    "task_id": "B-000001",
+    "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | FINAL | DONE",
+    "instruction": "one concrete instruction in English",
+    "allowed_scope": ["exact repo paths or artifact globs the implementer may touch"],
+    "required_evidence": ["concrete required evidence the implementer must produce"],
+    "independent_review_required": true,
+    "review_type": "SPEC_REVIEW | ARCHITECTURE_REVIEW | TASK_REVIEW | RED_REVIEW | GREEN_REVIEW | REGRESSION_REVIEW | FINAL_REVIEW | null",
+    "rationale": "brief process reason for this task"
+  } | null,
+  "rationale": "overall explanation of the broker decision"
 }
 
-Clarification response:
-{
-  "status": "needs_clarification",
-  "question": "question for the implementer/user",
-  "rationale": "why this is required before issuing a task"
-}
+Status rules:
+- task: task_review is null only for INITIAL_USER_INPUT; next_task is non-null.
+- fail: task_review.status is FAIL; next_task is null.
+- needs_clarification: task_review.status is NEEDS_CLARIFICATION or task_review is null; next_task is null.
+- error: task_review.status is ERROR or task_review is null; next_task is null.
+- complete: next_task is null. task_review is PASS when a completed task was submitted; null only if no previous task was submitted.
 
-Complete response:
-{
-  "status": "complete",
-  "rationale": "why the workflow is complete"
-}
-
-Rules:
-- Issue only one task.
+Process rules:
+- There is no reviewTask tool.
+- There is no previous_task_id input.
+- If task_kind=INITIAL_USER_INPUT, do not process-gate a previous task. Use evidence.user_input and issue the first USER_INPUT_CAPTURE task.
+- If task_kind is not INITIAL_USER_INPUT, first verify the submitted completed task evidence as the broker process gate.
+- Derive the required independent reviewer verdict from the submitted task_kind by the fixed mapping; do not require review_type as broker input.
+- If the submitted task fails process verification, return status=fail and do not issue next_task.
+- If the submitted task passes process verification, return task_review.status=PASS and either issue exactly one next_task or return complete.
+- The implementer must journal and commit BROKER_TASK_REVIEW from task_review before executing next_task.
 - Use monotonically increasing broker task ids B-000001, B-000002, etc.
-- If a previous broker task lacks a committed BROKER_TASK_REVIEW with STATUS: PASS and TASK_ID equal to that broker task id, return blocked.
 - The first task for a fresh delivery is USER_INPUT_CAPTURE and must preserve the user's input exactly in .sddtdd_skill/SPEC-DRAFT.md plus create the USER_INPUT journal entry.
 - For agent-generated artifacts, require independent reviewer verdict before broker PASS.
 - Do not let implementation begin before TASK_REVIEW PASS.
@@ -724,27 +769,6 @@ Rules:
 - Instructions must be in English and self-contained.
 """.strip()
 
-REVIEW_TASK_SCHEMA = """
-For reviewTask, return exactly one JSON object:
-{
-  "status": "PASS | FAIL | NEEDS_CLARIFICATION | ERROR",
-  "findings": ["specific process findings"],
-  "required_fixes": ["specific required fixes before retry; empty on PASS"],
-  "parent_for_broker_review": "JID that BROKER_TASK_REVIEW should point to",
-  "detail_suggestion": "English DETAIL text the implementer may paste into BROKER_TASK_REVIEW",
-  "rationale": "brief explanation"
-}
-
-Process gate rules:
-- Check only process completeness, not semantic artifact quality.
-- Verify the work_journal_id exists in .sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log.
-- Verify the work entry TYPE matches task_kind's journal stage and STATUS is COMPLETED.
-- If review_type is non-null, verify evidence.review_journal_id exists, has TYPE equal to review_type, STATUS: PASS, and PARENT equal to work_journal_id.
-- If review_type is null, parent_for_broker_review must be work_journal_id.
-- Verify the relevant artifacts/evidence are committed at HEAD where possible.
-- Verify the repository did not advance during your review; stale state must be ERROR.
-- Do not require BROKER_TASK_REVIEW to already exist for the task being reviewed; the implementer writes it after your PASS/FAIL response.
-""".strip()
 
 @_trace_function
 def _broker_base_repo_context(repo_path: str, git: GitCapturer) -> dict[str, Any]:
@@ -766,31 +790,15 @@ def _get_next_prompt(repo_path: str, git: GitCapturer, args: dict[str, Any]) -> 
     payload = {
         "operation": "getNextTask",
         "repo": _broker_base_repo_context(repo_path, git),
-        "user_input": args.get("user_input"),
-        "previous_task_id": args.get("previous_task_id"),
-    }
-    return (
-        GET_NEXT_SCHEMA
-        + "\n\nInspect the repository using tools before deciding. Read the skill files listed above as needed. "
-        + "Return JSON only.\n\nREQUEST:\n"
-        + json.dumps(payload, ensure_ascii=False, indent=2)
-    )
-
-@_trace_function
-def _review_task_prompt(repo_path: str, git: GitCapturer, args: dict[str, Any]) -> str:
-    payload = {
-        "operation": "reviewTask",
-        "repo": _broker_base_repo_context(repo_path, git),
-        "task_id": args.get("task_id"),
         "task_kind": args.get("task_kind"),
-        "review_type": args.get("review_type"),
+        "task_id": args.get("task_id"),
         "claimed_result": args.get("claimed_result"),
         "work_journal_id": args.get("work_journal_id"),
         "evidence": args.get("evidence", {}),
     }
     return (
-        REVIEW_TASK_SCHEMA
-        + "\n\nInspect the committed repository and journal using tools before giving a verdict. "
+        GET_NEXT_SCHEMA
+        + "\n\nInspect the repository using tools before deciding. Read the skill files listed above as needed. "
         + "Return JSON only.\n\nREQUEST:\n"
         + json.dumps(payload, ensure_ascii=False, indent=2)
     )
@@ -1620,7 +1628,7 @@ async def _call_broker_tool(name: str, arguments: dict[str, Any]) -> list[types.
             "arguments": arguments,
         })
 
-        prompt = _get_next_prompt(repo_path, git, arguments) if name == "getNextTask" else _review_task_prompt(repo_path, git, arguments)
+        prompt = _get_next_prompt(repo_path, git, arguments)
         response_text, stop_reason = await _sample_with_tools(
             ctx=app.request_context,
             initial_prompt=prompt,
@@ -1709,7 +1717,7 @@ async def call_tool(
     safe_args = _safe_log_text(json.dumps(log_args, ensure_ascii=False, default=str), limit=1000)
     logger.debug("call_tool: name=%s args=%s", name, safe_args)
 
-    if name in {"getNextTask", "reviewTask"}:
+    if name == "getNextTask":
         return await _call_broker_tool(name, arguments)
 
     if name != "review":
