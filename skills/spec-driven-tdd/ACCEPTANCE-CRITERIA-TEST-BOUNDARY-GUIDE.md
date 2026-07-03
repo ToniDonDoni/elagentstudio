@@ -55,7 +55,211 @@ Those are traceability hints or implementation details. They are not acceptance 
 
 ---
 
-## Example 1: Visible UI control
+## UI user journey rule
+
+For UI work, do not translate requirements directly into isolated controls,
+methods, flags, or pixel samples. First write at least one plain user journey:
+
+```text
+A person opens the app.
+They see ...
+They choose ...
+They do ...
+The app responds by ...
+They can tell it worked because ...
+```
+
+Then derive acceptance criteria and tests from that journey. If a user journey
+contains a visible control, the tests must prove both visibility and operation.
+If it contains an input mode, the tests must prove that the selected input mode
+actually drives the intended user-observable behavior.
+
+## Example 1: Canvas onboarding journey
+
+### User story
+
+> A person opens the HyperDelusion app for the first time. They see a visible
+> onboarding screen with the app title, short instructions, and three visible
+> entry-mode choices: Camera, Mouse, and Touch. They choose Mouse. The app enters
+> the active experience and the scene responds to mouse movement.
+
+### Correct reasoning chain
+
+1. This is not merely a mode-selection state-machine requirement.
+2. The user must be able to see what choices exist before selecting one.
+3. It is not enough that hidden coordinate bands change `appState.inputMode`.
+4. It is not enough that an `OnboardingScreen` class or `MouseTracker` class
+   exists.
+5. Acceptance must prove the journey from first page load through visible mode
+   selection to user-observable mouse-driven scene response.
+6. The test boundary should be browser/rendered-app end-to-end because the
+   requirement is about what a person sees and does in the app.
+
+### Acceptance criteria
+
+```text
+AC-ONBOARDING-MOUSE-1:
+- Given: the app is opened in a browser with no mode selected.
+- When: the first screen is displayed.
+- Then: the user can visibly identify the app/onboarding screen and the Camera,
+  Mouse, and Touch choices.
+- Boundary: rendered-app or browser end-to-end.
+- Not enough: `OnboardingScreen` exists, `getModeButtons()` returns labels,
+  hidden click zones exist, `inputMode` can be changed by clicking undocumented
+  coordinates, or a requirement ID appears in a test name.
+
+AC-ONBOARDING-MOUSE-2:
+- Given: the visible onboarding choices are displayed.
+- When: the user activates the visible Mouse choice.
+- Then: the app enters Mouse mode and the active scene is visible.
+- Boundary: rendered-app or browser end-to-end.
+- Not enough: directly setting `appState.inputMode = "mouse"`, clicking a hidden
+  coordinate without proving a visible choice is present, or asserting an
+  internal phase flag only.
+
+AC-ONBOARDING-MOUSE-3:
+- Given: the app is active in Mouse mode.
+- When: the user moves the mouse/pointer across the app.
+- Then: the rendered scene changes in the expected perspective/tracking direction
+  or exposes an equivalent user-observable response proving Mouse mode drives the
+  experience.
+- Boundary: browser end-to-end or rendered-app test with real pointer events.
+- Not enough: `MouseTracker.handlePointerMove()` exists, a unit test calls the
+  tracker directly, or the scene renders static pixels while internal state is
+  asserted elsewhere.
+```
+
+### Architecture / test design requirement
+
+> The app must render onboarding choices in the actual user-visible surface used
+> by the product. The test must open the app, observe visible onboarding choices,
+> activate the Mouse choice through the visible UI, dispatch real pointer
+> movement events, and assert a rendered or otherwise user-observable scene
+> response.
+
+### Task shape
+
+> Add a browser/rendered-app test for the onboarding-to-Mouse journey. The test
+> opens the app, proves the Camera/Mouse/Touch choices are visible, clicks the
+> visible Mouse choice, moves the pointer, and asserts that the active scene
+> changes in a way a user can observe.
+
+### Good test evidence
+
+> The test opens the running app, checks that Camera/Mouse/Touch are visible in
+> the rendered screen, clicks the visible Mouse choice, sends pointer movement,
+> and compares rendered scene samples or another user-observable signal showing
+> that the perspective/tracking changed.
+
+### Bad test evidence
+
+- `OnboardingScreen.render()` exists.
+- A method returns `Camera`, `Mouse`, and `Touch` labels.
+- The app changes `inputMode` when a test clicks undocumented coordinates.
+- `MouseTracker` exists but no app-level pointer event reaches it.
+- A unit test calls `MouseTracker.handlePointerMove()` directly.
+- A screenshot/pixel sample proves that some pixels changed but not that visible
+  mode choices exist or Mouse mode drives the scene.
+
+---
+
+## Example 2: Canvas fallback controls journey
+
+### User story
+
+> A person is using the HyperDelusion app in an active mode. They see fallback
+> controls on the canvas: Next question, Sound, and Exit. They click Next
+> question and the displayed question changes. They click Sound and the sound
+> state visibly or audibly changes. They click Exit and return to the onboarding
+> screen.
+
+### Correct reasoning chain
+
+1. This is a user-operable control requirement, not a drawing requirement.
+2. The controls must be visible and must work when activated through the real app
+   surface.
+3. It is not enough that text or rectangles are drawn on the canvas.
+4. It is not enough that keyboard shortcut `N` advances the question if the
+   requirement names a visible Next control.
+5. It is not enough that an internal mute flag changes without the user using the
+   visible Sound control.
+6. The test boundary should be browser/rendered-app end-to-end because the user
+   sees and clicks controls in the rendered app.
+
+### Acceptance criteria
+
+```text
+AC-FALLBACK-CONTROLS-1:
+- Given: the app is active after a mode has been selected.
+- When: the active screen is rendered.
+- Then: the user can visibly identify Next question, Sound, and Exit controls.
+- Boundary: rendered-app or browser end-to-end.
+- Not enough: `getButtonLabels()` returns labels, `postDraw()` contains
+  `fillText()`, or non-background pixels exist in a broad region without proving
+  which visible control is available.
+
+AC-FALLBACK-CONTROLS-2:
+- Given: the visible Next question control is displayed.
+- When: the user activates that visible control with a pointer/click/tap.
+- Then: the displayed question changes through the app flow.
+- Boundary: browser end-to-end or rendered-app test using real pointer events.
+- Not enough: pressing keyboard shortcut `N`, directly dispatching an internal
+  `NEXT_QUESTION` action, or only proving that the label was drawn.
+
+AC-FALLBACK-CONTROLS-3:
+- Given: the visible Sound control is displayed.
+- When: the user activates that visible control.
+- Then: the app changes sound enabled/muted state and reflects the result through
+  the UI or browser/application audio path.
+- Boundary: browser end-to-end or rendered-app test with browser-level audio
+  instrumentation when audio output is part of the requirement.
+- Not enough: an `AudioManager` method exists, a mute boolean changes in an
+  isolated unit test, or the word `Sound` appears on the canvas.
+
+AC-FALLBACK-CONTROLS-4:
+- Given: the visible Exit control is displayed.
+- When: the user activates that visible control.
+- Then: the app leaves the active experience and returns to the visible
+  onboarding screen.
+- Boundary: browser end-to-end or rendered-app test using real pointer events.
+- Not enough: directly calling `appState.exit()` or asserting only that an Exit
+  label exists.
+```
+
+### Architecture / test design requirement
+
+> Canvas-rendered controls must have a corresponding hit-test/input path. The
+> test must prove that the same visible control region the user sees can also be
+> activated by pointer/click/tap events and that activation produces the required
+> user-observable result.
+
+### Task shape
+
+> Add browser/rendered-app tests for the active fallback controls. The tests
+> enter an active mode, prove Next/Sound/Exit are visible, click each visible
+> control region, and assert the corresponding user-observable result: question
+> changes, sound state/output changes, and onboarding returns.
+
+### Good test evidence
+
+> The test enters Mouse or Touch mode, locates or samples the visible control
+> regions, clicks the visible Next control and observes the question change,
+> clicks the visible Sound control and observes UI/audio state change, and clicks
+> Exit and observes the visible onboarding screen again.
+
+### Bad test evidence
+
+- Non-background pixels exist where controls might be.
+- `fillText("Next question")` appears in source.
+- Keyboard shortcut `N` advances the question, but the visible Next control is
+  never clicked.
+- `AudioManager.toggleMute()` is tested directly without using the visible Sound
+  control.
+- Exit is tested but Next and Sound are only visually sampled.
+
+---
+
+## Example 3: Visible UI control
 
 ### User requirement
 
@@ -94,7 +298,7 @@ Those are traceability hints or implementation details. They are not acceptance 
 
 ---
 
-## Example 2: Browser audio behavior
+## Example 4: Browser audio behavior
 
 ### User requirement
 
@@ -136,7 +340,7 @@ Those are traceability hints or implementation details. They are not acceptance 
 
 ---
 
-## Example 3: Backend log output
+## Example 5: Backend log output
 
 ### User requirement
 
@@ -175,7 +379,7 @@ Those are traceability hints or implementation details. They are not acceptance 
 
 ---
 
-## Example 4: Backend public API behavior
+## Example 6: Backend public API behavior
 
 ### User requirement
 
@@ -215,7 +419,7 @@ Those are traceability hints or implementation details. They are not acceptance 
 
 ---
 
-## Example 5: Backend downstream call
+## Example 7: Backend downstream call
 
 ### User requirement
 
