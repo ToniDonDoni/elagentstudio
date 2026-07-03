@@ -44,7 +44,7 @@ Override: `SDDTDD_LOG_PATH` env var
 ## Tests
 
 ```bash
-uv run pytest -v
+uv run python server_e2e_test.py
 ```
 
 ## Hermes Config
