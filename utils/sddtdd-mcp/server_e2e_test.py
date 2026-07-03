@@ -858,6 +858,91 @@ async def test_orchestrator_get_next_task_completed_task_process_gate_happy_path
     ok("completed-task getNextTask performs process gate and returns next task")
 
 
+async def test_missing_installed_skill_policy_returns_error(
+    server_path: Path,
+    base_env: dict[str, str],
+    repo: Path,
+    temp_root: Path,
+) -> None:
+    event("SCENARIO_BEGIN: missing_installed_skill_policy_returns_error")
+    missing_skill_root = temp_root / "incomplete-installed-skill"
+    missing_skill_root.mkdir()
+    (missing_skill_root / "README.md").write_text(
+        "# incomplete installed skill\n\nThis directory intentionally lacks required role files.\n",
+        encoding="utf-8",
+    )
+
+    env = dict(base_env)
+    env["SDDTDD_REVIEW_SKILL_ROOT"] = str(missing_skill_root)
+    env["SDDTDD_ORCHESTRATOR_SKILL_ROOT"] = str(missing_skill_root)
+    env["SDDTDD_LOG_PATH"] = str(temp_root / "missing-skill-review-access.jsonl")
+    env["SDDTDD_ORCHESTRATOR_LOG_PATH"] = str(temp_root / "missing-skill-orchestrator-access.jsonl")
+
+    async with MCPStdioClient(server_path=server_path, env=env, verbose=VERBOSE_OUTPUT) as isolated_client:
+        await isolated_client.initialize()
+        state = ScenarioState("missing_installed_skill_policy")
+
+        async def sampling(params: Json) -> Json:
+            state.calls += 1
+            fail("sampling must not be called when required installed skill policy files are missing")
+
+        isolated_client.sampling_handler = sampling
+
+        review_response = await call_review(
+            isolated_client,
+            repo,
+            "U2U missing installed reviewer skill policy scenario",
+            task_id="T-U2U-MISSING-SKILL",
+            timeout=5,
+        )
+        assert_eq(
+            review_response["status"],
+            "ERROR",
+            "review must fail before sampling when required skill policy is missing",
+        )
+        assert_true(
+            "Missing required installed SDDTDD skill policy files" in review_response["response"],
+            "review error must explain missing required installed skill policy files",
+        )
+        assert_true(
+            "SKILL.md" in review_response["response"] and "SKILL-IMPLEMENTER.md" in review_response["response"],
+            "review error must name missing required reviewer policy files",
+        )
+
+        orchestrator_response = await call_mcp_tool(
+            isolated_client,
+            "getNextTask",
+            {
+                "repo_path": str(repo),
+                "task_kind": "INITIAL_USER_INPUT",
+                "task_id": None,
+                "claimed_result": None,
+                "work_journal_id": None,
+                "evidence": {
+                    "user_input": "U2U missing installed orchestrator skill policy scenario",
+                },
+            },
+            timeout=5,
+        )
+        assert_eq(
+            orchestrator_response["status"],
+            "ERROR",
+            "getNextTask must fail before sampling when required skill policy is missing",
+        )
+        assert_true(
+            "Missing required installed SDDTDD skill policy files" in orchestrator_response["error"],
+            "getNextTask error must explain missing required installed skill policy files",
+        )
+        assert_true(
+            "SKILL-ORCHESTRATOR.md" in orchestrator_response["error"],
+            "getNextTask error must name the missing orchestrator role file",
+        )
+        assert_eq(state.calls, 0, "missing skill policy must fail before any sampling call")
+
+    event("SCENARIO_DONE: missing_installed_skill_policy_returns_error")
+    ok("missing required installed skill policy files return ERROR before sampling")
+
+
 async def test_tool_use_roundtrip(client: MCPStdioClient, repo: Path, *, tool_use_type: str) -> None:
     event("SCENARIO_BEGIN: tool_use_roundtrip")
     state = ScenarioState("tool_use_roundtrip")
@@ -1681,6 +1766,10 @@ async def run_all(args: argparse.Namespace) -> None:
             await run_named_test(
                 "test_orchestrator_get_next_task_completed_task_process_gate_happy_path",
                 lambda: test_orchestrator_get_next_task_completed_task_process_gate_happy_path(client, repo),
+            )
+            await run_named_test(
+                "test_missing_installed_skill_policy_returns_error",
+                lambda: test_missing_installed_skill_policy_returns_error(server_path, env, repo, temp_root),
             )
             await run_named_test(
                 "test_access_log_records_review_start_and_completion",
