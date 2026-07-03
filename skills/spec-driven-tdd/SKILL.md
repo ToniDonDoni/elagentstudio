@@ -27,7 +27,7 @@ tested, committed, and journaled artifact chain.
 │   ├── TASKS.md
 │   ├── JOURNAL_SDD_TDD_SKILL.log
 │   ├── review-access.jsonl    # runtime, not committed
-│   └── broker-access.jsonl    # runtime, not committed
+│   └── orchestrator-access.jsonl    # runtime, not committed
 └── ...
 ```
 
@@ -71,38 +71,38 @@ USER INPUT
 
 ### Standalone mode
 
-There is no broker. The implementer reads `SKILL-IMPLEMENTER.md` and
+There is no orchestrator. The implementer reads `SKILL-IMPLEMENTER.md` and
 `references/STAGES.md`, then walks the chain directly.
 
-### Broker mode
+### Orchestrator mode
 
-There is one broker tool and one reviewer tool:
+There is one orchestrator tool and one reviewer tool:
 
 ```text
 mcp_sddtdd_getNextTask
 mcp_sddtdd_review
 ```
 
-The implementer asks the broker for the next task and executes only that task.
-The broker owns workflow order and process-gate verification. The broker policy
+The implementer asks the orchestrator for the next task and executes only that task.
+The orchestrator owns workflow order and process-gate verification. The orchestrator policy
 lives in `SKILL-ORCHESTRATOR.md`; the implementer does not read it.
 
-The independent reviewer checks artifact correctness. The broker checks process
+The independent reviewer checks artifact correctness. The orchestrator checks process
 state. These are separate verification chains.
 
-In broker mode, `mcp_sddtdd_getNextTask` is used for both:
+In orchestrator mode, `mcp_sddtdd_getNextTask` is used for both:
 
 - initial user input (`task_kind=INITIAL_USER_INPUT`);
 - completed task advancement (`task_kind=<completed task kind>`).
 
-The broker response contains:
+The orchestrator response contains:
 
 - `task_review` — process-gate verdict for the submitted completed task, or
   null for initial input;
 - `next_task` — the next task to execute, or null;
 - `status` — `task`, `fail`, `needs_clarification`, `error`, or `complete`.
 
-The implementer must journal and commit `BROKER_TASK_REVIEW` from
+The implementer must journal and commit `ORCHESTRATOR_TASK_REVIEW` from
 `task_review` before executing `next_task`.
 
 ## Roles
@@ -110,7 +110,7 @@ The implementer must journal and commit `BROKER_TASK_REVIEW` from
 ### Implementer
 
 Creates artifacts, runs tests, calls reviewer when required, journals,
-commits, calls broker, and follows only broker-issued tasks.
+commits, calls orchestrator, and follows only orchestrator-issued tasks.
 
 ### Independent reviewer
 
@@ -118,7 +118,7 @@ Invoked through `mcp_sddtdd_review`. Reviews committed artifacts and evidence
 against reviewed inputs and SDDTDD policy. It does not implement, journal,
 commit, or advance the workflow.
 
-### Broker / orchestrator
+### Orchestrator / orchestrator
 
 Invoked through `mcp_sddtdd_getNextTask`. Chooses next tasks and verifies
 process completion from committed state. It does not perform semantic artifact
@@ -132,7 +132,7 @@ review and does not modify the repository.
 - RED tests must fail for the expected missing-behavior reason before GREEN.
 - GREEN must be minimal for the reviewed task.
 - Regression and final review must pass before DONE.
-- Reviewer PASS does not replace broker process PASS.
-- Broker process PASS is `task_review.status=PASS` in a `getNextTask` response.
-- `BROKER_TASK_REVIEW` must be journaled and committed before executing the
+- Reviewer PASS does not replace orchestrator process PASS.
+- Orchestrator process PASS is `task_review.status=PASS` in a `getNextTask` response.
+- `ORCHESTRATOR_TASK_REVIEW` must be journaled and committed before executing the
   returned `next_task`.

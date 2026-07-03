@@ -28,7 +28,7 @@ TODO: Align JOURNAL.md with the new architecture stage.
 - Update the complete journal example to include `ARCHITECTURE` and `ARCHITECTURE_REVIEW`.
 - Do not add new relationship fields. Continue using `JID`, `PARENT`, `ROOT`, `DEPENDS`, and the existing task-tree fields.
 - Store artifact paths, reviewed commit hashes, and review evidence in `DETAIL` unless a separate structured-field change is explicitly approved.
-- DONE: Added TYPE `BROKER_TASK_REVIEW` for the broker's process-gate verdict on whether a broker-issued task is process-complete. See section 10.
+- DONE: Added TYPE `ORCHESTRATOR_TASK_REVIEW` for the orchestrator's process-gate verdict on whether a orchestrator-issued task is process-complete. See section 10.
 
 
 This document defines the required format and content of `.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log`.
@@ -60,7 +60,7 @@ The directory `.sddtdd_skill/` holds every committed SDDTDD artifact
 for the delivery: `SPEC-DRAFT.md`, `SPEC.md`, `ARCHITECTURE.md`,
 `TASKS.md`, and the journal. It also holds the runtime access logs
 (`review-access.jsonl` from the reviewer MCP and
-`broker-access.jsonl` from the broker MCP), which are NOT committed
+`orchestrator-access.jsonl` from the orchestrator MCP), which are NOT committed
 and MUST be ignored by `.gitignore` via the pattern
 `.sddtdd_skill/*.jsonl`.
 
@@ -126,7 +126,7 @@ J-20260614-204500-001
 | `TASKS_COMPLETE` | All active task branches for a specification are complete |
 | `REGRESSION` | Regression test run |
 | `REGRESSION_REVIEW` | Regression review result |
-| `BROKER_TASK_REVIEW` | MCP task broker process-gate verdict on whether a broker-issued task is process-complete |
+| `ORCHESTRATOR_TASK_REVIEW` | MCP task orchestrator process-gate verdict on whether a orchestrator-issued task is process-complete |
 | `ESCALATION` | Review limit exceeded or user decision required |
 | `DONE` | Pipeline completed |
 
@@ -324,7 +324,7 @@ All entries referring to the same logical task MUST use identical values for the
 | `TASKS_COMPLETE` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `REGRESSION` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `REGRESSION_REVIEW` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
-| `BROKER_TASK_REVIEW` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
+| `ORCHESTRATOR_TASK_REVIEW` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `ESCALATION` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 | `DONE` | optional | required when `TASK_ID` exists | required when `TASK_ID` exists |
 
@@ -372,8 +372,8 @@ GREEN_REVIEW FAIL → GREEN
 REGRESSION_REVIEW FAIL → REGRESSION or affected task
 ```
 
-In broker mode, the implementer produces this sequence in the journal
-for every broker task. Capture tasks (`USER_INPUT_CAPTURE`) omit
+In orchestrator mode, the implementer produces this sequence in the journal
+for every orchestrator task. Capture tasks (`USER_INPUT_CAPTURE`) omit
 the reviewer verdict step.
 
 ```text
@@ -386,17 +386,17 @@ independent reviewer verdict (only when the task requires one)
    STATUS = PASS (or FAIL during rework)
    PARENT = work journal entry
 
-broker process-gate verification (`task_review` in getNextTask response)
+orchestrator process-gate verification (`task_review` in getNextTask response)
 
-BROKER_TASK_REVIEW
+ORCHESTRATOR_TASK_REVIEW
    STATUS = PASS                       → implementer calls getNextTask
    STATUS = FAIL                       → implementer fixes the process gaps the
-                                          broker listed, retries getNextTask with corrected completed-task evidence
+                                          orchestrator listed, retries getNextTask with corrected completed-task evidence
    STATUS = NEEDS_CLARIFICATION        → implementer asks the user
    STATUS = ERROR                      → implementer resolves state
 ```
 
-`BROKER_TASK_REVIEW` is the broker's process-gate verdict. It is
+`ORCHESTRATOR_TASK_REVIEW` is the orchestrator's process-gate verdict. It is
 distinct from the reviewer `*_REVIEW` entries, which record the
 independent reviewer MCP's verdict on the artifact. Both chains must
 exist and pass for the workflow to advance.
@@ -579,14 +579,14 @@ ROOT_USER_INPUT_ID: T-000001
 
 ---
 
-## Broker process-gate source
+## Orchestrator process-gate source
 
-`BROKER_TASK_REVIEW` records the broker process-gate verdict returned in
+`ORCHESTRATOR_TASK_REVIEW` records the orchestrator process-gate verdict returned in
 `task_review` by `mcp_sddtdd_getNextTask`.
 
-There is no separate broker process-gate operation. For completed tasks, the
+There is no separate orchestrator process-gate operation. For completed tasks, the
 implementer submits completed-task evidence to `getNextTask`; if
-`task_review.status` is `PASS`, the implementer records `BROKER_TASK_REVIEW`
-using `task_review.parent_for_broker_review` as `PARENT` and
+`task_review.status` is `PASS`, the implementer records `ORCHESTRATOR_TASK_REVIEW`
+using `task_review.parent_for_orchestrator_review` as `PARENT` and
 `task_review.detail_suggestion` as `DETAIL`, commits it, and only then executes
 the returned `next_task`.

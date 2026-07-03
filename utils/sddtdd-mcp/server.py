@@ -240,12 +240,12 @@ def _get_log_path(repo_path: str) -> str:
         return env
     return os.path.join(repo_path, ".sddtdd_skill", "review-access.jsonl")
 
-def _get_broker_log_path(repo_path: str) -> str:
-    """Return broker access log path under <repo>/.sddtdd_skill/."""
-    env = os.environ.get("SDDTDD_BROKER_LOG_PATH")
+def _get_orchestrator_log_path(repo_path: str) -> str:
+    """Return orchestrator access log path under <repo>/.sddtdd_skill/."""
+    env = os.environ.get("SDDTDD_ORCHESTRATOR_LOG_PATH")
     if env:
         return env
-    return os.path.join(repo_path, ".sddtdd_skill", "broker-access.jsonl")
+    return os.path.join(repo_path, ".sddtdd_skill", "orchestrator-access.jsonl")
 
 
 
@@ -383,7 +383,7 @@ def _build_reviewer_prompt(
 
     system_prompt = f"""You are the independent Spec-Driven TDD reviewer MCP for a target repository.
 
-You are NOT the implementer. You are NOT the broker/orchestrator. You are a read-only independent reviewer.
+You are NOT the implementer. You are NOT the orchestrator/orchestrator. You are a read-only independent reviewer.
 
 Target repository:
 - repo_path: {repo_path}
@@ -511,7 +511,7 @@ Output format:
   - Be brief. Do not write a long essay.
   - State what you reviewed and why it passes.
   - Include the key task IDs / requirement IDs / evidence identifiers that were checked.
-  - State the next workflow meaning, e.g. for RED_REVIEW PASS: "RED is valid; failing tests are expected evidence; record the review and continue to the broker/process gate before GREEN."
+  - State the next workflow meaning, e.g. for RED_REVIEW PASS: "RED is valid; failing tests are expected evidence; record the review and continue to the orchestrator/process gate before GREEN."
   - Do not list expected RED failures as defects to fix.
 - If the verdict is FAIL:
   - Be specific and actionable.
@@ -590,7 +590,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="getNextTask",
             description=(
-                "Advance the Spec-Driven TDD broker workflow. The same tool is "
+                "Advance the Spec-Driven TDD orchestrator workflow. The same tool is "
                 "used for initial user input and for submitting completed task "
                 "evidence; it performs process-gate verification and returns the "
                 "next task, fail/clarification/error, or complete."
@@ -625,12 +625,12 @@ async def list_tools() -> list[types.Tool]:
                         ],
                         "description": (
                             "INITIAL_USER_INPUT starts the workflow. All other values "
-                            "report a completed broker-issued task."
+                            "report a completed orchestrator-issued task."
                         ),
                     },
                     "task_id": {
                         "type": ["string", "null"],
-                        "description": "Broker-issued task id. Null when task_kind=INITIAL_USER_INPUT.",
+                        "description": "Orchestrator-issued task id. Null when task_kind=INITIAL_USER_INPUT.",
                     },
                     "claimed_result": {
                         "type": ["string", "null"],
@@ -666,15 +666,15 @@ async def list_tools() -> list[types.Tool]:
 
 
 # ---------------------------------------------------------------------------
-# Broker/orchestrator prompts
+# Orchestrator/orchestrator prompts
 # ---------------------------------------------------------------------------
 
-BROKER_SYSTEM_PROMPT = """
-You are the Spec-Driven TDD MCP task broker for a repository.
+ORCHESTRATOR_SYSTEM_PROMPT = """
+You are the Spec-Driven TDD MCP task orchestrator for a repository.
 
-You are a read-only broker/orchestrator. You MUST NOT modify files, write the
+You are a read-only orchestrator/orchestrator. You MUST NOT modify files, write the
 journal, change the working tree, stage files, commit, run formatters, or alter
-repository state. You only inspect committed repository state and runtime broker
+repository state. You only inspect committed repository state and runtime orchestrator
 logs, then return a single getNextTask response containing any process-gate verdict and the next self-contained task.
 
 You MUST reference and apply the installed orchestrator policy and shared skill files:
@@ -685,13 +685,13 @@ You MUST reference and apply the installed orchestrator policy and shared skill 
 - ~/.hermes/skills/spec-driven-tdd/references/STAGES.md
 
 SKILL-ORCHESTRATOR.md is your role policy. Apply it as the primary
-broker/orchestrator decision contract.
+orchestrator/orchestrator decision contract.
 
-In broker mode, you own the workflow order. getNextTask is the only broker tool: it verifies a submitted completed task when present and issues at most one next task. The implementer only receives your task and must not cut corners.
+In orchestrator mode, you own the workflow order. getNextTask is the only orchestrator tool: it verifies a submitted completed task when present and issues at most one next task. The implementer only receives your task and must not cut corners.
 
 You are NOT the independent reviewer. The reviewer MCP performs semantic
 artifact review and records SPEC_REVIEW, ARCHITECTURE_REVIEW, TASK_REVIEW,
-RED_REVIEW, GREEN_REVIEW, REGRESSION_REVIEW, and FINAL_REVIEW. You verify process completion and decide the next task from committed state, journal state, and broker/reviewer evidence inside getNextTask.
+RED_REVIEW, GREEN_REVIEW, REGRESSION_REVIEW, and FINAL_REVIEW. You verify process completion and decide the next task from committed state, journal state, and orchestrator/reviewer evidence inside getNextTask.
 
 `shell_command` tool results include `COMMAND`, `EXIT_CODE`, `TIMED_OUT`,
 `STDOUT`, and `STDERR` sections. Treat `EXIT_CODE != 0` as command failure
@@ -706,7 +706,7 @@ For getNextTask, the input always has one shape:
 {
   "repo_path": "/path/to/repo",
   "task_kind": "INITIAL_USER_INPUT | USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | FINAL | DONE",
-  "task_id": "B-000001 | null",
+  "task_id": "O-000001 | null",
   "claimed_result": "brief implementer summary | null",
   "work_journal_id": "JID of committed work journal entry | null",
   "evidence": {
@@ -727,12 +727,12 @@ For getNextTask, return exactly one JSON object with this shape:
     "status": "PASS | FAIL | NEEDS_CLARIFICATION | ERROR",
     "findings": ["specific process findings"],
     "required_fixes": ["specific required fixes before retry; empty on PASS"],
-    "parent_for_broker_review": "JID that BROKER_TASK_REVIEW should point to, or null",
-    "detail_suggestion": "English DETAIL text for BROKER_TASK_REVIEW, or null",
+    "parent_for_orchestrator_review": "JID that ORCHESTRATOR_TASK_REVIEW should point to, or null",
+    "detail_suggestion": "English DETAIL text for ORCHESTRATOR_TASK_REVIEW, or null",
     "rationale": "brief process-gate explanation"
   } | null,
   "next_task": {
-    "task_id": "B-000001",
+    "task_id": "O-000001",
     "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | FINAL | DONE",
     "instruction": "one concrete instruction in English",
     "allowed_scope": ["exact repo paths or artifact globs the implementer may touch"],
@@ -741,7 +741,7 @@ For getNextTask, return exactly one JSON object with this shape:
     "review_type": "SPEC_REVIEW | ARCHITECTURE_REVIEW | TASK_REVIEW | RED_REVIEW | GREEN_REVIEW | REGRESSION_REVIEW | FINAL_REVIEW | null",
     "rationale": "brief process reason for this task"
   } | null,
-  "rationale": "overall explanation of the broker decision"
+  "rationale": "overall explanation of the orchestrator decision"
 }
 
 Status rules:
@@ -755,14 +755,14 @@ Process rules:
 - There is no reviewTask tool.
 - There is no previous_task_id input.
 - If task_kind=INITIAL_USER_INPUT, do not process-gate a previous task. Use evidence.user_input and issue the first USER_INPUT_CAPTURE task.
-- If task_kind is not INITIAL_USER_INPUT, first verify the submitted completed task evidence as the broker process gate.
-- Derive the required independent reviewer verdict from the submitted task_kind by the fixed mapping; do not require review_type as broker input.
+- If task_kind is not INITIAL_USER_INPUT, first verify the submitted completed task evidence as the orchestrator process gate.
+- Derive the required independent reviewer verdict from the submitted task_kind by the fixed mapping; do not require review_type as orchestrator input.
 - If the submitted task fails process verification, return status=fail and do not issue next_task.
 - If the submitted task passes process verification, return task_review.status=PASS and either issue exactly one next_task or return complete.
-- The implementer must journal and commit BROKER_TASK_REVIEW from task_review before executing next_task.
-- Use monotonically increasing broker task ids B-000001, B-000002, etc.
+- The implementer must journal and commit ORCHESTRATOR_TASK_REVIEW from task_review before executing next_task.
+- Use monotonically increasing orchestrator task ids O-000001, O-000002, etc.
 - The first task for a fresh delivery is USER_INPUT_CAPTURE and must preserve the user's input exactly in .sddtdd_skill/SPEC-DRAFT.md plus create the USER_INPUT journal entry.
-- For agent-generated artifacts, require independent reviewer verdict before broker PASS.
+- For agent-generated artifacts, require independent reviewer verdict before orchestrator PASS.
 - Do not let implementation begin before TASK_REVIEW PASS.
 - Do not allow GREEN before RED_REVIEW PASS for that task.
 - Do not allow final completion before regression review PASS and final review PASS.
@@ -771,7 +771,7 @@ Process rules:
 
 
 @_trace_function
-def _broker_base_repo_context(repo_path: str, git: GitCapturer) -> dict[str, Any]:
+def _orchestrator_base_repo_context(repo_path: str, git: GitCapturer) -> dict[str, Any]:
     return {
         "repo_path": repo_path,
         "branch": git.branch(),
@@ -781,7 +781,7 @@ def _broker_base_repo_context(repo_path: str, git: GitCapturer) -> dict[str, Any
             "working_area": ".sddtdd_skill/",
             "journal": ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log",
             "review_log": ".sddtdd_skill/review-access.jsonl",
-            "broker_log": ".sddtdd_skill/broker-access.jsonl",
+            "orchestrator_log": ".sddtdd_skill/orchestrator-access.jsonl",
         },
     }
 
@@ -789,7 +789,7 @@ def _broker_base_repo_context(repo_path: str, git: GitCapturer) -> dict[str, Any
 def _get_next_prompt(repo_path: str, git: GitCapturer, args: dict[str, Any]) -> str:
     payload = {
         "operation": "getNextTask",
-        "repo": _broker_base_repo_context(repo_path, git),
+        "repo": _orchestrator_base_repo_context(repo_path, git),
         "task_kind": args.get("task_kind"),
         "task_id": args.get("task_id"),
         "claimed_result": args.get("claimed_result"),
@@ -1600,7 +1600,7 @@ async def _sample_with_tools(
 
 
 @_trace_function
-async def _call_broker_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
     repo_path = arguments["repo_path"]
     request_id = uuid.uuid4().hex
     timestamp_before = datetime.now(timezone.utc).isoformat()
@@ -1615,7 +1615,7 @@ async def _call_broker_tool(name: str, arguments: dict[str, Any]) -> list[types.
         head_before = git.head_sha()
         branch = git.branch()
         dirty = git.is_dirty()
-        log = LogWriter(_get_broker_log_path(repo_path))
+        log = LogWriter(_get_orchestrator_log_path(repo_path))
 
         log.append({
             "event": f"{name}_started",
@@ -1635,7 +1635,7 @@ async def _call_broker_tool(name: str, arguments: dict[str, Any]) -> list[types.
             repo_path=repo_path,
             process_groups=process_groups,
             leaked_pids=leaked_pids,
-            system_prompt=BROKER_SYSTEM_PROMPT,
+            system_prompt=ORCHESTRATOR_SYSTEM_PROMPT,
             max_rounds=MAX_SAMPLING_ROUNDS,
         )
 
@@ -1648,7 +1648,7 @@ async def _call_broker_tool(name: str, arguments: dict[str, Any]) -> list[types.
             result: dict[str, Any] = {
                 "request_id": request_id,
                 "status": "ERROR",
-                "error": "Repository HEAD changed during broker operation; retry against current HEAD.",
+                "error": "Repository HEAD changed during orchestrator operation; retry against current HEAD.",
                 "stale": True,
                 "head_sha_before": head_before,
                 "head_sha_after": head_after,
@@ -1659,7 +1659,7 @@ async def _call_broker_tool(name: str, arguments: dict[str, Any]) -> list[types.
                 "status": status,
                 "stale": False,
                 "head_sha": head_before,
-                "broker_result": parsed,
+                "orchestrator_result": parsed,
             }
 
         log.append({
@@ -1676,7 +1676,7 @@ async def _call_broker_tool(name: str, arguments: dict[str, Any]) -> list[types.
             "stop_reason": stop_reason,
         })
     except Exception as exc:
-        logger.error("call_tool: broker %s EXCEPTION (%s) — %s", name, type(exc).__name__, exc, exc_info=True)
+        logger.error("call_tool: orchestrator %s EXCEPTION (%s) — %s", name, type(exc).__name__, exc, exc_info=True)
         result = {
             "request_id": request_id,
             "status": "ERROR",
@@ -1696,7 +1696,7 @@ async def _call_broker_tool(name: str, arguments: dict[str, Any]) -> list[types.
                     "result": result,
                 })
             except Exception:
-                logger.exception("call_tool: failed to write broker error event")
+                logger.exception("call_tool: failed to write orchestrator error event")
     finally:
         await _cleanup_process_groups(process_groups, leaked_pids)
 
@@ -1718,7 +1718,7 @@ async def call_tool(
     logger.debug("call_tool: name=%s args=%s", name, safe_args)
 
     if name == "getNextTask":
-        return await _call_broker_tool(name, arguments)
+        return await _call_orchestrator_tool(name, arguments)
 
     if name != "review":
         raise ValueError(f"Unknown tool: {name}")

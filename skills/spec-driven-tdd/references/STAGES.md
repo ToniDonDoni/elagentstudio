@@ -1,10 +1,10 @@
 # Stage-by-Stage Procedure (Standalone Mode)
 
 This document defines the stage-by-stage procedure for the Spec-Driven TDD
-pipeline in **standalone mode** — when there is no MCP task broker and the
+pipeline in **standalone mode** — when there is no MCP task orchestrator and the
 implementer walks the artifact chain directly.
 
-In broker mode the implementer does **not** read this document; the broker
+In orchestrator mode the implementer does **not** read this document; the orchestrator
 loads the orchestrator role file and applies the same stage order, but the
 implementer only ever sees one task at a time.
 

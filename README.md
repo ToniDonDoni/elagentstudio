@@ -15,8 +15,8 @@ A spec-driven development test-driven development (TDD) pipeline with review at 
 
 - **Path:** `skills/spec-driven-tdd/`
 - **Platform:** Hermes Agent
-- **Requires:** pytest, Hermes Agent with `delegate_task`; optional SDDTDD reviewer and broker MCP servers
-- **Broker role files:** `SKILL-IMPLEMENTER.md` and `SKILL-ORCHESTRATOR.md` live inside this same skill directory. They are not separate installable skills.
+- **Requires:** pytest, Hermes Agent with `delegate_task`; optional SDDTDD reviewer and orchestrator MCP servers
+- **Orchestrator role files:** `SKILL-IMPLEMENTER.md` and `SKILL-ORCHESTRATOR.md` live inside this same skill directory. They are not separate installable skills.
 
 #### Install Spec-Driven TDD
 
@@ -36,10 +36,10 @@ hermes skills list | grep spec-driven-tdd
 Use the spec-driven-tdd skill for <your task description>
 ```
 
-For broker mode, install only `spec-driven-tdd` and use its in-folder role files:
+For orchestrator mode, install only `spec-driven-tdd` and use its in-folder role files:
 
 ```prompt
-Use spec-driven-tdd broker mode. The implementer follows skills/spec-driven-tdd/SKILL-IMPLEMENTER.md, and the MCP task broker/orchestrator follows skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md.
+Use spec-driven-tdd orchestrator mode. The implementer follows skills/spec-driven-tdd/SKILL-IMPLEMENTER.md, and the MCP task orchestrator follows skills/spec-driven-tdd/SKILL-ORCHESTRATOR.md.
 ```
 
 ---
