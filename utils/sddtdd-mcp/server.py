@@ -857,6 +857,30 @@ def _unwrap_top_level_json_code_fence(text: str) -> str:
     return "\n".join(lines[1:-1]).strip()
 
 
+def _has_empty_review_response_field(text: str) -> bool:
+    """Return True when a sampler JSON payload explicitly contains an empty response.
+
+    Empty review text is not a format-repair problem. The server must ask the
+    caller to retry the review instead of letting repair invent replacement
+    review content.
+    """
+    text = _unwrap_top_level_json_code_fence(text)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+
+    if not isinstance(data, dict) or "response" not in data:
+        return False
+
+    response = data.get("response")
+    if response is None:
+        return True
+    if isinstance(response, str):
+        return not response.strip()
+    return False
+
+
 def _parse_review_json(text: str) -> tuple[str | None, str | None, str | None]:
     """Parse and validate the canonical review JSON response.
 
@@ -1386,6 +1410,9 @@ async def call_tool(
 
         repair_attempts: list[dict] = []
         verdict = None
+        if not execution_error and _has_empty_review_response_field(response_text.strip()):
+            execution_error = True
+            response_text = REVIEW_RETRY_RESPONSE
         if not execution_error:
             verdict, parsed_response, parse_error = _parse_review_json(response_text.strip())
             if parse_error is not None:
