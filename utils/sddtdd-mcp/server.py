@@ -250,12 +250,11 @@ def _get_orchestrator_log_path(repo_path: str) -> str:
 
 
 def _read_text_if_exists(path: Path, max_chars: int = 24000) -> str:
-    """Read a role/reference file for reviewer grounding.
+    """Read a role/reference file for reviewer/orchestrator grounding.
 
-    The reviewer MCP is allowed to load process-policy files from the
-    installed spec-driven-tdd skill. Missing files are reported inside the
-    prompt instead of crashing the server, because deployments may override
-    paths gradually.
+    Optional policy files may be absent, but required installed SDDTDD skill
+    files are validated before prompt construction. Missing required files are
+    a server error, not model context.
     """
     try:
         data = path.read_text(errors="replace")
@@ -266,6 +265,38 @@ def _read_text_if_exists(path: Path, max_chars: int = 24000) -> str:
     if len(data) > max_chars:
         return data[:max_chars] + f"\n... [truncated at {max_chars} chars]"
     return data
+
+
+class SkillPolicyError(RuntimeError):
+    """Raised when the installed SDDTDD skill policy is incomplete."""
+
+
+REQUIRED_REVIEW_POLICY_FILES: tuple[str, ...] = (
+    "SKILL.md",
+    "SKILL-IMPLEMENTER.md",
+    "references/STAGES.md",
+    "references/JOURNAL.md",
+)
+
+REQUIRED_ORCHESTRATOR_POLICY_FILES: tuple[str, ...] = (
+    "SKILL.md",
+    "SKILL-ORCHESTRATOR.md",
+    "SKILL-IMPLEMENTER.md",
+    "references/JOURNAL.md",
+    "references/STAGES.md",
+)
+
+
+def _require_installed_policy_files(skill_root: Path, required_relative_paths: tuple[str, ...]) -> None:
+    """Fail fast when required installed skill files are missing."""
+    missing = [relative for relative in required_relative_paths if not (skill_root / relative).is_file()]
+    if not missing:
+        return
+    missing_text = ", ".join(missing)
+    raise SkillPolicyError(
+        "Missing required installed SDDTDD skill policy files under "
+        f"{skill_root}: {missing_text}. Install the complete spec-driven-tdd skill bundle."
+    )
 
 
 # Helper: safe logging of sampled tool commands for stderr logs
@@ -317,6 +348,7 @@ def _review_policy_file_paths() -> dict[str, Path]:
     """
     paths = _review_skill_paths()
     skill_root = paths["skill_root"]
+    _require_installed_policy_files(skill_root, REQUIRED_REVIEW_POLICY_FILES)
 
     policy_files: dict[str, Path] = {}
     if skill_root.exists():
@@ -371,6 +403,7 @@ def _orchestrator_skill_root() -> Path:
 def _orchestrator_policy_file_paths() -> dict[str, Path]:
     """Return all Markdown policy files under the installed SDDTDD skill root."""
     skill_root = _orchestrator_skill_root()
+    _require_installed_policy_files(skill_root, REQUIRED_ORCHESTRATOR_POLICY_FILES)
     policy_files: dict[str, Path] = {}
     if skill_root.exists():
         for path in sorted(skill_root.rglob("*.md")):
