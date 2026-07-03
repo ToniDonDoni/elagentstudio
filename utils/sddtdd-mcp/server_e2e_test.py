@@ -625,6 +625,49 @@ async def test_basic_review(client: MCPStdioClient, repo: Path) -> None:
     ok("tools/call review returns mocked PASS JSON")
 
 
+async def test_reviewer_system_prompt_happy_path(client: MCPStdioClient, repo: Path) -> None:
+    event("SCENARIO_BEGIN: reviewer_system_prompt_happy_path")
+    state = ScenarioState("reviewer_system_prompt_happy_path")
+
+    async def sampling(params: Json) -> Json:
+        state.calls += 1
+        event(f"MOCK_SAMPLING[{state.name}]: call={state.calls} params={summarize_json(params)}")
+        state.seen_params.append(params)
+
+        system_prompt = params.get("systemPrompt")
+        assert_true(isinstance(system_prompt, str), "sampling/createMessage must receive a string systemPrompt")
+        assert_true(
+            "You are the independent Spec-Driven TDD reviewer MCP for a target repository." in system_prompt,
+            "review sampling systemPrompt must identify this server as the independent reviewer",
+        )
+        assert_true(
+            "You are NOT the implementer. You are NOT the broker/orchestrator." in system_prompt,
+            "review sampling systemPrompt must explicitly separate reviewer from implementer and broker/orchestrator roles",
+        )
+        assert_true(
+            "read-only independent reviewer" in system_prompt,
+            "review sampling systemPrompt must preserve read-only reviewer identity",
+        )
+        assert_true(
+            "You are the implementer" not in system_prompt,
+            "review sampling systemPrompt must not use implementer identity",
+        )
+        assert_true(
+            "You are the broker" not in system_prompt and "You are the orchestrator" not in system_prompt,
+            "review sampling systemPrompt must not use broker/orchestrator identity",
+        )
+
+        return text_result(valid_review_json("PASS", "reviewer system prompt happy path response"))
+
+    client.sampling_handler = sampling
+    response = await call_review(client, repo, "U2U reviewer system prompt happy path scenario")
+    assert_eq(response["status"], "COMPLETED", "reviewer system prompt review status")
+    assert_eq(response["verdict"], "PASS", "reviewer system prompt review verdict")
+    assert_eq(state.calls, 1, "reviewer system prompt test must sample exactly once")
+    event("SCENARIO_DONE: reviewer_system_prompt_happy_path")
+    ok("sampling/createMessage receives reviewer systemPrompt, not implementer/broker prompt")
+
+
 async def test_tool_use_roundtrip(client: MCPStdioClient, repo: Path, *, tool_use_type: str) -> None:
     event("SCENARIO_BEGIN: tool_use_roundtrip")
     state = ScenarioState("tool_use_roundtrip")
@@ -1430,6 +1473,10 @@ async def run_all(args: argparse.Namespace) -> None:
             await run_named_test("test_startup_and_list_tools", lambda: test_startup_and_list_tools(client))
             await run_named_test("test_basic_review", lambda: test_basic_review(client, repo))
             await run_named_test(
+                "test_reviewer_system_prompt_happy_path",
+                lambda: test_reviewer_system_prompt_happy_path(client, repo),
+            )
+            await run_named_test(
                 "test_access_log_records_review_start_and_completion",
                 lambda: test_access_log_records_review_start_and_completion(client, repo, log_path),
             )
@@ -1527,6 +1574,7 @@ async def run_all(args: argparse.Namespace) -> None:
             1
             for name in (
                 "test_basic_review",
+                "test_reviewer_system_prompt_happy_path",
                 "test_access_log_records_review_start_and_completion",
                 "test_tool_use_roundtrip",
                 "test_async_shell_command_does_not_block_list_tools",
