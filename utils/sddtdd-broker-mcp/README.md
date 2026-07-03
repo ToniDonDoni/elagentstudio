@@ -169,11 +169,11 @@ Example Hermes configuration for the LLM-based broker MCP:
 
 ```yaml
 mcp_servers:
-  sddtdd_broker:
+  sddtdd:
     command: uv
     args:
     - --directory
-    - /work/elagentstudio/utils/sddtdd-broker-mcp
+    - /work/elagentstudio/utils/sddtdd-mcp
     - run
     - server.py
     env:

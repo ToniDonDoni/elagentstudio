@@ -25,7 +25,7 @@ committed repository state and the committed journal, and decides
 directly in Python according to the rules defined here.
 
 The orchestrator performs process-gate review, but does not replace
-`mcp_sddtdd_review_review` and does not independently re-review
+`mcp_sddtdd_review` and does not independently re-review
 artifacts. The independent reviewer has already evaluated the
 artifact's correctness; the broker's job is to verify that the issued
 workflow step has produced all evidence and approvals required to
@@ -44,7 +44,7 @@ The broker does not:
 
 - implement, write code, write tests, or write artifacts;
 - perform the independent artifact review that belongs to
-  `mcp_sddtdd_review_review`;
+  `mcp_sddtdd_review`;
 - judge whether the artifact's content is correct, idiomatic,
   well-designed, or appropriate — that is the reviewer's responsibility;
 - sample an LLM to make process-gate decisions;
@@ -385,7 +385,7 @@ need to look at this log; the broker uses it for investigation.
 - Do not modify repository files.
 - Do not run implementation commands.
 - Do not perform the independent artifact review that belongs to
-  `mcp_sddtdd_review_review`. The implementer must call the reviewer
+  `mcp_sddtdd_review`. The implementer must call the reviewer
   MCP.
 - Do not sample an LLM to make process-gate decisions. The process
   rules are explicit and are enforced in code.

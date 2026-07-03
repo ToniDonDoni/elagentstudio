@@ -181,7 +181,7 @@ implementer executes the issued task exactly.
       `DONE`, etc.) with `STATUS: COMPLETED`. Commit the work and
       the journal entry.
    3. If `independent_review_required` is true, call
-      `mcp_sddtdd_review_review` with the appropriate `review_type`,
+      `mcp_sddtdd_review` with the appropriate `review_type`,
       capture the verdict, journal it as the corresponding
       `*_REVIEW` entry with `STATUS: PASS` (or `FAIL` and rework),
       and commit. Repeat reviewer until `PASS`.
@@ -267,7 +267,7 @@ status, the right `TYPE`, and a valid `PARENT`.
 
 
 The implementer calls the reviewer MCP
-(`mcp_sddtdd_review_review`) exactly as the shared `spec-driven-tdd`
+(`mcp_sddtdd_review`) exactly as the shared `spec-driven-tdd`
 skill requires. The MCP response `status` describes tool execution only:
 `COMPLETED` means the tool call completed; any other status means the MCP
 call did not complete successfully. If the MCP call did not complete,

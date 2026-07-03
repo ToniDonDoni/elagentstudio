@@ -35,7 +35,7 @@ read `SKILL.md`, read `SKILL-IMPLEMENTER.md`, walk the chain.
 
 1. Pick a clean working directory (e.g. `/work/my-app`).
 2. Make sure the broker MCP and reviewer MCP are reachable
-   (`mcp_sddtdd_broker_*`, `mcp_sddtdd_review_review`).
+   (`mcp_sddtdd_*`).
 3. Make sure the skill is preloaded. The skill is at
    `skills/spec-driven-tdd/`. If you are running inside an installed
    agent, the skill is usually preloaded by the harness. If you are
@@ -72,7 +72,7 @@ Be specific. The implementer will not invent requirements.>
 ## Process — non-negotiable
 
 1. Run the entire pipeline through the broker MCP
-   (`mcp_sddtdd_broker_*`). **Do not** walk the chain yourself; the
+   (`mcp_sddtdd_getNextTask`). **Do not** walk the chain yourself; the
    broker decides the next task.
 2. The first call is `getNextTask` with `user_input` set to the full
    task description above.
@@ -86,7 +86,7 @@ Be specific. The implementer will not invent requirements.>
    work entry for capture tasks), then commit, then call
    `getNextTask` for the next task.
 5. The independent reviewer verdict comes from
-   `mcp_sddtdd_review_review` (use `review_type` from the broker
+   `mcp_sddtdd_review` (use `review_type` from the broker
    task).
 6. When `getNextTask` returns `complete`, write a short final report
    listing every commit, every JID, and the contents of

@@ -152,7 +152,7 @@ process-gate verification; its decision policy lives in
 `SKILL-ORCHESTRATOR.md`; the broker does.
 
 There are two independent verifications in broker mode. The
-independent reviewer (`mcp_sddtdd_review_review`) checks artifact
+independent reviewer (`mcp_sddtdd_review`) checks artifact
 correctness. The broker checks process state. These are separate
 verification chains, with separate verdict JIDs, and they do not
 replace each other. The detailed broker checks are defined in
@@ -185,7 +185,7 @@ the outstanding `task_id` in `unverified_task_ids`.
 
 ### Independent reviewer
 
-Invoked through `mcp_sddtdd_review_review`. Reviews the committed artifact
+Invoked through `mcp_sddtdd_review`. Reviews the committed artifact
 against its already-reviewed predecessor inputs and returns a structured result
 whose `verdict` field is the authoritative review outcome: `PASS`, `FAIL`, or
 `NEEDS_CLARIFICATION`. Callers MUST decide review success from `verdict`, not

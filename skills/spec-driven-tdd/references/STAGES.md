@@ -243,7 +243,7 @@ RED evidence MUST identify:
 
 ### Step 4.4 — Review test and RED
 
-Call `mcp_sddtdd_review_review` to request an independent review of the
+Call `mcp_sddtdd_review` to request an independent review of the
 test artifact, the referenced requirements, the task acceptance criteria,
 and the RED evidence. The reviewer checks whether the tests prove the
 required behavior, whether RED failed for the expected missing-behavior
@@ -275,7 +275,7 @@ state.
 
 ### Step 4.7 — Review implementation and GREEN
 
-Call `mcp_sddtdd_review_review` to request an independent review of the
+Call `mcp_sddtdd_review` to request an independent review of the
 implementation artifact, the reviewed requirements, architecture, task,
 tests, and GREEN evidence. The reviewer checks requirement compliance,
 architecture compliance, passing evidence, correctness, minimality,
@@ -339,7 +339,7 @@ to the exact final committed state.
 
 Every reviewable artifact and every evidence file named in a review
 request MUST be committed before review. The working tree MUST be clean
-before `mcp_sddtdd_review_review` is called. The reviewer inspects only
+before `mcp_sddtdd_review` is called. The reviewer inspects only
 files loaded by the MCP server from its captured committed `HEAD`, never
 mutable working-tree content.
 

@@ -51,7 +51,7 @@ uv run python server_e2e_test.py
 
 ```yaml
 mcp_servers:
-  sddtdd_review:
+  sddtdd:
     command: uv
     args:
     - --directory
