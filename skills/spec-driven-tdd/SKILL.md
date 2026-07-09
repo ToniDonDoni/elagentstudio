@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "OpenCode-native Spec-Driven TDD with three roles: orchestrator, implementer, reviewer."
-version: 5.1.0-opencode-async
+version: 5.2.0-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -25,6 +25,29 @@ Do not create extra role categories such as spec author, architecture author, ta
 - SKILL-IMPLEMENTER.md: implementer role for all artifact creation
 - SKILL-REVIEWER.md: reviewer role for all reviews
 
+## Minimal load sets
+
+Orchestrator loads:
+
+- SKILL.md
+- SKILL-ORCHESTRATOR.md
+
+Implementer loads:
+
+- SKILL.md
+- SKILL-IMPLEMENTER.md
+- ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md
+- references/JOURNAL.md
+
+Reviewer loads:
+
+- SKILL.md
+- SKILL-REVIEWER.md
+- ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md
+- references/JOURNAL.md
+
+Other reference files are optional and task-specific. Load them only when the task needs them, or when the orchestrator explicitly includes them in the subagent prompt. Do not make new reference files mandatory just because they exist.
+
 ## Required flow
 
 1. The orchestrator captures user input into `.sddtdd_skill/SPEC-DRAFT.md`.
@@ -43,7 +66,7 @@ Do not create extra role categories such as spec author, architecture author, ta
 - The orchestrator must not create reviewed artifacts itself.
 - The orchestrator must not review artifacts itself.
 - The orchestrator must not ask the user to review artifacts unless the user explicitly says they are acting as reviewer.
-- Every subagent prompt must name the skill, the role, the role file, the task kind, allowed write scope, and required output.
+- Every subagent prompt must name the skill, the role, the role file, the task kind, allowed write scope, required output, and required references.
 - Planning artifacts are created by synchronous implementer subagents.
 - Planning artifacts are reviewed by synchronous reviewer subagents.
 - Code implementation uses background implementer tasks.
