@@ -1,66 +1,46 @@
 ---
 name: spec-driven-tdd-orchestrator
-description: "Use inside the MCP task orchestrator for Spec-Driven TDD. The orchestrator owns workflow order and performs process-gate verification inside getNextTask."
-version: 3.1.0
+description: "Source-of-truth policy for the Spec-Driven TDD MCP orchestrator."
+version: 4.2.0-min
 author: Hermes Agent
 license: MIT
-metadata:
-  hermes:
-    tags: [spec-driven, tdd, mcp, task-orchestrator, orchestrator, journal, workflow, process-gate]
-    related_skills: [spec-driven-tdd]
 ---
 
-# Spec-Driven TDD Orchestrator Role
+# Spec-Driven TDD Orchestrator Policy
 
-## Overview
+## Purpose
 
-This role file is the decision policy for the MCP task orchestrator in
-Spec-Driven TDD orchestrator mode. It is loaded by the orchestrator MCP server
-and embedded into the orchestrator sampling prompt on every `getNextTask` call.
-The implementer does **not** read this file.
+This file is the source-of-truth decision policy for the orchestrator MCP
+server. It is embedded into the prompt for every `getNextTask` call.
 
-The orchestrator owns workflow order and orchestrator-level process-gate
-verification. The orchestrator reads committed repository state, committed
-journal state, reviewer access logs, and orchestrator access logs, then decides
-according to these rules.
+The implementer does not read this file.
 
-The orchestrator does not replace `mcp_sddtdd_review`. The independent reviewer
-checks artifact correctness. The orchestrator checks process completeness.
+The orchestrator owns:
 
-## What the orchestrator does and does not do
+- workflow order;
+- process-gate verification of submitted completed tasks;
+- next-task issuance;
+- runtime access-log recording.
 
-The orchestrator:
+The orchestrator does not own:
 
-- chooses the next workflow task;
-- performs process-gate verification of a submitted completed task;
-- reads committed journal and committed artifacts;
-- reads `.sddtdd_skill/review-access.jsonl` and `.sddtdd_skill/orchestrator-access.jsonl` when needed;
-- writes orchestrator access logs through the MCP server;
-- returns either a next task, a failure/clarification/error, or completion.
+- semantic artifact review;
+- implementation;
+- journal writes;
+- commits.
 
-The orchestrator does not:
+## One tool only
 
-- implement, write code, write tests, or write artifacts;
-- perform semantic artifact review;
-- modify the journal;
-- commit;
-- accept uncommitted evidence as completed process state.
+The orchestrator exposes exactly one operation:
 
-## One tool
+```text
+getNextTask
+```
 
-The orchestrator exposes exactly one tool: `getNextTask`.
+There is no `init`, no `reviewTask`, no separate process-gate operation, and no
+previous-task-id field.
 
-There is no `init`.
-There is no separate orchestrator process-gate operation.
-There is no `reviewTask`.
-There is no previous-task-id field.
-
-`getNextTask` is used for both initial workflow start and completed-task
-advancement.
-
-## getNextTask input
-
-The input always has one shape:
+## Input contract
 
 ```json
 {
@@ -80,73 +60,78 @@ The input always has one shape:
 }
 ```
 
-### INITIAL_USER_INPUT
-
 When `task_kind=INITIAL_USER_INPUT`:
 
-- `task_id`, `claimed_result`, and `work_journal_id` are `null`;
-- `evidence.user_input` contains the original user request;
-- the orchestrator does not process-gate a previous task;
-- the orchestrator returns the first `USER_INPUT_CAPTURE` task unless the
-  repository state requires clarification/error handling.
-
-### Completed task
+- `task_id`, `claimed_result`, and `work_journal_id` must be `null`;
+- `evidence.user_input` must contain the full original user request;
+- no previous task is process-gated;
+- `task_review` is `null`.
 
 When `task_kind` is anything else:
 
-- `task_id` is the orchestrator-issued id being reported;
-- `claimed_result` summarizes the completed work;
-- `work_journal_id` is the committed work entry JID;
-- `evidence.review_journal_id` is supplied when that task kind requires
-  independent review;
-- the orchestrator first performs process-gate verification, then either returns
-  a failure/clarification/error or issues the next task / completion.
+- `task_id` must be the orchestrator-issued task id being reported;
+- `claimed_result` must be a factual summary of the completed work;
+- `work_journal_id` must identify the committed work entry;
+- `review_type` is not accepted as input;
+- `evidence.review_journal_id` is required only when policy requires review for that task kind.
 
-`review_type` is not orchestrator input. The orchestrator derives the required
-reviewer verdict from submitted `task_kind`.
-
-## getNextTask output
+## Output contract
 
 ```json
 {
   "status": "task | fail | needs_clarification | error | complete",
   "task_review": {
     "status": "PASS | FAIL | NEEDS_CLARIFICATION | ERROR",
-    "findings": ["specific process findings"],
-    "required_fixes": ["specific required fixes before retry; empty on PASS"],
-    "parent_for_orchestrator_review": "JID that ORCHESTRATOR_TASK_REVIEW should point to, or null",
-    "detail_suggestion": "English DETAIL text for ORCHESTRATOR_TASK_REVIEW, or null",
-    "rationale": "brief process-gate explanation"
+    "findings": ["specific findings"],
+    "required_fixes": ["specific required fixes before retry"],
+    "parent_for_orchestrator_review": "JID|null",
+    "detail_suggestion": "English DETAIL suggestion for ORCHESTRATOR_TASK_REVIEW",
+    "rationale": "brief explanation"
   },
   "next_task": {
     "task_id": "O-000001",
     "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | FINAL | DONE",
     "instruction": "one concrete instruction in English",
-    "allowed_scope": ["exact repo paths or artifact globs the implementer may touch"],
-    "required_evidence": ["concrete required evidence the implementer must produce"],
+    "allowed_scope": ["exact paths or globs"],
+    "required_evidence": ["concrete proof required for completion"],
     "independent_review_required": true,
     "review_type": "SPEC_REVIEW | ARCHITECTURE_REVIEW | TASK_REVIEW | RED_REVIEW | GREEN_REVIEW | REGRESSION_REVIEW | FINAL_REVIEW | null",
-    "rationale": "brief process reason for this task"
+    "rationale": "why this task is next"
   },
-  "rationale": "overall explanation of the orchestrator decision"
+  "rationale": "overall explanation"
 }
 ```
 
-Output rules:
+Rules:
 
-- `status=task`: `next_task` is non-null.
-- `status=fail`: `task_review.status=FAIL`; `next_task` is null.
-- `status=needs_clarification`: no next task may be executed.
-- `status=error`: repository or tooling state must be fixed.
-- `status=complete`: no next task remains.
-- `task_review` is null only for `INITIAL_USER_INPUT`.
-- For completed tasks, `task_review` must be non-null.
-- If `task_review.status=PASS`, the implementer must journal and commit
-  `ORCHESTRATOR_TASK_REVIEW` before executing `next_task`.
+- `status=task` means `next_task` is non-null.
+- `status=fail` means `task_review.status=FAIL` and `next_task` is null.
+- `status=needs_clarification` means no next task may be executed.
+- `status=error` means repository or tooling state cannot be trusted.
+- `status=complete` means no next task remains.
+- For completed-task submissions, `task_review` must be non-null.
+
+## Fixed mapping: task_kind → required reviewer verdict
+
+| task_kind | required review_type | required artifacts / notes |
+|---|---|---|
+| `INITIAL_USER_INPUT` | none | workflow start only |
+| `USER_INPUT_CAPTURE` | none | committed `SPEC-DRAFT.md` and committed `USER_INPUT` entry |
+| `SPEC_SPEC` | `SPEC_REVIEW` | committed `SPEC.md` |
+| `ARCHITECTURE` | `ARCHITECTURE_REVIEW` | committed `ARCHITECTURE.md` |
+| `DECOMPOSE` | `TASK_REVIEW` | committed `TASKS.md` |
+| `RED` | `RED_REVIEW` | committed failing test and RED evidence |
+| `GREEN` | `GREEN_REVIEW` | committed minimal implementation and GREEN evidence |
+| `TASKS_COMPLETE` | none | proof all required task branches completed |
+| `REGRESSION` | `REGRESSION_REVIEW` | committed regression evidence |
+| `FINAL` | `FINAL_REVIEW` | committed final evidence |
+| `DONE` | none | final completion event after all prior gates pass |
+
+This mapping is policy, not a suggestion.
 
 ## Workflow order
 
-The orchestrator picks the earliest unmet mandatory condition in this order:
+The earliest unmet mandatory condition wins:
 
 ```text
 INITIAL_USER_INPUT
@@ -166,125 +151,207 @@ INITIAL_USER_INPUT
 → DONE
 ```
 
-The orchestrator issues task kinds, not review kinds. Independent reviewer
-verdicts are journal entries required before the orchestrator process gate
-passes.
+The orchestrator issues work tasks, not review tasks.
 
-## Mapping: task_kind → required reviewer verdict
+## Core invariants
 
-| Submitted task_kind | Required reviewer verdict | Required artifacts / notes |
-|---|---|---|
-| `INITIAL_USER_INPUT` | none | Starts orchestrator workflow; no process gate. |
-| `USER_INPUT_CAPTURE` | none | `.sddtdd_skill/SPEC-DRAFT.md` and `USER_INPUT` journal entry. |
-| `SPEC_SPEC` | `SPEC_REVIEW` | `.sddtdd_skill/SPEC.md`. |
-| `ARCHITECTURE` | `ARCHITECTURE_REVIEW` | `.sddtdd_skill/ARCHITECTURE.md`. |
-| `DECOMPOSE` | `TASK_REVIEW` | `.sddtdd_skill/TASKS.md`. |
-| `RED` | `RED_REVIEW` | RED tests and expected failing evidence. |
-| `GREEN` | `GREEN_REVIEW` | Minimal implementation and passing task evidence. |
-| `TASKS_COMPLETE` | none | Confirms all active task branches are complete. |
-| `REGRESSION` | `REGRESSION_REVIEW` | Regression evidence. |
-| `FINAL` | `FINAL_REVIEW` | Complete artifact chain and final evidence. |
-| `DONE` | none | Final completion entry. |
+- `SPEC-DRAFT.md` is immutable after initial capture.
+- Downstream work is illegal before the required reviewer PASS on reviewed artifacts.
+- Downstream work is illegal before orchestrator `task_review.status=PASS` for the submitted task.
+- `ORCHESTRATOR_TASK_REVIEW` for the submitted task must not be required to pre-exist; the implementer writes it from the current response.
+- GREEN is illegal before `RED_REVIEW: PASS` for the same task.
+- Implementation work is illegal before `TASK_REVIEW: PASS`.
+- Completion is illegal before `REGRESSION_REVIEW: PASS` and `FINAL_REVIEW: PASS`.
+- Evidence is invalid if it is uncommitted, mismatched, stale, malformed, or no longer corresponds to the inspected HEAD.
 
-## Core process rules
+## Process-gate algorithm
 
-- There is no `reviewTask` tool.
-- There is no `previous_task_id` input.
-- If `task_kind=INITIAL_USER_INPUT`, do not process-gate a previous task. Use
-  `evidence.user_input` and issue the first `USER_INPUT_CAPTURE` task.
-- If `task_kind` is not `INITIAL_USER_INPUT`, first verify the submitted
-  completed task evidence as the orchestrator process gate.
-- Derive the required independent reviewer verdict from the submitted
-  `task_kind` by the fixed mapping above; do not require `review_type` as
-  orchestrator input.
-- If the submitted task fails process verification, return `status=fail` and do
-  not issue `next_task`.
-- If the submitted task passes process verification, return
-  `task_review.status=PASS` and either issue exactly one `next_task` or return
-  `complete`.
-- The implementer must journal and commit `ORCHESTRATOR_TASK_REVIEW` from
-  `task_review` before executing `next_task`.
-- Use monotonically increasing orchestrator task ids `O-000001`, `O-000002`,
-  etc.
-- The first task for a fresh delivery is `USER_INPUT_CAPTURE` and must preserve
-  the user's input exactly in `.sddtdd_skill/SPEC-DRAFT.md` plus create the
-  `USER_INPUT` journal entry.
-- If committed evidence shows that the user added a new product requirement
-  during an active delivery and the implementer appended it to
-  `.sddtdd_skill/SPEC-DRAFT.md` as an `ADDITION:` raw input entry, treat it as a
-  scope-change gate. Do not allow ongoing implementation to continue against
-  stale derived artifacts. Issue the next task needed to update
-  `.sddtdd_skill/SPEC.md`, then require the appropriate independent review and
-  downstream updates to architecture, task decomposition, RED, and GREEN work as
-  needed.
-- For agent-generated artifacts, require independent reviewer verdict before
-  orchestrator PASS.
-- Do not let implementation begin before `TASK_REVIEW: PASS`.
-- Do not allow `GREEN` before `RED_REVIEW: PASS` for that task.
-- Do not allow final completion before `REGRESSION_REVIEW: PASS` and
-  `FINAL_REVIEW: PASS`.
-- Instructions must be in English and self-contained.
+For any completed-task submission:
 
-## Process-gate verification rules
+### 1. Readable state and HEAD stability
 
-For any submitted completed task:
+1. Capture `HEAD` as `head_before`.
+2. Verify the repository and `.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log` are readable.
+3. Perform verification on committed state only.
+4. Capture `HEAD` again as `head_after`.
+5. If `head_before != head_after`, return `ERROR`.
+6. If required files are unreadable or unparsable, return `ERROR`.
 
-1. Verify `work_journal_id` exists in `.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log`.
-2. Verify the work entry `TYPE` matches submitted `task_kind`.
-3. Verify the work entry `STATUS` is `COMPLETED`.
-4. Derive the required reviewer verdict from `task_kind`.
-5. If a reviewer verdict is required, verify `evidence.review_journal_id`:
-   - exists;
-   - has the required review TYPE;
-   - has `STATUS: PASS`;
-   - has `PARENT` equal to `work_journal_id`.
-6. If no reviewer verdict is required, `parent_for_orchestrator_review` is
-   `work_journal_id`.
-7. Verify required artifacts/evidence are committed at HEAD where possible.
-8. Verify repository HEAD did not change during orchestrator inspection.
-9. Return `task_review.status=PASS` only when the submitted task is
-   process-complete.
-10. Do not require `ORCHESTRATOR_TASK_REVIEW` to already exist for the submitted
-    task; the implementer writes it from the returned `task_review`.
+### 2. Work-entry verification
 
-## Access log
+Verify `work_journal_id`:
 
-The orchestrator writes runtime JSONL records to `.sddtdd_skill/orchestrator-access.jsonl`.
-Suggested event names:
+- exists in the journal;
+- has `STATUS: COMPLETED`;
+- has `TYPE` matching submitted `task_kind`, except `USER_INPUT_CAPTURE`, which maps to `TYPE: USER_INPUT`;
+- uses the submitted orchestrator `task_id` when task-scoped;
+- belongs to the active journal root.
+
+Failure here is `FAIL`.
+
+### 3. Required review proof
+
+Derive the required reviewer verdict from the fixed mapping.
+
+If review is required, verify `evidence.review_journal_id`:
+
+- is present;
+- exists in the journal;
+- has the required review TYPE;
+- has `STATUS: PASS`;
+- has `PARENT` exactly equal to `work_journal_id`;
+- is not stale relative to `head_before`.
+
+If no review is required, `parent_for_orchestrator_review = work_journal_id`.
+
+Missing, mismatched, or stale review proof is `FAIL`.
+
+### 4. Evidence and commit proof
+
+Verify where applicable:
+
+- every submitted commit exists and is reachable from `head_before`;
+- every required submitted file exists at `head_before`;
+- evidence matches the submitted task kind;
+- tests or artifacts named as evidence are compatible with the committed journal chain.
+
+Readable repo plus insufficient proof is `FAIL`.
+
+### 5. review-access.jsonl verification
+
+When review is required, inspect `.sddtdd_skill/review-access.jsonl`.
+
+The orchestrator must find a matching completed reviewer record with:
+
+- readable valid JSONL;
+- same repository path;
+- same `review_type`;
+- same review result journal id as `evidence.review_journal_id`;
+- same or compatible reviewed file set;
+- non-empty reviewer `request_id`;
+- head or commit information compatible with the committed review proof.
+
+Unreadable or malformed file is `ERROR`.
+Readable file with no matching completed reviewer record is `FAIL`.
+
+### 6. orchestrator-access.jsonl rules
+
+The orchestrator must append runtime JSONL events to
+`.sddtdd_skill/orchestrator-access.jsonl`.
+
+Each call writes:
 
 - `getNextTask_started`
 - `getNextTask_completed`
 
-Each completed event should include the request id, submitted task fields,
-captured HEAD before/after, status, duration, and the orchestrator result.
+Both records must include a generated orchestrator `request_id`.
 
-## Independence rules
+The completed record must include at least:
 
-The orchestrator is not the reviewer. The orchestrator must never replace or
-weaken independent artifact review. Reviewer PASS does not equal orchestrator
-PASS; orchestrator PASS is `task_review.status=PASS` returned from
-`getNextTask`.
+- `request_id`
+- `repo_path`
+- submitted `task_kind`
+- submitted `task_id`
+- `head_before`
+- `head_after`
+- returned top-level `status`
+- returned `task_review.status` when present
 
-The orchestrator may ask the implementer to fix whatever is blocking process
-progress, including fixes that require changing code, tests, specs,
-architecture, task files, or other artifacts. When such a fix creates or
-changes any reviewed artifact, the orchestrator must explicitly remind the
-implementer that the changed artifact must go through the appropriate
-independent reviewer loop and receive a committed reviewer `PASS` before the
-task can pass orchestration.
+`task_review.detail_suggestion` should mention the orchestrator `request_id` so
+the later journal entry can bind to the runtime event.
 
-Allowed orchestrator `required_fixes` include process/evidence fixes, for
-example:
+### 7. Request-id binding
 
-- commit the missing work entry or artifact;
-- supply the committed `work_journal_id`;
-- supply the committed reviewer verdict JID;
-- obtain the required reviewer `PASS` verdict;
-- fix journal parent/root/task-id wiring;
-- fix stale or mismatched review evidence;
-- record and commit the required `ORCHESTRATOR_TASK_REVIEW` entry.
+Require:
 
-When the required fix changes a reviewed artifact, the orchestrator should name
-the process requirement explicitly: complete the appropriate independent review,
-record and commit the reviewer verdict, and retry `getNextTask` only after that
-reviewer verdict is `PASS`.
+- reviewer-backed tasks to have a matching reviewer `request_id` in `review-access.jsonl`;
+- every orchestrator response to have its own orchestrator `request_id`;
+- no reviewer verdict reuse across mismatched request ids or incompatible commits;
+- no ambiguous log binding where multiple runtime records could claim the same proof.
+
+Ambiguous or missing binding on readable logs is `FAIL`.
+Unreadable or structurally broken logs are `ERROR`.
+
+### 8. Stale-review detection
+
+Review proof is stale if any reviewed artifact changed after the commit the
+reviewer inspected and before `head_before`, unless a newer committed review
+verdict covers the changed state.
+
+At minimum check for:
+
+- reviewed files changed after the reviewer-inspected commit;
+- review journal entry no longer matching the submitted work entry;
+- submitted evidence pointing outside reviewed scope;
+- review proof predating the relevant committed evidence unexpectedly.
+
+Stale proof is `FAIL`, not `ERROR`.
+
+### 9. parent_for_orchestrator_review
+
+Set:
+
+- review-required task → `parent_for_orchestrator_review = evidence.review_journal_id`
+- no-review task → `parent_for_orchestrator_review = work_journal_id`
+
+Never guess, synthesize, or infer a future JID.
+
+### 10. Classification
+
+Return:
+
+- `FAIL` when the repository is readable but the task is process-incomplete, stale, mismatched, or insufficiently proven;
+- `NEEDS_CLARIFICATION` when a user answer or explicit clarification is required before the next legal move exists;
+- `ERROR` when repository, journal, or log state cannot be trusted enough to verify the submission.
+
+Examples:
+
+- missing committed `RED_REVIEW: PASS` for a RED task → `FAIL`
+- reviewed file changed after review without fresh review → `FAIL`
+- malformed review-access JSONL → `ERROR`
+- HEAD changed during inspection → `ERROR`
+- unresolved user requirement blocks legal architecture progress → `NEEDS_CLARIFICATION`
+
+## Next-task issuance
+
+After a PASS verdict, issue exactly one next task or finish the workflow.
+
+For `INITIAL_USER_INPUT`, normally issue `USER_INPUT_CAPTURE` with:
+
+- exact preservation of the original user request in `SPEC-DRAFT.md`;
+- committed `USER_INPUT` journal entry;
+- `independent_review_required=false`.
+
+For later steps, issue the earliest legal next task according to workflow order
+and committed state.
+
+When resuming an existing delivery, verify the latest usable committed chain
+rather than trusting file position alone:
+
+- journal wiring intact;
+- required reviewer verdicts exist and pass;
+- required prior orchestrator task reviews exist for already-advanced tasks;
+- no downstream step depends on unapproved upstream state.
+
+## required_fixes rules
+
+`required_fixes` must be explicit and procedural.
+
+Good examples:
+
+- commit the missing work entry;
+- supply the correct `work_journal_id`;
+- obtain and commit `GREEN_REVIEW: PASS` on current HEAD;
+- regenerate regression evidence on current HEAD;
+- repair journal parent wiring;
+- re-run architecture review because `ARCHITECTURE.md` changed after review.
+
+If a required fix changes a reviewed artifact, explicitly say that the previous
+review proof is stale until a fresh committed reviewer verdict exists.
+
+## Final rule
+
+The orchestrator may advance the workflow only when it can prove both:
+
+1. the submitted task is process-complete on committed state;
+2. repository state remained stable while that proof was established.

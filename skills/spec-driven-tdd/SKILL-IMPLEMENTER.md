@@ -1,63 +1,43 @@
 ---
 name: spec-driven-tdd-implementer
-description: "Use when implementing Spec-Driven TDD. In orchestrator mode, the implementer uses one orchestrator operation, getNextTask, and the independent reviewer tool."
-version: 3.0.0
+description: "Implementer role for Spec-Driven TDD."
+version: 4.2.0-min
 author: Hermes Agent
 license: MIT
-metadata:
-  hermes:
-    tags: [spec-driven, tdd, mcp, task-orchestrator, implementer]
-    related_skills: [spec-driven-tdd]
 ---
 
 # Spec-Driven TDD Implementer Role
 
-## Overview
+## Load set
 
-The implementer performs the work: creates artifacts, runs tests, requests
-independent reviews, updates the journal, commits, and reports task completion.
-
-The pipeline has two operating modes:
-
-- **Standalone** — read `references/STAGES.md` and walk the chain directly.
-- **Orchestrator** — do not walk the chain. Ask the orchestrator for one task at a time.
-
-## Files this implementer must load
+Always load:
 
 - `SKILL.md`
 - `SKILL-IMPLEMENTER.md`
 - `references/JOURNAL.md`
 
-In standalone mode also read `references/STAGES.md`.
+In standalone mode also load `references/STAGES.md`.
+In orchestrator mode do not load `SKILL-ORCHESTRATOR.md` or `references/STAGES.md`.
 
-In orchestrator mode do **not** read `SKILL-ORCHESTRATOR.md` or
-`references/STAGES.md`; those are orchestrator policy.
+## Modes
 
-## Standalone mode
+### Standalone
 
-Follow `references/STAGES.md` using `references/JOURNAL.md`.
+Walk the pipeline directly using `references/STAGES.md`.
 
-## Orchestrator mode
+### Orchestrator
 
-The implementer knows exactly one orchestrator operation:
+Use exactly:
 
 ```text
 mcp_sddtdd_getNextTask
-```
-
-There is no separate orchestrator process-gate operation.
-There is no previous-task-id field.
-There is no orchestrator `init`.
-
-The independent reviewer remains:
-
-```text
 mcp_sddtdd_review
 ```
 
-## Orchestrator input shape
+There is no separate init call, no separate process-gate tool, and no
+previous-task-id field.
 
-Every orchestrator call uses this same shape:
+## Orchestrator request shape
 
 ```json
 {
@@ -77,177 +57,56 @@ Every orchestrator call uses this same shape:
 }
 ```
 
-First call:
+Start with `task_kind=INITIAL_USER_INPUT` and the full original user request in
+`evidence.user_input`.
 
-```json
-{
-  "repo_path": "/path/to/repo",
-  "task_kind": "INITIAL_USER_INPUT",
-  "task_id": null,
-  "claimed_result": null,
-  "work_journal_id": null,
-  "evidence": {
-    "user_input": "<full original user request>"
-  }
-}
-```
+For completed tasks, send the orchestrator-issued `task_id`, the committed work
+JID, a factual result summary, and the committed evidence.
 
-Completed task call:
-
-```json
-{
-  "repo_path": "/path/to/repo",
-  "task_kind": "<completed task kind>",
-  "task_id": "<orchestrator task id>",
-  "claimed_result": "<summary>",
-  "work_journal_id": "<work JID>",
-  "evidence": {
-    "review_journal_id": "<review JID when required>",
-    "commits": ["..."],
-    "journal_ids": ["..."],
-    "files": ["..."],
-    "test_commands": ["..."]
-  }
-}
-```
-
-Do not send `review_type` to the orchestrator. The orchestrator derives required review
-type from `task_kind`.
-
-## Orchestrator output shape
-
-The orchestrator returns:
-
-```json
-{
-  "status": "task | fail | needs_clarification | error | complete",
-  "task_review": {
-    "status": "PASS | FAIL | NEEDS_CLARIFICATION | ERROR",
-    "findings": ["..."],
-    "required_fixes": ["..."],
-    "parent_for_orchestrator_review": "JID|null",
-    "detail_suggestion": "string|null",
-    "rationale": "..."
-  },
-  "next_task": {
-    "task_id": "O-000001",
-    "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | FINAL | DONE",
-    "instruction": "...",
-    "allowed_scope": ["..."],
-    "required_evidence": ["..."],
-    "independent_review_required": true,
-    "review_type": "SPEC_REVIEW | ARCHITECTURE_REVIEW | TASK_REVIEW | RED_REVIEW | GREEN_REVIEW | REGRESSION_REVIEW | FINAL_REVIEW | null",
-    "rationale": "..."
-  },
-  "rationale": "..."
-}
-```
-
-## Mid-work user product requirement additions
-
-If the user provides a new product requirement during an active delivery, do not
-overwrite `.sddtdd_skill/SPEC-DRAFT.md`, `.sddtdd_skill/SPEC.md`,
-`.sddtdd_skill/ARCHITECTURE.md`, or `.sddtdd_skill/TASKS.md`.
-
-Treat the message as new raw user input:
-
-1. Stop the current implementation step unless the user's message is unrelated
-   to product behavior.
-2. Append the user's exact message to `.sddtdd_skill/SPEC-DRAFT.md` as a new
-   `ADDITION:` raw input entry. Preserve wording and language exactly.
-3. Add a journal entry recording the additional user input.
-4. Commit the updated `.sddtdd_skill/SPEC-DRAFT.md` and journal entry.
-5. Call `mcp_sddtdd_getNextTask` and report that the user added a new product
-   requirement, that it was appended to `.sddtdd_skill/SPEC-DRAFT.md`, and that
-   the orchestrator must plan the required downstream updates.
-6. Do not directly edit `.sddtdd_skill/SPEC.md`, `ARCHITECTURE.md`,
-   `TASKS.md`, tests, or implementation until the orchestrator issues the next
-   task.
-
-The expected downstream workflow is to update and review the specification,
-then update and review architecture and task decomposition as needed, then run
-any required RED/GREEN cycles.
+Do not send `review_type` to the orchestrator. It is derived from `task_kind`.
 
 ## Orchestrator loop
 
-1. Load this role file and `references/JOURNAL.md`.
-2. Do the existing-delivery check. If an existing delivery is present and the
-   user request is a new iteration, ask whether to archive, continue, or cancel.
-3. Start by calling `mcp_sddtdd_getNextTask` with
-   `task_kind=INITIAL_USER_INPUT` and `evidence.user_input`.
-4. If the orchestrator returns `status=task`, execute only `next_task`.
-5. For the returned task:
-   1. Follow `instruction` exactly.
-   2. Stay within `allowed_scope`.
-   3. Produce all `required_evidence`.
-   4. Journal the work entry with `STATUS: COMPLETED`.
-   5. Commit the work artifacts and journal entry.
-   6. If `independent_review_required=true`, call `mcp_sddtdd_review` using
-      `next_task.review_type`, journal the reviewer verdict, and commit.
-6. Call `mcp_sddtdd_getNextTask` with the completed task evidence.
-7. Inspect `task_review`.
-   - If `task_review.status=PASS`, append `ORCHESTRATOR_TASK_REVIEW` with
-     `STATUS: PASS`, `TASK_ID` equal to the orchestrator task id, and `PARENT` equal
-     to `task_review.parent_for_orchestrator_review`; use `detail_suggestion` for
-     `DETAIL`. Commit it. Only then may you execute `next_task`.
-   - If `task_review.status=FAIL`, append and commit
-     `ORCHESTRATOR_TASK_REVIEW: FAIL`, fix `required_fixes`, and retry
-     `mcp_sddtdd_getNextTask` with corrected completed-task evidence.
-   - If `NEEDS_CLARIFICATION`, ask for the missing information or produce the
-     missing evidence; do not execute a next task.
-   - If `ERROR`, resolve repository/tooling state; do not execute a next task.
-8. Stop only when `status=complete`.
-
-## What a orchestrator task looks like
-
-```json
-{
-  "task_id": "O-000001",
-  "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | FINAL | DONE",
-  "instruction": "one concrete instruction",
-  "allowed_scope": ["files, paths, or artifacts the task may touch"],
-  "required_evidence": ["concrete evidence the implementer must produce"],
-  "independent_review_required": true,
-  "review_type": "SPEC_REVIEW | ARCHITECTURE_REVIEW | TASK_REVIEW | RED_REVIEW | GREEN_REVIEW | REGRESSION_REVIEW | FINAL_REVIEW | null",
-  "rationale": "why this task is next"
-}
-```
-
-Use `next_task.review_type` only for calling the independent reviewer. Do not
-send it back as orchestrator input.
-
-## Orchestrator task journal chain
-
-For a task requiring independent review:
-
-```text
-work journal entry (STATUS: COMPLETED)
-→ reviewer verdict (STATUS: PASS, PARENT = work)
-→ getNextTask completed-task call
-→ ORCHESTRATOR_TASK_REVIEW (STATUS: PASS, PARENT = task_review.parent_for_orchestrator_review)
-→ next task work entry
-```
-
-For a task not requiring independent review:
-
-```text
-work journal entry (STATUS: COMPLETED)
-→ getNextTask completed-task call
-→ ORCHESTRATOR_TASK_REVIEW (STATUS: PASS, PARENT = work)
-→ next task work entry
-```
+1. Call `mcp_sddtdd_getNextTask` with `INITIAL_USER_INPUT`.
+2. Execute only the returned `next_task`.
+3. Stay within `allowed_scope`.
+4. Produce all `required_evidence`.
+5. Journal the work entry with `STATUS: COMPLETED`.
+6. Commit artifacts and journal entry before using them as evidence.
+7. If the task requires independent review:
+   - call `mcp_sddtdd_review` with `next_task.review_type`;
+   - journal the verdict;
+   - commit the review entry before continuing.
+8. Call `mcp_sddtdd_getNextTask` with completed-task evidence.
+9. Inspect `task_review`.
+10. If `task_review.status=PASS`:
+    - append `ORCHESTRATOR_TASK_REVIEW: PASS`;
+    - set `TASK_ID` to the orchestrator task id;
+    - set `PARENT` to `task_review.parent_for_orchestrator_review`;
+    - use `detail_suggestion` as the DETAIL base;
+    - commit it;
+    - only then execute the new `next_task`.
+11. If `task_review.status=FAIL`:
+    - append and commit `ORCHESTRATOR_TASK_REVIEW: FAIL`;
+    - fix the listed process or evidence gaps;
+    - if a fix changes a reviewed artifact, obtain and commit a fresh reviewer verdict;
+    - retry `getNextTask`.
+12. If `task_review.status=NEEDS_CLARIFICATION`:
+    - append and commit `ORCHESTRATOR_TASK_REVIEW: NEEDS_CLARIFICATION`;
+    - ask the user or produce the missing proof;
+    - do not execute a next task.
+13. If `task_review.status=ERROR`:
+    - append and commit `ORCHESTRATOR_TASK_REVIEW: ERROR`;
+    - resolve repository, tooling, or evidence-state problems;
+    - do not execute a next task.
+14. Stop only on `status=complete`.
 
 ## Hard rules
 
-- Do not execute `next_task` from a completed-task orchestrator response until
-  `task_review.status=PASS` has been journaled as `ORCHESTRATOR_TASK_REVIEW` and
-  committed.
-- Reviewer PASS is not orchestrator PASS.
-- Orchestrator PASS is `task_review.status=PASS` from `mcp_sddtdd_getNextTask`.
-- Never call a removed orchestrator operation.
-- Never send `review_type` as orchestrator input.
-- Do not read `SKILL-ORCHESTRATOR.md` in orchestrator mode.
-- Do not move to GREEN before RED_REVIEW PASS and orchestrator task_review PASS.
-- Do not depend on uncommitted artifacts or uncommitted journal entries.
-- Every artifact and journal entry must be committed before it is used as
-  evidence.
+- Never execute a task the orchestrator did not issue.
+- Never execute `next_task` from a completed-task response before committing the matching `ORCHESTRATOR_TASK_REVIEW`.
+- Reviewer `PASS` is not orchestrator `PASS`.
+- Do not depend on uncommitted artifacts, uncommitted journal entries, or mutable working-tree state as evidence.
+- Do not move to GREEN before `RED_REVIEW: PASS` and orchestrator PASS for that RED task.
+- Do not treat `FAIL`, `NEEDS_CLARIFICATION`, or `ERROR` as approval.
+- If a correction changes a reviewed artifact, prior review proof is stale until a fresh verdict is committed.
