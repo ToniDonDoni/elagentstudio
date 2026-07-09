@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-reviewer
 description: "OpenCode reviewer role for all Spec-Driven TDD artifact review."
-version: 5.2.0-opencode-async
+version: 5.3.0-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -43,20 +43,30 @@ Return exactly one verdict:
 ## General rules
 
 - Inspect only the requested artifact or implementation result.
+- Review committed artifacts and committed evidence only.
+- Do not treat uncommitted working-tree state as evidence.
 - Do not author fixes.
 - Do not merge.
 - Do not advance the workflow.
 - Write the required review report.
-- Include inspected files, evidence, findings, and required fixes.
+- Include inspected files, commits, evidence, findings, and required fixes.
+
+## Evidence rules
+
+Before reviewing, verify or require proof that the relevant worktree has no pending changes.
+
+Uncommitted artifacts, uncommitted journal entries, and mutable working-tree state are not valid evidence.
+
+If the review input points to pending changes, return BLOCKED and state that the implementer must commit the completed artifacts, journal entries, and evidence first.
 
 ## Review guidance
 
-For SPEC_REVIEW, compare SPEC.md against SPEC-DRAFT.md and check traceable requirement ids and acceptance criteria.
+For SPEC_REVIEW, compare committed SPEC.md against committed SPEC-DRAFT.md and check traceable requirement ids and acceptance criteria.
 
-For ARCHITECTURE_REVIEW, compare ARCHITECTURE.md against SPEC.md and check that the design covers the requirements and test boundaries.
+For ARCHITECTURE_REVIEW, compare committed ARCHITECTURE.md against committed SPEC.md and check that the design covers the requirements and test boundaries.
 
-For TASKS_REVIEW, compare TASKS.md against SPEC.md and ARCHITECTURE.md and check that tasks are decomposed, testable, and traceable.
+For TASKS_REVIEW, compare committed TASKS.md against committed SPEC.md and ARCHITECTURE.md and check that tasks are decomposed, testable, and traceable.
 
 For IMPLEMENTATION_REVIEW, inspect one implementer result, commits, tests, and evidence. Check that the assigned task is complete and safe to merge.
 
-For MERGE_REVIEW, inspect one merge result, conflicts, resolutions, tests, and final evidence.
+For MERGE_REVIEW, inspect one committed merge result, conflicts, resolutions, tests, and final evidence.
