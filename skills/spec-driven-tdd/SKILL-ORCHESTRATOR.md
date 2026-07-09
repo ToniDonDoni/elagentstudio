@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-orchestrator
 description: "OpenCode orchestrator role for Spec-Driven TDD."
-version: 5.1.0-opencode-async
+version: 5.2.0-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -41,6 +41,8 @@ You are the implementer|reviewer.
 Load exactly these files:
 - SKILL.md
 - SKILL-IMPLEMENTER.md or SKILL-REVIEWER.md
+- ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md
+- references/JOURNAL.md
 Repo: <repo path>
 Worktree: <worktree path>
 Branch: <branch>
@@ -49,6 +51,8 @@ Task id: <task id>
 Allowed write scope: <paths>
 Required output: <paths>
 ```
+
+For task-specific testing modes, add only the specific extra references needed for that task. Do not add optional references to every subagent by default.
 
 ## Planning stages
 
