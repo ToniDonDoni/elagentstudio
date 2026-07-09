@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-implementer
 description: "OpenCode implementer role for all Spec-Driven TDD artifact creation."
-version: 5.2.0-opencode-async
+version: 5.3.0-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -37,19 +37,32 @@ The orchestrator assigns one task kind per invocation:
 - Create only the requested artifact or change.
 - Write the required output path.
 - Append required journal evidence.
-- Commit when the orchestrator asks for committed evidence.
+- Commit completed artifacts, journal entries, and evidence before reporting completion.
+- Leave the relevant worktree clean before reporting completion.
 - Use ASCII-only commit messages.
 - Do not review your own work.
 - Do not ask the user for review.
 - Do not advance the workflow yourself.
 
+## Evidence rules
+
+Uncommitted files are not valid evidence.
+
+Before reporting completion, verify or make true:
+
+```bash
+git status --short
+```
+
+The expected result is empty status for the relevant worktree. If status is not empty, commit the completed artifacts, journal entries, and evidence with an ASCII-only commit message.
+
 ## Planning artifact tasks
 
-For SPEC, ARCHITECTURE, and TASKS, run synchronously. Create the requested artifact from the provided inputs. Report completion to the orchestrator. The orchestrator will launch a reviewer.
+For SPEC, ARCHITECTURE, and TASKS, run synchronously. Create the requested artifact from the provided inputs. Append journal evidence. Commit the artifact and journal entry before reporting completion. The orchestrator will launch a reviewer after clean-status verification.
 
 ## Implementation tasks
 
-For IMPLEMENTATION, usually run as a background task. Work only in the assigned worktree and branch. Implement only the assigned task shard. Write the implementation report with commits, tests, changed files, blockers, and readiness for review.
+For IMPLEMENTATION, usually run as a background task. Work only in the assigned worktree and branch. Implement only the assigned task shard. Write the implementation report with commits, tests, changed files, blockers, and readiness for review. Commit all completed changes and evidence before reporting completion.
 
 ## Merge tasks
 
