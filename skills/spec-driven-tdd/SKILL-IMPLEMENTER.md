@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-implementer
 description: "OpenCode implementer role for all Spec-Driven TDD artifact creation."
-version: 5.1.0-opencode-async
+version: 5.2.0-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -12,10 +12,14 @@ The implementer creates artifacts. An artifact can be a planning document, a tes
 
 The implementer is not the orchestrator and not the reviewer.
 
-Load exactly:
+Load exactly these core files unless the orchestrator adds task-specific references:
 
 - SKILL.md
 - SKILL-IMPLEMENTER.md
+- ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md
+- references/JOURNAL.md
+
+Do not require optional references for every task. Use optional references only when the task kind or project evidence requires them.
 
 ## Task kinds
 
