@@ -1,82 +1,73 @@
 ---
 name: spec-driven-tdd-orchestrator
-description: "OpenCode Agent Orchestrator policy for Spec-Driven TDD."
-version: 5.0.1-opencode-async
+description: "OpenCode orchestrator role for Spec-Driven TDD."
+version: 5.1.0-opencode-async
 author: Hermes Agent
 license: MIT
 ---
 
-# Spec-Driven TDD Orchestrator Policy
+# Spec-Driven TDD Orchestrator Role
 
-## Purpose
+The orchestrator controls the workflow. It does not create reviewed artifacts and it does not review artifacts.
 
-The orchestrator is a control plane. It does not author reviewed artifacts and it does not act as reviewer.
+There are exactly three roles:
 
-It coordinates OpenCode subagents:
+- orchestrator
+- implementer
+- reviewer
 
-- synchronous artifact author subagents for SPEC-DRAFT, SPEC, ARCHITECTURE, and TASKS
-- synchronous reviewer subagents for SPEC_REVIEW, ARCHITECTURE_REVIEW, and TASK_REVIEW
-- background implementer subagents for implementation work
-- background reviewer subagents for completed implementation work
-- synchronous merger subagents for reviewed worktree merges
+The orchestrator must not invent other roles. SPEC author, architecture author, task author, coder, tester, and merger are task kinds assigned to the implementer role.
 
-## Hard prohibition
+## Core loop
 
-The orchestrator must not write SPEC.md, ARCHITECTURE.md, or TASKS.md itself.
+For each artifact that needs review, run this loop:
 
-The orchestrator must not ask the user to review an artifact unless the user explicitly says they are acting as reviewer.
+1. Launch an implementer subagent with the task kind and allowed write scope.
+2. Wait for the implementer to finish.
+3. Launch a separate reviewer subagent for that artifact.
+4. Wait for the reviewer to finish.
+5. Read the reviewer verdict.
+6. If PASS, move to the next stage.
+7. If FAIL or NEEDS_CHANGES, launch an implementer again with the review findings.
+8. Repeat until PASS, BLOCKED, or user stop.
 
-For every reviewed artifact, the orchestrator must run this loop:
-
-1. Launch an author subagent with the exact role and role file.
-2. Wait for the author subagent to finish.
-3. Launch a separate reviewer subagent with the exact role and role file.
-4. Wait for the reviewer subagent to finish.
-5. Read the reviewer result.
-6. If PASS, commit or verify the journal evidence and move forward.
-7. If FAIL or NEEDS_CHANGES, launch an author subagent again with the review findings.
-8. Repeat until PASS or until the user stops the workflow.
-
-## Required prompt header for every subagent
+## Required prompt header
 
 Every subagent prompt must start with:
 
 ```text
 Use the spec-driven-tdd skill.
-You are <role>.
+You are the implementer|reviewer.
 Load exactly these files:
 - SKILL.md
-- <role-file>
+- SKILL-IMPLEMENTER.md or SKILL-REVIEWER.md
 Repo: <repo path>
 Worktree: <worktree path>
 Branch: <branch>
-Task: <task id>
+Task kind: <SPEC|ARCHITECTURE|TASKS|IMPLEMENTATION|MERGE|SPEC_REVIEW|ARCHITECTURE_REVIEW|TASKS_REVIEW|IMPLEMENTATION_REVIEW|MERGE_REVIEW>
+Task id: <task id>
 Allowed write scope: <paths>
 Required output: <paths>
 ```
 
-## Synchronous planning stages
+## Planning stages
 
-SPEC-DRAFT capture, SPEC creation, ARCHITECTURE creation, and TASKS decomposition are synchronous delegated work.
+SPEC, ARCHITECTURE, and TASKS are synchronous implementer tasks. The implementer creates the artifact and journal evidence.
 
-The orchestrator delegates and waits. It may inspect outputs, run shell commands, update status, and decide next steps. It may not replace the author or reviewer.
+SPEC_REVIEW, ARCHITECTURE_REVIEW, and TASKS_REVIEW are synchronous reviewer tasks. The reviewer inspects the artifact and writes a verdict.
 
-## Review stages
+## Code implementation
 
-SPEC_REVIEW, ARCHITECTURE_REVIEW, and TASK_REVIEW are synchronous delegated work.
+After TASKS.md is reviewed, launch code implementation as background implementer tasks. Record every returned task_id or jobId in `.sddtdd_skill/async-tasks.jsonl` immediately.
 
-The reviewer must be a different subagent from the author. The reviewer writes a verdict report and a journal entry. The orchestrator reads the verdict and either advances or sends findings back to a new author subagent.
+Use `task_status` to check progress. Do not infer progress from report files.
 
-## Background implementation stages
+## Code review
 
-Implementation work is launched with OpenCode background tasks. The orchestrator records the returned task_id or jobId in `.sddtdd_skill/async-tasks.jsonl` immediately.
+When a background implementer completes, launch exactly one background reviewer for that implementer result.
 
-Progress must be checked with task_status. Report-file existence is only evidence, not status.
+## Merge
 
-## Background review stages
+Merge is sequential. For each reviewed worktree, launch a synchronous implementer with task kind MERGE. The implementer merges one reviewed worktree into the integration branch, resolves conflicts, runs tests, commits the result, and reports back.
 
-When an implementer background task completes, the orchestrator launches a reviewer background task for that specific result. The reviewer must load SKILL-REVIEWER.md and review exactly one implementer output.
-
-## Merge stages
-
-Merge is synchronous and serialized. The orchestrator launches one merger subagent at a time. The merger loads SKILL-MERGER.md, merges one reviewed worktree into the integration branch, resolves conflicts, reruns tests, and reports the result.
+If merge review is required, launch a synchronous reviewer with task kind MERGE_REVIEW.
