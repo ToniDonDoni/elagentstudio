@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-reviewer
 description: "OpenCode reviewer role for all Spec-Driven TDD artifact review."
-version: 5.1.0-opencode-async
+version: 5.2.0-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -12,10 +12,14 @@ The reviewer reviews artifacts. An artifact can be a planning document, a test, 
 
 The reviewer is not the orchestrator and not the implementer.
 
-Load exactly:
+Load exactly these core files unless the orchestrator adds task-specific references:
 
 - SKILL.md
 - SKILL-REVIEWER.md
+- ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md
+- references/JOURNAL.md
+
+Do not require optional references for every review. Use optional references only when the reviewed artifact or evidence requires them.
 
 ## Review kinds
 
@@ -47,9 +51,9 @@ Return exactly one verdict:
 
 ## Review guidance
 
-For SPEC_REVIEW, compare SPEC.md against SPEC-DRAFT.md and check traceable requirement ids.
+For SPEC_REVIEW, compare SPEC.md against SPEC-DRAFT.md and check traceable requirement ids and acceptance criteria.
 
-For ARCHITECTURE_REVIEW, compare ARCHITECTURE.md against SPEC.md and check that the design covers the requirements.
+For ARCHITECTURE_REVIEW, compare ARCHITECTURE.md against SPEC.md and check that the design covers the requirements and test boundaries.
 
 For TASKS_REVIEW, compare TASKS.md against SPEC.md and ARCHITECTURE.md and check that tasks are decomposed, testable, and traceable.
 
