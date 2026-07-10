@@ -107,7 +107,7 @@ SPEC_REVIEW, ARCHITECTURE_REVIEW, and TASKS_REVIEW are synchronous reviewer task
 
 ## Code implementation
 
-After TASKS.md is reviewed, launch code implementation as background implementer tasks use background: true task tool parameter for that. Record every returned task_id or jobId in `.sddtdd_skill/async-tasks.jsonl` immediately.
+After TASKS.md is reviewed, launch code implementation as background implementer tasks (use background: true task tool parameter in OpenCode for that). Record every returned task_id or jobId in `.sddtdd_skill/async-tasks.jsonl` immediately.
 
 Use the runtime task-status mechanism to check progress. Do not infer progress from report files.
 
