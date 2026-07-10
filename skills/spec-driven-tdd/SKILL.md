@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "OpenCode-native Spec-Driven TDD with three roles: orchestrator, implementer, reviewer."
-version: 5.6.3-opencode-async
+version: 5.6.4-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -86,7 +86,8 @@ The reviewer reviews committed artifacts and committed evidence only. Uncommitte
 9. The orchestrator tracks background implementers with `task_status` and recorded task ids.
 10. When one implementer completes, the orchestrator verifies committed evidence and clean git status, then immediately launches one background reviewer for that implementer result with full ancestry context.
 11. The orchestrator does not wait for a whole batch or wave before reviewing a completed implementer result.
-12. Reviewed worktrees are merged sequentially by synchronous implementer subagents, committed, verified clean, and reviewed by reviewer subagents if needed.
+12. Reviewed worktrees are merged sequentially by synchronous MERGE implementer subagents.
+13. Each MERGE implementer merges one reviewed worktree into the integration branch, resolves conflicts if needed, runs the required tests after conflict resolution and before committing the merge result, records test evidence, then reports completion.
 
 ## Hard rules
 
@@ -98,7 +99,8 @@ The reviewer reviews committed artifacts and committed evidence only. Uncommitte
 - Planning artifacts are reviewed by synchronous reviewer subagents only after commit and clean-status verification.
 - Code implementation uses background implementer tasks.
 - Code review uses background reviewer tasks immediately after each implementer result is committed and clean-status verified.
-- Merge work is sequential and is performed by synchronous implementer subagents.
+- Merge work is sequential and is performed by synchronous MERGE implementer subagents.
+- A MERGE implementer must run the required tests after resolving conflicts and before committing or reporting merge completion.
 - Commit messages must be ASCII-only.
 - Uncommitted artifacts, journal entries, and mutable working-tree state are not evidence.
 
