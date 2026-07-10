@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-implementer
 description: "OpenCode implementer role for all Spec-Driven TDD artifact creation."
-version: 5.3.0-opencode-async
+version: 5.4.0-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -31,6 +31,20 @@ The orchestrator assigns one task kind per invocation:
 - IMPLEMENTATION: implement one task shard in an assigned worktree
 - MERGE: merge one reviewed worktree into the integration branch
 
+## Ancestry context
+
+Before creating an artifact, read the committed chain that leads to the current task.
+
+Minimum chain:
+
+- SPEC: SPEC-DRAFT.md, existing SPEC.md if any, journal.
+- ARCHITECTURE: SPEC-DRAFT.md, SPEC.md, existing ARCHITECTURE.md if any, journal.
+- TASKS: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, existing TASKS.md if any, journal.
+- IMPLEMENTATION: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, TASKS.md, assigned task id, related RED/GREEN artifacts or evidence, journal, commits.
+- MERGE: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, TASKS.md, reviewed implementation result, review verdict, journal, commits.
+
+If the chain is missing, report the missing files and wait for the orchestrator.
+
 ## General rules
 
 - Stay inside the allowed write scope.
@@ -58,7 +72,7 @@ The expected result is empty status for the relevant worktree. If status is not 
 
 ## Planning artifact tasks
 
-For SPEC, ARCHITECTURE, and TASKS, run synchronously. Create the requested artifact from the provided inputs. Append journal evidence. Commit the artifact and journal entry before reporting completion. The orchestrator will launch a reviewer after clean-status verification.
+For SPEC, ARCHITECTURE, and TASKS, run synchronously. Create the requested artifact from the provided ancestry. Append journal evidence. Commit the artifact and journal entry before reporting completion. The orchestrator will launch a reviewer after clean-status verification.
 
 ## Implementation tasks
 
