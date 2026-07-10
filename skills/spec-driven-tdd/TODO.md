@@ -46,25 +46,37 @@ Possible direction:
 - keep OpenCode agents as driver/workers;
 - do not rely on an LLM prompt as the source of process enforcement.
 
-### 5. Parallel implementation isolation needs verification
+### 5. Parallel implementation isolation is not working
 
-Background implementers must not write to the same worktree or branch concurrently. The current skill mentions worktree and branch in prompts, but the experiment should verify that each concurrent implementation shard actually receives its own isolated worktree and branch.
+Observed behavior: background implementers wrote directly into the main project worktree/branch instead of isolated per-task worktrees and branches.
 
-Possible direction:
+Impact:
 
+- no real isolation between concurrent implementation shards;
+- review-before-merge invariant is broken because changes are already in the shared branch;
+- merge/backmerge becomes meaningless because there is no separate reviewed branch/worktree to merge;
+- concurrent implementers can overwrite or accidentally depend on each other's unreviewed changes.
+
+Expected direction:
+
+- each concurrent implementation shard should run in its own git worktree and branch;
 - record logical task id -> worktree -> branch -> task_id;
 - verify no two running implementers share the same worktree or branch;
-- merge reviewed worktrees sequentially.
+- do not treat direct commits to the shared integration branch as a valid implementation isolation model.
 
-### 6. Merge/backmerge sequencing needs explicit validation
+### 6. Merge/backmerge sequencing is not working
 
-The intended flow is reviewed implementation result -> sequential merge task -> optional merge review. The experiment should verify that the orchestrator does not merge unreviewed work and does not merge multiple worktrees at once.
+Observed behavior: because implementation shards are not isolated into separate worktrees/branches, there is no real sequential merge/backmerge step from reviewed implementation result into the integration branch.
 
-Possible direction:
+Intended flow:
 
-- merge one reviewed worktree at a time;
-- use a synchronous implementer with task kind MERGE;
-- require committed merge evidence before any merge review or downstream step.
+- implementer completes in isolated worktree/branch;
+- reviewer PASS is recorded for that committed result;
+- synchronous MERGE implementer merges exactly one reviewed worktree/branch into the integration branch;
+- merge result is committed with evidence;
+- optional merge review checks the committed merge result.
+
+The experiment should verify that the orchestrator does not merge unreviewed work, does not merge multiple worktrees at once, and does not skip the merge step by letting implementers write to the integration branch directly.
 
 ### 7. Optional future improvement: task_id continuity
 
