@@ -1,8 +1,8 @@
 # Spec-Driven TDD TODO
 
-## OpenCode prompt-only orchestrator issues found
+## Prompt-only orchestrator issues found
 
-These are observed process failures from the OpenCode-native orchestrator experiment. This file records observations only; it does not add new process requirements by itself.
+These are observed process failures from the prompt-only orchestrator experiment. This file records observations only; it does not add new process requirements by itself.
 
 ### 1. Batch thinking instead of event-driven review
 
@@ -66,7 +66,7 @@ Observed examples:
 
 ### 7. Test commands are launched without reliable timeouts
 
-Observed: during the OpenCode-native orchestrator run, test execution could hang or run too long, and the orchestrator had to intervene by rerunning tests with an explicit shell timeout.
+Observed: during the prompt-only orchestrator run, test execution could hang or run too long, and the orchestrator had to intervene by rerunning tests with an explicit shell timeout.
 
 Observed examples:
 
@@ -76,7 +76,7 @@ Observed examples:
 
 ### 8. Orchestrator ran tests itself instead of delegating
 
-Observed: near the end of the OpenCode-native orchestrator run, the orchestrator launched tests directly instead of delegating test execution through an implementer or reviewer subagent.
+Observed: near the end of the prompt-only orchestrator run, the orchestrator launched tests directly instead of delegating test execution through an implementer or reviewer subagent.
 
 Observed examples:
 
