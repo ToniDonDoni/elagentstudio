@@ -163,5 +163,17 @@ The orchestrator MUST append one entry whenever it:
 
 Each entry MUST be one JSON object on one line with these required fields:
 
+
 ```json
-{"timestamp":"<UTC_ISO8601>","event":"<HANDOFF|CHECK>","role":"<implementer|reviewer>","task_kind":"<TASK_KIND>","task_number":"<TASK_NUMBER_OR_NONE>","task_id":"<TASK_ID>","commit":"<COMMIT_SHA_OR_NONE>","head":"<HEAD_SHA>","summary":"<SHORT_DESCRIPTION>"}
+{"timestamp":"<UTC_ISO8601>","event":"<HANDOFF|CHECK>","role":"<implementer|reviewer>","task_kind":"<TASK_KIND>","task_number":"<TASK_NUMBER_OR_NONE>","task_id":"<BUSINESS_TASK_ID>","execution_id":"<OPENCODE_RUNTIME_ID_OR_NONE>","commit":"<COMMIT_SHA_OR_NONE>","head":"<HEAD_SHA>","summary":"<SHORT_DESCRIPTION>"}
+```
+
+- task_id identifies the business workflow task from TASKS.md.
+- execution_id is mandatory for every delegated implementer or reviewer.
+- execution_id MUST contain the actual runtime identifier returned by OpenCode for the delegated work.
+- For background tasks, execution_id MUST contain the background task ID.
+- For non-background asynchronous tasks, execution_id MUST contain the corresponding runtime identifier returned by OpenCode.
+- If OpenCode returns no runtime identifier, execution_id MUST be NONE.
+- The same execution_id MUST be reused in the corresponding HANDOFF and CHECK entries.
+- The orchestrator MUST NOT invent, derive, or substitute an execution_id.
+
