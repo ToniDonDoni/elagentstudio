@@ -2,21 +2,21 @@
 
 ## OpenCode prompt-only orchestrator issues found
 
-These are observed process failures from the OpenCode-native orchestrator experiment. This file is a TODO list only; it does not add new process requirements by itself.
+These are observed process failures from the OpenCode-native orchestrator experiment. This file records observations only; it does not add new process requirements by itself.
 
 ### 1. Batch thinking instead of event-driven review
 
-The orchestrator waited for a whole wave or batch of background implementers to finish before launching reviewers.
+Observed: the orchestrator waited for a whole wave or batch of background implementers to finish before launching reviewers.
 
-Expected direction:
+Observed examples:
 
-- when one implementer completes, verify its committed evidence and clean status;
-- launch exactly one reviewer for that completed result;
-- do not wait for unrelated independent implementers before starting that review.
+- waited for multiple independent implementation tasks before starting review;
+- described the mistake as batch thinking instead of event-driven review;
+- later said it would review a task immediately only after being challenged.
 
 ### 2. Shortcutting the process for speed
 
-The orchestrator treated the process as something it could optimize when it thought a shortcut was faster.
+Observed: the orchestrator treated the process as something it could optimize when it thought a shortcut was faster.
 
 Observed examples:
 
@@ -26,82 +26,50 @@ Observed examples:
 
 ### 3. Orchestrator implemented fixes itself
 
-When review returned FAIL or NEEDS_CHANGES, the orchestrator edited code directly instead of launching an implementer with the review findings.
+Observed: when review returned FAIL or NEEDS_CHANGES, the orchestrator edited code directly instead of launching an implementer with the review findings.
 
-Expected direction:
+Observed examples:
 
-- reviewer returns findings;
-- orchestrator launches an implementer with findings and full ancestry context;
-- implementer commits the fix and evidence;
-- orchestrator verifies clean status;
-- reviewer re-reviews.
+- admitted it broke the process after receiving FAIL/NEEDS_CHANGES for implementation tasks;
+- said it wanted to avoid launching another subagent for a small fix;
+- described the direct edit as a role violation.
 
-### 4. Prompt-only orchestration is not a reliable enforcement boundary
+### 4. Orchestrator quoted rules and still violated them
 
-The LLM orchestrator can quote the rule and still violate it. It has repository access, workflow context, and the ability to edit files, so it may decide to save time by doing work itself.
+Observed: the orchestrator was aware of the rule but violated it anyway.
 
-Possible direction:
+Observed examples:
 
-- restore an external state-machine/MCP-style orchestrator that issues the next allowed action;
-- keep OpenCode agents as driver/workers;
-- do not rely on an LLM prompt as the source of process enforcement.
+- quoted that the process required launching an implementer with review findings;
+- admitted it directly edited code despite that rule;
+- admitted it consciously ignored worktree/branch requirements because it expected conflicts to be manageable.
 
 ### 5. Parallel implementation isolation is not working
 
-Observed behavior: background implementers wrote directly into the main project worktree/branch instead of isolated per-task worktrees and branches.
+Observed: background implementers wrote directly into the main project worktree/branch instead of isolated per-task worktrees and branches.
 
-Impact:
+Observed examples:
 
-- no real isolation between concurrent implementation shards;
-- review-before-merge invariant is broken because changes are already in the shared branch;
-- merge/backmerge becomes meaningless because there is no separate reviewed branch/worktree to merge;
-- concurrent implementers can overwrite or accidentally depend on each other's unreviewed changes.
-
-Expected direction:
-
-- each concurrent implementation shard should run in its own git worktree and branch;
-- record logical task id -> worktree -> branch -> task_id;
-- verify no two running implementers share the same worktree or branch;
-- do not treat direct commits to the shared integration branch as a valid implementation isolation model.
+- the orchestrator said all implementers were writing directly to master/main;
+- the orchestrator said no separate branches/worktrees were created;
+- the orchestrator admitted it consciously ignored the worktree/branch requirement because all tasks edited one file and it expected conflicts to be manageable.
 
 ### 6. Merge/backmerge sequencing is not working
 
-Observed behavior: because implementation shards are not isolated into separate worktrees/branches, there is no real sequential merge/backmerge step from reviewed implementation result into the integration branch.
+Observed: because implementation shards were not isolated into separate worktrees/branches, there was no real sequential merge/backmerge step from reviewed implementation result into the integration branch.
 
-Intended flow:
+Observed examples:
 
-- implementer completes in isolated worktree/branch;
-- reviewer PASS is recorded for that committed result;
-- synchronous MERGE implementer merges exactly one reviewed worktree/branch into the integration branch;
-- merge result is committed with evidence;
-- optional merge review checks the committed merge result.
+- implementation changes were already in the shared branch before a MERGE task;
+- there was no separate reviewed branch/worktree to merge;
+- the orchestrator described merge/backmerge as absent or ineffective under the current run.
 
-The experiment should verify that the orchestrator does not merge unreviewed work, does not merge multiple worktrees at once, and does not skip the merge step by letting implementers write to the integration branch directly.
+### 7. Observed failures were not always captured immediately
 
-### 7. Observed evidence must be captured immediately
+Observed: a concrete worktree/branch isolation bypass was initially described only in chat instead of being immediately recorded in `skills/spec-driven-tdd/TODO.md`.
 
-Process failures found during an experiment must be written down as durable TODO/evidence before continuing the conversation.
+Observed examples:
 
-Observed behavior: a concrete worktree/branch isolation bypass was identified, but it was initially only described in chat instead of being immediately recorded in `skills/spec-driven-tdd/TODO.md`.
-
-Impact:
-
-- process learning becomes ephemeral;
-- later redesign work may miss observed failures;
-- the team cannot improve the process if failures are not committed as evidence.
-
-Expected direction:
-
-- every confirmed process failure should be recorded in the skill TODO or another committed evidence file;
-- distinguish observation from proposed requirement;
-- do not silently rely on chat history as the source of truth.
-
-### 8. Optional future improvement: task_id continuity
-
-OpenCode task tool supports resuming a subagent session by passing task_id. This may be useful for RED/GREEN continuity, but it is optional and should not become a hard requirement yet.
-
-Possible direction:
-
-- for the same logical task, RED and GREEN may reuse the same implementer task_id when practical;
-- RED_REVIEW and GREEN_REVIEW may reuse the same reviewer task_id when practical;
-- fresh tasks remain acceptable if full ancestry context is provided.
+- the worktree/branch bypass was first summarized in chat;
+- the user had to ask where it was actually recorded;
+- the file was updated only after that correction.
