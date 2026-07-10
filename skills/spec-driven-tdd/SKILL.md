@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "OpenCode-native Spec-Driven TDD with three roles: orchestrator, implementer, reviewer."
-version: 5.6.1-opencode-async
+version: 5.6.2-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -32,8 +32,6 @@ Orchestrator loads only its own control-plane contract:
 - SKILL.md
 - SKILL-ORCHESTRATOR.md
 - references/JOURNAL.md
-
-The orchestrator must not load SKILL-IMPLEMENTER.md, SKILL-REVIEWER.md, or ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md as part of its own role context. It passes role files and task-specific references to subagents, but does not use those files to perform implementer or reviewer work itself.
 
 Implementer loads:
 
