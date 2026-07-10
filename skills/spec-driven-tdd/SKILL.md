@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "OpenCode-native Spec-Driven TDD with three roles: orchestrator, implementer, reviewer."
-version: 5.4.0-opencode-async
+version: 5.5.0-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -25,12 +25,24 @@ Do not create extra role categories such as spec author, architecture author, ta
 - SKILL-IMPLEMENTER.md: implementer role for all artifact creation
 - SKILL-REVIEWER.md: reviewer role for all reviews
 
-## Minimal load sets
+## Load sets
+
+Orchestrator loads the whole process contract because it must construct prompts, verify shapes, check journal/evidence form, and decide whether implementation and review outputs are valid.
 
 Orchestrator loads:
 
 - SKILL.md
 - SKILL-ORCHESTRATOR.md
+- SKILL-IMPLEMENTER.md
+- SKILL-REVIEWER.md
+- ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md
+- references/JOURNAL.md
+- references/STAGES.md
+- references/SPEC-EXAMPLE.md
+- references/GREP-RED-GREEN.md
+- references/INSTRUMENTED-TESTING.md
+- references/VISION-RED-TEST.md
+- references/POST-DONE-BUG-FIX.md
 
 Implementer loads:
 
@@ -46,7 +58,7 @@ Reviewer loads:
 - ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md
 - references/JOURNAL.md
 
-Other reference files are optional and task-specific.
+The orchestrator may add task-specific references to implementer or reviewer prompts when the task needs them. Do not make every optional testing reference mandatory for every subagent.
 
 ## Full ancestry context
 
