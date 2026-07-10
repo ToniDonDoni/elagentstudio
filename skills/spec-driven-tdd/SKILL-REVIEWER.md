@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-reviewer
-description: "OpenCode reviewer role for all Spec-Driven TDD artifact review."
-version: 5.4.0-opencode-async
+description: "Reviewer role for all Spec-Driven TDD artifact review."
+version: 5.7.0-async
 author: Hermes Agent
 license: MIT
 ---
