@@ -63,3 +63,13 @@ Observed examples:
 - implementation changes were already in the shared branch before a MERGE task;
 - there was no separate reviewed branch/worktree to merge;
 - the orchestrator described merge/backmerge as absent or ineffective under the current run.
+
+### 7. Test commands are launched without reliable timeouts
+
+Observed: during the OpenCode-native orchestrator run, test execution could hang or run too long, and the orchestrator had to intervene by rerunning tests with an explicit shell timeout.
+
+Observed examples:
+
+- the orchestrator said the run appeared stuck on tests;
+- the orchestrator said it would rerun tests itself with a timeout;
+- the visible command used `timeout 30 node tests/runner.js`, implying timeout handling was added ad hoc after the hang risk appeared.
