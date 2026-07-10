@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-orchestrator
 description: "OpenCode orchestrator role for Spec-Driven TDD."
-version: 5.5.0-opencode-async
+version: 5.6.0-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -20,7 +20,7 @@ The orchestrator must not invent other roles. SPEC author, architecture author, 
 
 ## Orchestrator load set
 
-The orchestrator must load the full process contract before it starts routing work:
+The orchestrator must load the minimal process contract before it starts routing work:
 
 - SKILL.md
 - SKILL-ORCHESTRATOR.md
@@ -28,14 +28,8 @@ The orchestrator must load the full process contract before it starts routing wo
 - SKILL-REVIEWER.md
 - ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md
 - references/JOURNAL.md
-- references/STAGES.md
-- references/SPEC-EXAMPLE.md
-- references/GREP-RED-GREEN.md
-- references/INSTRUMENTED-TESTING.md
-- references/VISION-RED-TEST.md
-- references/POST-DONE-BUG-FIX.md
 
-Reason: the orchestrator builds implementer and reviewer prompts, verifies required outputs, checks journal and evidence shape, decides which references each subagent needs, and blocks invalid work before review.
+Do not add new mandatory reference files. The orchestrator may add an existing task-specific reference to a subagent prompt only when that task needs it.
 
 ## Core loop
 
@@ -61,14 +55,14 @@ Every subagent request must include:
 - role: implementer or reviewer
 - role file: SKILL-IMPLEMENTER.md or SKILL-REVIEWER.md
 - core references: ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md and references/JOURNAL.md
-- task-specific references selected by the orchestrator when needed
+- task-specific references selected by the orchestrator only when needed
 - repo path, worktree path, branch
 - task kind and task id
 - allowed write scope
 - required output
 - full ancestry context
 
-Do not add every optional testing reference to every subagent by default. Add the reference files that the task actually needs.
+Do not add every optional testing reference to every subagent by default.
 
 ## Ancestry context
 
