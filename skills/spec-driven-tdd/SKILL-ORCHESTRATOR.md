@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-orchestrator
 description: "OpenCode orchestrator role for Spec-Driven TDD."
-version: 5.4.0-opencode-async
+version: 5.5.0-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -18,16 +18,35 @@ There are exactly three roles:
 
 The orchestrator must not invent other roles. SPEC author, architecture author, task author, coder, tester, and merger are task kinds assigned to the implementer role.
 
+## Orchestrator load set
+
+The orchestrator must load the full process contract before it starts routing work:
+
+- SKILL.md
+- SKILL-ORCHESTRATOR.md
+- SKILL-IMPLEMENTER.md
+- SKILL-REVIEWER.md
+- ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md
+- references/JOURNAL.md
+- references/STAGES.md
+- references/SPEC-EXAMPLE.md
+- references/GREP-RED-GREEN.md
+- references/INSTRUMENTED-TESTING.md
+- references/VISION-RED-TEST.md
+- references/POST-DONE-BUG-FIX.md
+
+Reason: the orchestrator builds implementer and reviewer prompts, verifies required outputs, checks journal and evidence shape, decides which references each subagent needs, and blocks invalid work before review.
+
 ## Core loop
 
 For each artifact that needs review, run this loop:
 
-1. Launch an implementer subagent with the task kind, allowed write scope, and full ancestry context.
+1. Launch an implementer subagent with the task kind, allowed write scope, required references, and full ancestry context.
 2. Wait for the implementer to finish.
 3. Verify that the implementer committed the artifact, journal entry, and evidence.
 4. Verify clean git status in the relevant worktree.
 5. If the worktree is not clean, send the task back to the implementer and require a commit before review.
-6. Launch a separate reviewer subagent for that committed artifact or implementation result with full ancestry context.
+6. Launch a separate reviewer subagent for that committed artifact or implementation result with required references and full ancestry context.
 7. Wait for the reviewer to finish.
 8. Read the reviewer verdict.
 9. If PASS, move to the next stage.
@@ -42,13 +61,14 @@ Every subagent request must include:
 - role: implementer or reviewer
 - role file: SKILL-IMPLEMENTER.md or SKILL-REVIEWER.md
 - core references: ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md and references/JOURNAL.md
+- task-specific references selected by the orchestrator when needed
 - repo path, worktree path, branch
 - task kind and task id
 - allowed write scope
 - required output
 - full ancestry context
 
-For task-specific testing modes, add only the specific extra references needed for that task. Do not add optional references to every subagent by default.
+Do not add every optional testing reference to every subagent by default. Add the reference files that the task actually needs.
 
 ## Ancestry context
 
