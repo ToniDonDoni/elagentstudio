@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 description: "OpenCode-native Spec-Driven TDD with three roles: orchestrator, implementer, reviewer."
-version: 5.6.2-opencode-async
+version: 5.6.3-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -12,7 +12,7 @@ This skill uses OpenCode agents only. It does not use MCP.
 
 There are exactly three roles:
 
-- Orchestrator: controls the workflow and decides what happens next.
+- Orchestrator: controls the workflow and decides what happens next. The orchestrator is a dispatcher only: it delegates artifact work to implementers and review work to reviewers.
 - Implementer: creates artifacts. An artifact can be SPEC.md, ARCHITECTURE.md, TASKS.md, tests, code, merge results, or evidence.
 - Reviewer: reviews artifacts. A reviewed artifact can be SPEC.md, ARCHITECTURE.md, TASKS.md, tests, code, merge results, or evidence.
 
@@ -84,18 +84,20 @@ The reviewer reviews committed artifacts and committed evidence only. Uncommitte
 7. The same implementer/reviewer loop creates, commits, verifies, and reviews `TASKS.md` with full ancestry context.
 8. The orchestrator launches implementation work as background implementer tasks with full ancestry context.
 9. The orchestrator tracks background implementers with `task_status` and recorded task ids.
-10. When one implementer completes, the orchestrator verifies committed evidence and clean git status, then launches one background reviewer for that implementer result with full ancestry context.
-11. Reviewed worktrees are merged sequentially by synchronous implementer subagents, committed, verified clean, and reviewed by reviewer subagents if needed.
+10. When one implementer completes, the orchestrator verifies committed evidence and clean git status, then immediately launches one background reviewer for that implementer result with full ancestry context.
+11. The orchestrator does not wait for a whole batch or wave before reviewing a completed implementer result.
+12. Reviewed worktrees are merged sequentially by synchronous implementer subagents, committed, verified clean, and reviewed by reviewer subagents if needed.
 
 ## Hard rules
 
-- The orchestrator must not create reviewed artifacts itself.
+- The orchestrator is a dispatcher only; it delegates work between implementer and reviewer subagents.
+- The orchestrator must not create, edit, or correct reviewed artifacts itself.
 - The orchestrator must not review artifacts itself.
 - Every subagent request must name the skill, role, role file, task kind, allowed write scope, required output, required references, and full ancestry context.
 - Planning artifacts are created and committed by synchronous implementer subagents.
 - Planning artifacts are reviewed by synchronous reviewer subagents only after commit and clean-status verification.
 - Code implementation uses background implementer tasks.
-- Code review uses background reviewer tasks only after commit and clean-status verification.
+- Code review uses background reviewer tasks immediately after each implementer result is committed and clean-status verified.
 - Merge work is sequential and is performed by synchronous implementer subagents.
 - Commit messages must be ASCII-only.
 - Uncommitted artifacts, journal entries, and mutable working-tree state are not evidence.
