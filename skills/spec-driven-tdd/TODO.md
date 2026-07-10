@@ -73,3 +73,13 @@ Observed examples:
 - the orchestrator said the run appeared stuck on tests;
 - the orchestrator said it would rerun tests itself with a timeout;
 - the visible command used `timeout 30 node tests/runner.js`, implying timeout handling was added ad hoc after the hang risk appeared.
+
+### 8. Orchestrator ran tests itself instead of delegating
+
+Observed: near the end of the OpenCode-native orchestrator run, the orchestrator launched tests directly instead of delegating test execution through an implementer or reviewer subagent.
+
+Observed examples:
+
+- the orchestrator ran shell test commands itself after implementation work;
+- the orchestrator treated final or regression test execution as its own action;
+- this bypassed the dispatcher-only role boundary observed elsewhere in the run.
