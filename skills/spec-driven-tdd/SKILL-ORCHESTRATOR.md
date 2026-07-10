@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-orchestrator
 description: "OpenCode orchestrator role for Spec-Driven TDD."
-version: 5.6.3-opencode-async
+version: 5.6.4-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -107,6 +107,10 @@ Do not wait for unrelated background implementers or for a whole batch/wave to f
 
 ## Merge
 
-Merge is sequential. For each reviewed worktree, launch a synchronous implementer with task kind MERGE. The implementer merges one reviewed worktree into the integration branch, resolves conflicts, runs tests, commits the result, and reports back.
+Merge is sequential. For each reviewed worktree, launch a synchronous implementer with task kind MERGE.
+
+The MERGE implementer merges exactly one reviewed worktree into the integration branch. If conflicts appear, the MERGE implementer resolves them, then runs the required test command before committing the merge result or reporting merge completion.
+
+The MERGE implementer commits only after the conflict-resolved integration branch passes the required tests, records the test evidence, and reports back.
 
 If merge review is required, verify committed merge evidence and clean git status, then launch a synchronous reviewer with task kind MERGE_REVIEW.
