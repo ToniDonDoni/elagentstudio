@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-orchestrator
 description: "OpenCode orchestrator role for Spec-Driven TDD."
-version: 5.3.0-opencode-async
+version: 5.4.0-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -22,52 +22,55 @@ The orchestrator must not invent other roles. SPEC author, architecture author, 
 
 For each artifact that needs review, run this loop:
 
-1. Launch an implementer subagent with the task kind and allowed write scope.
+1. Launch an implementer subagent with the task kind, allowed write scope, and full ancestry context.
 2. Wait for the implementer to finish.
 3. Verify that the implementer committed the artifact, journal entry, and evidence.
 4. Verify clean git status in the relevant worktree.
 5. If the worktree is not clean, send the task back to the implementer and require a commit before review.
-6. Launch a separate reviewer subagent for that committed artifact or implementation result.
+6. Launch a separate reviewer subagent for that committed artifact or implementation result with full ancestry context.
 7. Wait for the reviewer to finish.
 8. Read the reviewer verdict.
 9. If PASS, move to the next stage.
-10. If FAIL or NEEDS_CHANGES, launch an implementer again with the review findings.
+10. If FAIL or NEEDS_CHANGES, launch an implementer again with the review findings and full ancestry context.
 11. Repeat until PASS, BLOCKED, or user stop.
 
-## Required prompt header
+## Required subagent fields
 
-Every subagent prompt must start with:
+Every subagent request must include:
 
-```text
-Use the spec-driven-tdd skill.
-You are the implementer|reviewer.
-Load exactly these files:
-- SKILL.md
-- SKILL-IMPLEMENTER.md or SKILL-REVIEWER.md
-- ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md
-- references/JOURNAL.md
-Repo: <repo path>
-Worktree: <worktree path>
-Branch: <branch>
-Task kind: <SPEC|ARCHITECTURE|TASKS|IMPLEMENTATION|MERGE|SPEC_REVIEW|ARCHITECTURE_REVIEW|TASKS_REVIEW|IMPLEMENTATION_REVIEW|MERGE_REVIEW>
-Task id: <task id>
-Allowed write scope: <paths>
-Required output: <paths>
-```
+- skill name: spec-driven-tdd
+- role: implementer or reviewer
+- role file: SKILL-IMPLEMENTER.md or SKILL-REVIEWER.md
+- core references: ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md and references/JOURNAL.md
+- repo path, worktree path, branch
+- task kind and task id
+- allowed write scope
+- required output
+- full ancestry context
 
 For task-specific testing modes, add only the specific extra references needed for that task. Do not add optional references to every subagent by default.
+
+## Ancestry context
+
+Every implementer and reviewer request must include all committed ancestors needed to understand the task.
+
+Minimum ancestry by stage:
+
+- SPEC or SPEC_REVIEW: SPEC-DRAFT.md, SPEC.md, journal.
+- ARCHITECTURE or ARCHITECTURE_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, journal.
+- TASKS or TASKS_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, TASKS.md, journal.
+- IMPLEMENTATION or IMPLEMENTATION_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, TASKS.md, assigned task id, related RED/GREEN artifacts or evidence, journal, commits.
+- MERGE or MERGE_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, TASKS.md, reviewed implementation result, review verdict, merge evidence, journal, commits.
+
+If an ancestor does not exist yet at the current stage, say that explicitly.
 
 ## Committed evidence gate
 
 The orchestrator must not launch a reviewer for uncommitted work.
 
-Before review, run or otherwise verify the equivalent of:
+Before review, verify `git status --short` for the relevant worktree.
 
-```bash
-git status --short
-```
-
-The expected result is an empty status for the relevant worktree. If status is not empty, the orchestrator must return the task to the implementer with an instruction to commit all completed artifacts, journal entries, and evidence using an ASCII-only commit message.
+The expected result is an empty status. If status is not empty, return the task to the implementer with an instruction to commit all completed artifacts, journal entries, and evidence using an ASCII-only commit message.
 
 ## Planning stages
 
