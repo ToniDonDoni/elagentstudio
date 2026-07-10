@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-orchestrator
-description: "OpenCode orchestrator role for Spec-Driven TDD."
-version: 5.6.4-opencode-async
+description: "Orchestrator role for Spec-Driven TDD."
+version: 5.7.0-async
 author: Hermes Agent
 license: MIT
 ---
@@ -97,7 +97,7 @@ SPEC_REVIEW, ARCHITECTURE_REVIEW, and TASKS_REVIEW are synchronous reviewer task
 
 After TASKS.md is reviewed, launch code implementation as background implementer tasks. Record every returned task_id or jobId in `.sddtdd_skill/async-tasks.jsonl` immediately.
 
-Use `task_status` to check progress. Do not infer progress from report files.
+Use the runtime task-status mechanism to check progress. Do not infer progress from report files.
 
 ## Code review
 
