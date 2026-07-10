@@ -32,6 +32,18 @@ The orchestrator loads only its own control-plane contract:
 
 Do not add new mandatory reference files. The orchestrator may add an existing task-specific reference to a subagent prompt only when that task needs it.
 
+## Full ancestry context
+
+Every implementer and every reviewer must receive the full committed ancestry from the current task back to the original request.
+
+Minimum ancestry by stage:
+
+- SPEC or SPEC_REVIEW: SPEC-DRAFT.md, SPEC.md, journal.
+- ARCHITECTURE or ARCHITECTURE_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, journal.
+- TASKS or TASKS_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, TASKS.md, journal.
+- IMPLEMENTATION or IMPLEMENTATION_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, TASKS.md, assigned task id, related RED/GREEN artifacts or evidence, journal, commits.
+- MERGE or MERGE_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, TASKS.md, reviewed implementation result, review verdict, merge evidence, journal, commits.
+
 ## Core loop
 
 For each artifact that needs review, run this loop:
@@ -114,3 +126,42 @@ The MERGE implementer merges exactly one reviewed worktree into the integration 
 The MERGE implementer commits only after the conflict-resolved integration branch passes the required tests, records the test evidence, and reports back.
 
 If merge review is required, verify committed merge evidence and clean git status, then launch a synchronous reviewer with task kind MERGE_REVIEW.
+
+## Hard rules
+
+- The orchestrator is a dispatcher only; it delegates work between implementer and reviewer subagents.
+- The orchestrator must not create, edit, or correct reviewed artifacts itself.
+- The orchestrator must not review artifacts itself.
+- Every subagent request must name the skill, role, role file, task kind, allowed write scope, required output, required references, and full ancestry context.
+- Planning artifacts are created and committed by synchronous implementer subagents.
+- Planning artifacts are reviewed by synchronous reviewer subagents only after commit and clean-status verification.
+- Code implementation uses background implementer tasks.
+- Code review uses background reviewer tasks immediately after each implementer result is committed and clean-status verified.
+- Merge work is sequential and is performed by synchronous MERGE implementer subagents.
+- A MERGE implementer must run the required tests after resolving conflicts and before committing or reporting merge completion.
+- Commit messages must be ASCII-only.
+- Uncommitted artifacts, journal entries, and mutable working-tree state are not evidence.
+
+## Orchestrator handoff log
+
+The orchestrator MUST maintain a private append-only orchestration log at:
+
+`.sddtdd_skill/orchestrator.log`
+
+This log is separate from `references/JOURNAL.md` and `.sddtdd_skill/async-tasks.jsonl`.
+
+Only the orchestrator may read or write `.sddtdd_skill/orchestrator.log`.
+
+Implementer and reviewer subagents MUST NOT read it, receive it in their context, reference it, or modify it.
+
+The orchestrator MUST append one entry whenever it:
+
+- delegates a task to an implementer;
+- delegates a task to a reviewer;
+- checks a result returned by an implementer;
+- checks a result returned by a reviewer.
+
+Each entry MUST be one JSON object on one line with these required fields:
+
+```json
+{"timestamp":"<UTC_ISO8601>","event":"<HANDOFF|CHECK>","role":"<implementer|reviewer>","task_kind":"<TASK_KIND>","task_number":"<TASK_NUMBER_OR_NONE>","task_id":"<TASK_ID>","commit":"<COMMIT_SHA_OR_NONE>","head":"<HEAD_SHA>","summary":"<SHORT_DESCRIPTION>"}

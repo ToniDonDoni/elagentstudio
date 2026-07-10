@@ -1,19 +1,13 @@
 # Spec-Driven TDD
 
-Compact runtime version of the skill.
+## Use
 
-Read:
+Use the spec-driven-tdd skill.
+Run as orchestrator.
+Use SPEC-DRAFT.md as input.
+Work in ...
 
-- `SKILL.md` for principles and layout
-- `SKILL-IMPLEMENTER.md` for implementer behavior
-- `SKILL-ORCHESTRATOR.md` for server policy
-- `references/JOURNAL.md` for chain and invariants
-- `references/STAGES.md` for standalone operation
+## For OpenCode
 
-The workflow advances only on committed proof:
+Set env `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true` to enable background subagents for asynchronous task execution.
 
-- committed artifact;
-- committed journal entry;
-- required committed reviewer verdict;
-- required committed orchestrator verdict in orchestrator mode;
-- evidence that still matches the inspected HEAD.

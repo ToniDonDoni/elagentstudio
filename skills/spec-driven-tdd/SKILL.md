@@ -1,22 +1,24 @@
 ---
-name: spec-driven-tdd
-description: "Runtime-neutral Spec-Driven TDD with three roles: orchestrator, implementer, reviewer."
-version: 5.7.0-async
-author: Hermes Agent
+name: spec-driven-tdd 
+description: "Spec-Driven Test-Driven Development with three roles: orchestrator, implementer, reviewer."
+version: 5.7.0
+author: GPT-5.5
 license: MIT
 ---
 
 # Spec-Driven TDD
 
-This skill uses agent subagents only. It does not require a platform-specific external coordinator.
+## Purpose
+
+This skill turns a user request into committed software through a strict
+artifact chain, independent review, RED/GREEN TDD for automatically testable
+behavior, and a committed journal.
 
 There are exactly three roles:
 
 - Orchestrator: controls the workflow and decides what happens next. The orchestrator is a dispatcher only: it delegates artifact work to implementers and review work to reviewers.
 - Implementer: creates artifacts. An artifact can be SPEC.md, ARCHITECTURE.md, TASKS.md, tests, code, merge results, or evidence.
 - Reviewer: reviews artifacts. A reviewed artifact can be SPEC.md, ARCHITECTURE.md, TASKS.md, tests, code, merge results, or evidence.
-
-Do not create extra role categories such as spec author, architecture author, tasks author, or merger. Those are task kinds for the implementer role, not separate roles.
 
 ## Role files
 
@@ -47,31 +49,13 @@ Reviewer loads:
 - ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md
 - references/JOURNAL.md
 
-Do not add new mandatory reference files. The orchestrator may add an existing task-specific reference only when a specific task needs it.
+## Four hard rules
 
-## Full ancestry context
-
-Every implementer and every reviewer must receive the full committed ancestry from the current task back to the original request.
-
-Minimum ancestry by stage:
-
-- SPEC or SPEC_REVIEW: SPEC-DRAFT.md, SPEC.md, journal.
-- ARCHITECTURE or ARCHITECTURE_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, journal.
-- TASKS or TASKS_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, TASKS.md, journal.
-- IMPLEMENTATION or IMPLEMENTATION_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, TASKS.md, assigned task id, related RED/GREEN artifacts or evidence, journal, commits.
-- MERGE or MERGE_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, TASKS.md, reviewed implementation result, review verdict, merge evidence, journal, commits.
-
-If an ancestor exists, include it. If it does not exist yet, say so explicitly.
-
-## Committed evidence invariant
-
-Every work step, artifact, journal entry, review verdict, correction, and merge result counts as evidence only after it is committed.
-
-The implementer must commit completed artifacts, journal entries, and evidence before reporting completion.
-
-The orchestrator must verify that the relevant worktree is clean before launching a reviewer. If the worktree is not clean, the orchestrator must return the task to the implementer and require a commit.
-
-The reviewer reviews committed artifacts and committed evidence only. Uncommitted working-tree state is not valid evidence.
+1. Every agent-generated artifact must receive the required independent review before downstream work depends on it.
+2. Every automatically testable behavior must pass through reviewed RED then reviewed GREEN.
+3. Every work step, review verdict, correction, and orchestrator gate must be journaled and committed before it counts as evidence.
+4. Reviewer approval and orchestrator process approval are distinct proofs. Neither replaces the other.
+5. Changes in user acceptance behavior must be escalated to the user and recorded to the journal with lable ACCEPTANCE_CHANGE.
 
 ## Required flow
 
@@ -88,21 +72,6 @@ The reviewer reviews committed artifacts and committed evidence only. Uncommitte
 11. The orchestrator does not wait for a whole batch or wave before reviewing a completed implementer result.
 12. Reviewed worktrees are merged sequentially by synchronous MERGE implementer subagents.
 13. Each MERGE implementer merges one reviewed worktree into the integration branch, resolves conflicts if needed, runs the required tests after conflict resolution and before committing the merge result, records test evidence, then reports completion.
-
-## Hard rules
-
-- The orchestrator is a dispatcher only; it delegates work between implementer and reviewer subagents.
-- The orchestrator must not create, edit, or correct reviewed artifacts itself.
-- The orchestrator must not review artifacts itself.
-- Every subagent request must name the skill, role, role file, task kind, allowed write scope, required output, required references, and full ancestry context.
-- Planning artifacts are created and committed by synchronous implementer subagents.
-- Planning artifacts are reviewed by synchronous reviewer subagents only after commit and clean-status verification.
-- Code implementation uses background implementer tasks.
-- Code review uses background reviewer tasks immediately after each implementer result is committed and clean-status verified.
-- Merge work is sequential and is performed by synchronous MERGE implementer subagents.
-- A MERGE implementer must run the required tests after resolving conflicts and before committing or reporting merge completion.
-- Commit messages must be ASCII-only.
-- Uncommitted artifacts, journal entries, and mutable working-tree state are not evidence.
 
 ## Background requirement
 
