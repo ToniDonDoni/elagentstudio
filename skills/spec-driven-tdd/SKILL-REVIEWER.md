@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-reviewer
 description: "OpenCode reviewer role for all Spec-Driven TDD artifact review."
-version: 5.3.0-opencode-async
+version: 5.4.0-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -40,6 +40,20 @@ Return exactly one verdict:
 - NEEDS_CHANGES
 - BLOCKED
 
+## Ancestry context
+
+Before reviewing an artifact, read the committed chain that leads to that artifact.
+
+Minimum chain:
+
+- SPEC_REVIEW: SPEC-DRAFT.md, SPEC.md, journal.
+- ARCHITECTURE_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, journal.
+- TASKS_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, TASKS.md, journal.
+- IMPLEMENTATION_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, TASKS.md, assigned task id, related RED/GREEN artifacts or evidence, journal, commits.
+- MERGE_REVIEW: SPEC-DRAFT.md, SPEC.md, ARCHITECTURE.md, TASKS.md, reviewed implementation result, review verdict, journal, commits.
+
+If the chain is missing, list the missing files or commits in the review report.
+
 ## General rules
 
 - Inspect only the requested artifact or implementation result.
@@ -57,16 +71,16 @@ Before reviewing, verify or require proof that the relevant worktree has no pend
 
 Uncommitted artifacts, uncommitted journal entries, and mutable working-tree state are not valid evidence.
 
-If the review input points to pending changes, return BLOCKED and state that the implementer must commit the completed artifacts, journal entries, and evidence first.
+If the review input points to pending changes, state that the implementer must commit the completed artifacts, journal entries, and evidence first.
 
 ## Review guidance
 
 For SPEC_REVIEW, compare committed SPEC.md against committed SPEC-DRAFT.md and check traceable requirement ids and acceptance criteria.
 
-For ARCHITECTURE_REVIEW, compare committed ARCHITECTURE.md against committed SPEC.md and check that the design covers the requirements and test boundaries.
+For ARCHITECTURE_REVIEW, compare committed ARCHITECTURE.md against committed SPEC.md and committed SPEC-DRAFT.md and check that the design covers the requirements and test boundaries.
 
-For TASKS_REVIEW, compare committed TASKS.md against committed SPEC.md and ARCHITECTURE.md and check that tasks are decomposed, testable, and traceable.
+For TASKS_REVIEW, compare committed TASKS.md against committed SPEC.md, ARCHITECTURE.md, and SPEC-DRAFT.md and check that tasks are decomposed, testable, and traceable.
 
-For IMPLEMENTATION_REVIEW, inspect one implementer result, commits, tests, and evidence. Check that the assigned task is complete and safe to merge.
+For IMPLEMENTATION_REVIEW, inspect one implementer result, commits, tests, and evidence against the full chain. Check that the assigned task is complete and safe to merge.
 
-For MERGE_REVIEW, inspect one committed merge result, conflicts, resolutions, tests, and final evidence.
+For MERGE_REVIEW, inspect one committed merge result, conflicts, resolutions, tests, and final evidence against the full chain.
