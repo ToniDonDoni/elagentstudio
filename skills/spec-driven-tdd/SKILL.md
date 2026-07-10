@@ -1,14 +1,14 @@
 ---
 name: spec-driven-tdd
-description: "OpenCode-native Spec-Driven TDD with three roles: orchestrator, implementer, reviewer."
-version: 5.6.4-opencode-async
+description: "Runtime-neutral Spec-Driven TDD with three roles: orchestrator, implementer, reviewer."
+version: 5.7.0-async
 author: Hermes Agent
 license: MIT
 ---
 
-# Spec-Driven TDD for OpenCode
+# Spec-Driven TDD
 
-This skill uses OpenCode agents only. It does not use MCP.
+This skill uses agent subagents only. It does not require a platform-specific external coordinator.
 
 There are exactly three roles:
 
@@ -83,7 +83,7 @@ The reviewer reviews committed artifacts and committed evidence only. Uncommitte
 6. The same implementer/reviewer loop creates, commits, verifies, and reviews `ARCHITECTURE.md` with full ancestry context.
 7. The same implementer/reviewer loop creates, commits, verifies, and reviews `TASKS.md` with full ancestry context.
 8. The orchestrator launches implementation work as background implementer tasks with full ancestry context.
-9. The orchestrator tracks background implementers with `task_status` and recorded task ids.
+9. The orchestrator tracks background implementers with the runtime task-status mechanism and recorded task ids.
 10. When one implementer completes, the orchestrator verifies committed evidence and clean git status, then immediately launches one background reviewer for that implementer result with full ancestry context.
 11. The orchestrator does not wait for a whole batch or wave before reviewing a completed implementer result.
 12. Reviewed worktrees are merged sequentially by synchronous MERGE implementer subagents.
@@ -106,10 +106,6 @@ The reviewer reviews committed artifacts and committed evidence only. Uncommitte
 
 ## Background requirement
 
-Start OpenCode with:
-
-```bash
-OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true opencode
-```
+This skill requires an agent runtime that can launch background subagents and later query their task status.
 
 If background tasks are unavailable, stop before code implementation instead of pretending async work exists.
