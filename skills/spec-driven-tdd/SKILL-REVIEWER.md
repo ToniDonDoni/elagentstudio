@@ -84,3 +84,20 @@ For TASKS_REVIEW, compare committed TASKS.md against committed SPEC.md, ARCHITEC
 For IMPLEMENTATION_REVIEW, inspect one implementer result, commits, tests, and evidence against the full chain. Check that the assigned task is complete and safe to merge.
 
 For MERGE_REVIEW, inspect one committed merge result, conflicts, resolutions, tests, and final evidence against the full chain.
+
+## Reviewer log
+
+The reviewer MUST maintain a private append-only review log at:
+
+`.sddtdd_skill/reviewer.log`
+
+Only the reviewer may read or write this log.
+
+The reviewer MUST append one entry for every review it performs.
+
+Each entry MUST be one JSON object on one line:
+
+```json
+{"timestamp":"<UTC_ISO8601>","task_id":"<BUSINESS_TASK_ID>","execution_id":"<EXECUTION_ID_OR_NONE>","commit":"<COMMIT_SHA_OR_NONE>","head":"<HEAD_SHA>","prompt":"<EXACT_REVIEW_PROMPT>","decision":"<PASS|FAIL|NEEDS_CLARIFICATIONS>","reason":"<EXPLANATION>"}
+```
+
