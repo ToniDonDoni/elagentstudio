@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-implementer
-description: "OpenCode implementer role for all Spec-Driven TDD artifact creation."
-version: 5.4.0-opencode-async
+description: "Implementer role for all Spec-Driven TDD artifact creation."
+version: 5.7.0-async
 author: Hermes Agent
 license: MIT
 ---
