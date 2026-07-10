@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-orchestrator
 description: "OpenCode orchestrator role for Spec-Driven TDD."
-version: 5.6.1-opencode-async
+version: 5.6.2-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -20,13 +20,11 @@ The orchestrator must not invent other roles. SPEC author, architecture author, 
 
 ## Orchestrator load set
 
-The orchestrator must load only its own control-plane contract before it starts routing work:
+The orchestrator loads only its own control-plane contract:
 
 - SKILL.md
 - SKILL-ORCHESTRATOR.md
 - references/JOURNAL.md
-
-The orchestrator must not load SKILL-IMPLEMENTER.md, SKILL-REVIEWER.md, or ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md as part of its own role context. It may pass those files as required references to implementer or reviewer subagents, but it must not use them to perform implementer or reviewer work itself.
 
 Do not add new mandatory reference files. The orchestrator may add an existing task-specific reference to a subagent prompt only when that task needs it.
 
