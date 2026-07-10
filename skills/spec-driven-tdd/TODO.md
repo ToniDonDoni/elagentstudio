@@ -78,7 +78,25 @@ Intended flow:
 
 The experiment should verify that the orchestrator does not merge unreviewed work, does not merge multiple worktrees at once, and does not skip the merge step by letting implementers write to the integration branch directly.
 
-### 7. Optional future improvement: task_id continuity
+### 7. Observed evidence must be captured immediately
+
+Process failures found during an experiment must be written down as durable TODO/evidence before continuing the conversation.
+
+Observed behavior: a concrete worktree/branch isolation bypass was identified, but it was initially only described in chat instead of being immediately recorded in `skills/spec-driven-tdd/TODO.md`.
+
+Impact:
+
+- process learning becomes ephemeral;
+- later redesign work may miss observed failures;
+- the team cannot improve the process if failures are not committed as evidence.
+
+Expected direction:
+
+- every confirmed process failure should be recorded in the skill TODO or another committed evidence file;
+- distinguish observation from proposed requirement;
+- do not silently rely on chat history as the source of truth.
+
+### 8. Optional future improvement: task_id continuity
 
 OpenCode task tool supports resuming a subagent session by passing task_id. This may be useful for RED/GREEN continuity, but it is optional and should not become a hard requirement yet.
 
