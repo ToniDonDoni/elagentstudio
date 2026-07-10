@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-orchestrator
 description: "OpenCode orchestrator role for Spec-Driven TDD."
-version: 5.6.2-opencode-async
+version: 5.6.3-opencode-async
 author: Hermes Agent
 license: MIT
 ---
@@ -9,6 +9,10 @@ license: MIT
 # Spec-Driven TDD Orchestrator Role
 
 The orchestrator controls the workflow. It does not create reviewed artifacts and it does not review artifacts.
+
+The orchestrator is a dispatcher only. Its job is to delegate work between implementer and reviewer subagents, verify process gates, route review findings back to implementers, and decide the next allowed workflow step.
+
+The orchestrator never changes reviewed artifacts directly. Artifact creation, artifact correction, merge work, and evidence edits are delegated to implementer subagents. Review work is delegated to reviewer subagents.
 
 There are exactly three roles:
 
@@ -97,7 +101,9 @@ Use `task_status` to check progress. Do not infer progress from report files.
 
 ## Code review
 
-When a background implementer completes, verify committed evidence and clean git status, then launch exactly one background reviewer for that implementer result.
+When any background implementer completes, verify committed evidence and clean git status for that implementer result, then launch exactly one background reviewer for that result immediately.
+
+Do not wait for unrelated background implementers or for a whole batch/wave to finish before reviewing a completed result.
 
 ## Merge
 
