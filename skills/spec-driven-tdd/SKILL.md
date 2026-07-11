@@ -66,12 +66,14 @@ Reviewer loads:
 5. If review fails, the orchestrator launches an implementer again with the review findings and full ancestry context, then repeats commit, clean-status verification, and review.
 6. The same asynchronous implementer/reviewer loop creates, commits, verifies, and reviews `ARCHITECTURE.md` with full ancestry context.
 7. The same asynchronous implementer/reviewer loop creates, commits, verifies, and reviews `TASKS.md` with full ancestry context.
-8. The orchestrator launches every non-MERGE implementer and reviewer task as a background task with full ancestry context and records its runtime task id in the registrar MCP state.
-9. The orchestrator tracks background work with the runtime task-status mechanism and `.sddtdd_skill/task-status.json`.
+8. The orchestrator launches every non-MERGE implementer and reviewer task as a background task with full ancestry context; each agent reports its own runtime task id and state to the registrar MCP.
+9. The orchestrator tracks background work with the runtime task-status mechanism and `.sddtdd_skill/task-status.json`; it never reports agent state itself.
 10. When one implementer completes, the orchestrator verifies committed evidence and clean git status, then immediately launches one background reviewer for that implementer result with full ancestry context.
 11. The orchestrator does not wait for a whole batch or wave before reviewing a completed implementer result.
 12. Reviewed worktrees are merged sequentially by synchronous MERGE implementer subagents; MERGE is the only synchronous task type.
 13. Each MERGE implementer merges one reviewed worktree into the integration branch, resolves conflicts if needed, runs the required tests after conflict resolution and before committing the merge result, records test evidence, then reports completion.
+
+14. If `getNextTask` returns `notReady`, the orchestrator waits for direct agent status reports instead of issuing duplicate work. The registrar expires tasks after `SDDTDD_TASK_TIMEOUT_SECONDS` (600 seconds by default), marks them retryable failures, and makes them eligible for reissue.
 
 ## Background requirement
 

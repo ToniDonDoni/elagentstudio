@@ -58,6 +58,15 @@ If the chain is missing, report the missing files and wait for the orchestrator.
 - Do not ask the user for review.
 - Do not advance the workflow yourself.
 
+Report task state directly to the registrar MCP with `taskStatus(update)`:
+
+- `RUNNING` immediately after the runtime task starts;
+- `COMPLETED`, `FAILED`, or `BLOCKED` before reporting the result;
+- include `role: implementer`, the runtime `execution_id`, worktree, branch,
+  commit, and concise result or error when available.
+
+The orchestrator must not report these states on the implementer's behalf.
+
 ## Evidence rules
 
 Uncommitted files are not valid evidence.

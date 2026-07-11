@@ -65,6 +65,15 @@ If the chain is missing, list the missing files or commits in the review report.
 - Write the required review report.
 - Include inspected files, commits, evidence, findings, and required fixes.
 
+Report task state directly to the registrar MCP with `taskStatus(update)`:
+
+- `RUNNING` immediately after the runtime task starts;
+- `COMPLETED`, `FAILED`, or `BLOCKED` before reporting the verdict;
+- include `role: reviewer`, the runtime `execution_id`, worktree, branch,
+  commit, and concise result or error when available.
+
+The orchestrator must not report these states on the reviewer's behalf.
+
 ## Evidence rules
 
 Before reviewing, verify or require proof that the relevant worktree has no pending changes.
@@ -100,4 +109,3 @@ Each entry MUST be one JSON object on one line:
 ```json
 {"timestamp":"<UTC_ISO8601>","task_id":"<BUSINESS_TASK_ID>","execution_id":"<EXECUTION_ID_OR_NONE>","commit":"<COMMIT_SHA_OR_NONE>","head":"<HEAD_SHA>","prompt":"<EXACT_REVIEW_PROMPT>","decision":"<PASS|FAIL|NEEDS_CLARIFICATIONS>","reason":"<EXPLANATION>"}
 ```
-

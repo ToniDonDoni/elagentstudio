@@ -61,7 +61,15 @@ The `taskStatus` tool has two operations:
 State is atomically persisted at `<repo>/.sddtdd_skill/task-status.json` and
 keeps the current task plus its status history. Use `operation: "get"` with a
 `task_id` to read one task, or without a task ID to read all tasks. The
-registrar includes this document in the `getNextTask` model context.
+registrar includes this document in the `getNextTask` model context. Only
+implementer and reviewer agents should call `operation: "update"`; the
+dispatcher reads state and does not impersonate them.
+
+`getNextTask` returns `orchestrator_result.status: "notReady"` with no
+`next_task` while issued tasks are still active. A task that receives no
+`taskStatus(update)` report for 600 seconds is marked `FAILED` with
+`retryable: true` and can be issued again. Configure the timeout with
+`SDDTDD_TASK_TIMEOUT_SECONDS`.
 
 ## Tests
 

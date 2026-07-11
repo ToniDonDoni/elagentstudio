@@ -36,6 +36,8 @@ TASK_STATUS_VALUES = frozenset({
     "BLOCKED",
     "CANCELLED",
 })
+TASK_ACTIVE_STATUS_VALUES = frozenset({"PENDING", "RUNNING", "WAITING_REVIEW"})
+DEFAULT_TASK_TIMEOUT_SECONDS = 600
 _task_status_lock = threading.Lock()
 
 def _trace_function(func):
@@ -273,6 +275,129 @@ def _empty_task_status_document() -> dict[str, Any]:
     return {"version": 1, "updated_at": None, "tasks": {}}
 
 
+def _task_timeout_seconds() -> float:
+    raw_value = os.environ.get("SDDTDD_TASK_TIMEOUT_SECONDS", str(DEFAULT_TASK_TIMEOUT_SECONDS))
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise ValueError("SDDTDD_TASK_TIMEOUT_SECONDS must be a positive number") from exc
+    if value <= 0:
+        raise ValueError("SDDTDD_TASK_TIMEOUT_SECONDS must be a positive number")
+    return value
+
+
+def _parse_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        timestamp = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=timezone.utc)
+    return timestamp
+
+
+def _expire_stale_tasks(document: dict[str, Any], *, now: datetime | None = None) -> bool:
+    now = now or datetime.now(timezone.utc)
+    timeout = _task_timeout_seconds()
+    changed = False
+    for task in document["tasks"].values():
+        if not isinstance(task, dict) or task.get("status") not in TASK_ACTIVE_STATUS_VALUES:
+            continue
+        updated_at = _parse_timestamp(task.get("updated_at"))
+        if updated_at is None or (now - updated_at).total_seconds() < timeout:
+            continue
+        task["status"] = "FAILED"
+        task["retryable"] = True
+        task["error"] = "TASK_TIMEOUT"
+        task["updated_at"] = now.isoformat()
+        task["finished_at"] = now.isoformat()
+        history = list(task.get("history", []))
+        history.append({
+            "status": "FAILED",
+            "at": now.isoformat(),
+            "execution_id": task.get("execution_id"),
+            "result": None,
+            "error": "TASK_TIMEOUT",
+        })
+        task["history"] = history
+        changed = True
+    if changed:
+        document["updated_at"] = now.isoformat()
+    return changed
+
+
+def _task_role(task_kind: object) -> str:
+    if isinstance(task_kind, str) and task_kind.endswith("_REVIEW"):
+        return "reviewer"
+    return "implementer"
+
+
+def _record_issued_task(repo_path: str, orchestrator_result: dict[str, Any]) -> None:
+    if orchestrator_result.get("status") not in {"task", "TASK"}:
+        return
+    next_task = orchestrator_result.get("next_task")
+    if not isinstance(next_task, dict) or not next_task.get("task_id"):
+        return
+    task_id = str(next_task["task_id"])
+    path = _get_task_status_path(repo_path)
+    now = datetime.now(timezone.utc).isoformat()
+    with _task_status_lock:
+        document = _read_task_status_document(path)
+        _expire_stale_tasks(document, now=datetime.now(timezone.utc))
+        previous = document["tasks"].get(task_id, {})
+        task = dict(previous)
+        task.update({
+            "task_id": task_id,
+            "task_kind": next_task.get("task_kind"),
+            "status": "PENDING",
+            "role": _task_role(next_task.get("task_kind")),
+            "updated_at": now,
+            "retryable": False,
+            "error": None,
+        })
+        task["attempt"] = int(previous.get("attempt", 0)) + 1
+        history = list(task.get("history", []))
+        history.append({
+            "status": "PENDING",
+            "at": now,
+            "execution_id": None,
+            "result": "ISSUED",
+            "error": None,
+        })
+        task["history"] = history
+        document["tasks"][task_id] = task
+        document["updated_at"] = now
+        _write_task_status_document(path, document)
+
+
+def _not_ready_result(active_tasks: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "status": "notReady",
+        "task_review": None,
+        "next_task": None,
+        "active_tasks": [
+            {"task_id": task.get("task_id"), "status": task.get("status"), "updated_at": task.get("updated_at")}
+            for task in active_tasks
+        ],
+        "rationale": "No new task is available while previously issued tasks are unfinished.",
+    }
+
+
+def _unfinished_tasks_for_next_task(repo_path: str) -> list[dict[str, Any]]:
+    path = _get_task_status_path(repo_path)
+    with _task_status_lock:
+        document = _read_task_status_document(path)
+        changed = _expire_stale_tasks(document)
+        if changed:
+            _write_task_status_document(path, document)
+        return [
+            task for task in document["tasks"].values()
+            if isinstance(task, dict) and task.get("status") in TASK_ACTIVE_STATUS_VALUES
+        ]
+
+
 def _read_task_status_document(path: str) -> dict[str, Any]:
     try:
         with open(path, encoding="utf-8") as handle:
@@ -318,6 +443,9 @@ def _task_status_update(arguments: dict[str, Any]) -> dict[str, Any]:
     path = _get_task_status_path(repo_path)
     with _task_status_lock:
         document = _read_task_status_document(path)
+        changed = _expire_stale_tasks(document)
+        if changed:
+            _write_task_status_document(path, document)
         if operation == "get":
             if task_id is None:
                 return {
@@ -337,6 +465,9 @@ def _task_status_update(arguments: dict[str, Any]) -> dict[str, Any]:
             return {"status": "ERROR", "path": path, "response": f"status must be one of: {allowed}"}
         if task_id is None:
             raise ValueError("task_id is required for operation='update'")
+        role = arguments.get("role")
+        if role not in {"implementer", "reviewer"}:
+            raise ValueError("role must be 'implementer' or 'reviewer'")
 
         now = datetime.now(timezone.utc).isoformat()
         previous = document["tasks"].get(task_id, {})
@@ -345,15 +476,17 @@ def _task_status_update(arguments: dict[str, Any]) -> dict[str, Any]:
             "task_id": task_id,
             "task_kind": arguments.get("task_kind", task.get("task_kind")),
             "status": status,
-            "role": arguments.get("role", task.get("role")),
+            "role": role,
             "execution_id": arguments.get("execution_id", task.get("execution_id")),
             "worktree_path": arguments.get("worktree_path", task.get("worktree_path")),
             "branch": arguments.get("branch", task.get("branch")),
             "commit": arguments.get("commit", task.get("commit")),
             "result": arguments.get("result", task.get("result")),
             "error": arguments.get("error", task.get("error")),
+            "retryable": False,
             "updated_at": now,
         })
+        task["attempt"] = int(task.get("attempt", 1))
         history = list(task.get("history", []))
         history.append({
             "status": status,
@@ -834,7 +967,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="taskStatus",
             description=(
-                "Persist or read the current state of delegated orchestrator tasks. "
+                "Persist or read the current state reported directly by implementer and reviewer tasks. "
                 "The state is stored in .sddtdd_skill/task-status.json and is also "
                 "included in the next-task orchestrator context."
             ),
@@ -848,7 +981,7 @@ async def list_tools() -> list[types.Tool]:
                     "task_id": {"type": "string"},
                     "task_kind": {"type": "string"},
                     "status": {"type": "string", "enum": sorted(TASK_STATUS_VALUES)},
-                    "role": {"type": "string", "enum": ["implementer", "reviewer"]},
+                    "role": {"type": "string", "enum": ["implementer", "reviewer"], "description": "Required for update; identifies the reporting agent."},
                     "execution_id": {"type": "string"},
                     "worktree_path": {"type": "string"},
                     "branch": {"type": "string"},
@@ -916,7 +1049,7 @@ For getNextTask, the input always has one shape:
 For getNextTask, return exactly one JSON object with this shape:
 
 {
-  "status": "task | fail | needs_clarification | error | complete",
+  "status": "task | notReady | fail | needs_clarification | error | complete",
   "task_review": {
     "status": "PASS | FAIL | NEEDS_CLARIFICATION | ERROR",
     "findings": ["specific process findings"],
@@ -935,12 +1068,18 @@ For getNextTask, return exactly one JSON object with this shape:
     "review_type": "SPEC_REVIEW | ARCHITECTURE_REVIEW | TASK_REVIEW | RED_REVIEW | GREEN_REVIEW | REGRESSION_REVIEW | FINAL_REVIEW | null",
     "rationale": "brief process reason for this task"
   } | null,
+  "active_tasks": [
+    {"task_id": "currently issued task id", "status": "PENDING | RUNNING | WAITING_REVIEW", "updated_at": "ISO timestamp"}
+  ],
   "rationale": "overall explanation of the orchestrator decision"
 }
 
 Status and process policy are defined in the embedded installed Markdown policy,
 especially SKILL-ORCHESTRATOR.md. There is no reviewTask tool. There is no
 previous_task_id input. Derive the required independent reviewer verdict from the submitted task_kind by the fixed mapping in SKILL-ORCHESTRATOR.md. Return JSON only.
+If the registrar has already issued tasks that are still unfinished, return
+`status: "notReady"`, set `next_task` to null, include the active task IDs in
+`active_tasks`, and do not invent another task.
 """.strip()
 
 
@@ -1805,8 +1944,33 @@ async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[
             "arguments": arguments,
         })
 
-        prompt = _get_next_prompt(repo_path, git, arguments)
         orchestrator_policy_text = _orchestrator_policy_bundle_text()
+        unfinished_tasks = _unfinished_tasks_for_next_task(repo_path)
+        if unfinished_tasks:
+            parsed = _not_ready_result(unfinished_tasks)
+            result = {
+                "request_id": request_id,
+                "status": "COMPLETED",
+                "stale": False,
+                "head_sha": head_before,
+                "orchestrator_result": parsed,
+            }
+            log.append({
+                "event": f"{name}_completed",
+                "request_id": request_id,
+                "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                "repo_path": repo_path,
+                "head_sha_before": head_before,
+                "head_sha_after": head_before,
+                "status": result["status"],
+                "stale": False,
+                "duration_ms": int((time.monotonic() - t_before) * 1000),
+                "result": result,
+                "stop_reason": "notReady",
+            })
+            return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+
+        prompt = _get_next_prompt(repo_path, git, arguments)
         system_prompt = (
             ORCHESTRATOR_SYSTEM_PROMPT
             + "\n\n===== BEGIN INSTALLED SDDTDD POLICY FILES =====\n"
@@ -1838,6 +2002,8 @@ async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[
                 "head_sha_after": head_after,
             }
         else:
+            if parsed.get("status") == "not_ready":
+                parsed["status"] = "notReady"
             result = {
                 "request_id": request_id,
                 "status": status,
@@ -1845,6 +2011,7 @@ async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[
                 "head_sha": head_before,
                 "orchestrator_result": parsed,
             }
+            _record_issued_task(repo_path, parsed)
 
         log.append({
             "event": f"{name}_completed",

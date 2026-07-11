@@ -38,6 +38,7 @@ import tempfile
 import time
 import traceback
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -636,8 +637,56 @@ async def test_task_status_tool(client: MCPStdioClient, repo: Path) -> None:
         (repo / ".sddtdd_skill" / "task-status.json").is_file(),
         "taskStatus must persist task-status.json",
     )
+    await call_mcp_tool(
+        client,
+        "taskStatus",
+        {
+            "repo_path": str(repo),
+            "operation": "update",
+            "task_id": "T-U2U-STATUS",
+            "task_kind": "IMPLEMENTATION",
+            "status": "COMPLETED",
+            "role": "implementer",
+            "execution_id": "u2u-status-task",
+            "result": "Smoke test completed.",
+        },
+    )
     event("SCENARIO_DONE: task_status_tool")
     ok("taskStatus persists and reads delegated task state through MCP")
+
+
+async def test_task_status_timeout(client: MCPStdioClient, repo: Path) -> None:
+    event("SCENARIO_BEGIN: task_status_timeout")
+    await call_mcp_tool(
+        client,
+        "taskStatus",
+        {
+            "repo_path": str(repo),
+            "operation": "update",
+            "task_id": "T-U2U-TIMEOUT",
+            "task_kind": "IMPLEMENTATION",
+            "status": "RUNNING",
+            "role": "implementer",
+            "execution_id": "u2u-timeout-task",
+        },
+    )
+    state_path = repo / ".sddtdd_skill" / "task-status.json"
+    document = json.loads(state_path.read_text(encoding="utf-8"))
+    stale_at = (datetime.now(timezone.utc) - timedelta(seconds=601)).isoformat()
+    document["updated_at"] = stale_at
+    document["tasks"]["T-U2U-TIMEOUT"]["updated_at"] = stale_at
+    state_path.write_text(json.dumps(document), encoding="utf-8")
+
+    fetched = await call_mcp_tool(
+        client,
+        "taskStatus",
+        {"repo_path": str(repo), "operation": "get", "task_id": "T-U2U-TIMEOUT"},
+    )
+    assert_eq(fetched["task"]["status"], "FAILED", "taskStatus timeout status")
+    assert_eq(fetched["task"]["retryable"], True, "taskStatus timeout retryable flag")
+    assert_eq(fetched["task"]["error"], "TASK_TIMEOUT", "taskStatus timeout error")
+    event("SCENARIO_DONE: task_status_timeout")
+    ok("taskStatus expires stale work and makes it retryable")
 
 
 
@@ -1011,6 +1060,23 @@ async def test_orchestrator_get_next_task_system_prompt_happy_path(client: MCPSt
     assert_eq(response["orchestrator_result"]["task_review"], None, "initial getNextTask must not return task_review")
     assert_eq(response["orchestrator_result"]["next_task"]["task_id"], "O-000001", "getNextTask orchestrator next task id")
     assert_eq(state.calls, 1, "getNextTask system prompt test must sample exactly once")
+
+    not_ready = await call_mcp_tool(
+        client,
+        "getNextTask",
+        {
+            "repo_path": str(repo),
+            "task_kind": "INITIAL_USER_INPUT",
+            "task_id": None,
+            "claimed_result": None,
+            "work_journal_id": None,
+            "evidence": {},
+        },
+        timeout=5,
+    )
+    assert_eq(not_ready["status"], "COMPLETED", "notReady getNextTask MCP status")
+    assert_eq(not_ready["orchestrator_result"]["status"], "notReady", "unfinished getNextTask result")
+    assert_eq(state.calls, 1, "notReady must not call the orchestrator sampler")
     event("SCENARIO_DONE: orchestrator_get_next_task_system_prompt_happy_path")
     ok("getNextTask sampling/createMessage receives orchestrator/orchestrator systemPrompt")
 
@@ -1018,6 +1084,21 @@ async def test_orchestrator_get_next_task_system_prompt_happy_path(client: MCPSt
 async def test_orchestrator_get_next_task_completed_task_process_gate_happy_path(client: MCPStdioClient, repo: Path) -> None:
     event("SCENARIO_BEGIN: orchestrator_get_next_task_completed_task_process_gate_happy_path")
     state = ScenarioState("orchestrator_get_next_task_completed_task_process_gate_happy_path")
+
+    await call_mcp_tool(
+        client,
+        "taskStatus",
+        {
+            "repo_path": str(repo),
+            "operation": "update",
+            "task_id": "O-000001",
+            "task_kind": "USER_INPUT_CAPTURE",
+            "status": "COMPLETED",
+            "role": "implementer",
+            "execution_id": "u2u-implementer-1",
+            "result": "Committed user input evidence.",
+        },
+    )
 
     async def sampling(params: Json) -> Json:
         state.calls += 1
@@ -1958,6 +2039,7 @@ async def run_all(args: argparse.Namespace) -> None:
 
             await run_named_test("test_startup_and_list_tools", lambda: test_startup_and_list_tools(client))
             await run_named_test("test_task_status_tool", lambda: test_task_status_tool(client, repo))
+            await run_named_test("test_task_status_timeout", lambda: test_task_status_timeout(client, repo))
             await run_named_test("test_basic_review", lambda: test_basic_review(client, repo))
             await run_named_test(
                 "test_reviewer_system_prompt_happy_path",

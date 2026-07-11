@@ -51,20 +51,24 @@ through the runtime's background-task mechanism except a `MERGE` task, which is
 the only synchronous operation and handles exactly one worktree.
 
 1. Call the registrar MCP `getNextTask` operation. For the initial request use `INITIAL_USER_INPUT`; for later calls submit the completed task and committed evidence.
-2. Immediately persist the issued task as `PENDING` through the registrar MCP `taskStatus` operation.
-3. Launch the implementer or reviewer through the runtime background-task mechanism, passing the required context and the task's isolated worktree. Record the returned runtime task id and update the task to `RUNNING`.
+2. The registrar MCP server records the issued task as `PENDING`; the orchestrator does not report that state.
+3. Launch the implementer or reviewer through the runtime background-task mechanism, passing the required context and the task's isolated worktree. The launched agent must report `RUNNING` directly to the registrar with its role and returned runtime task id.
 4. Use the runtime task-status mechanism to detect completion. Do not infer completion from report files.
-5. Verify the result's commit and clean worktree, then update the registrar task to `COMPLETED`, `FAILED`, or `BLOCKED` with the evidence. If review is required, use `WAITING_REVIEW` until the reviewer starts.
+5. The implementer or reviewer reports `COMPLETED`, `FAILED`, or `BLOCKED` directly to the registrar with the evidence. The orchestrator verifies the result's commit and clean worktree but must not impersonate the reporting agent. If review is required, the implementer may report `WAITING_REVIEW` until the reviewer starts.
 6. As soon as one implementer result is ready, launch its separate reviewer immediately. Do not wait for unrelated tasks or a batch.
 7. If the reviewer returns `PASS`, submit its committed evidence to `getNextTask`. If it returns `FAIL` or `NEEDS_CHANGES`, launch a new asynchronous implementer with the findings and full ancestry context.
 8. For `MERGE`, launch one synchronous implementer for one reviewed worktree, resolve conflicts, run required tests, update task status, and commit the merge result before requesting the next task.
-9. Repeat until `complete`, `BLOCKED`, or user stop.
+9. If the registrar returns `notReady`, do not issue or invent a task. Query runtime task status and wait for an agent to report a terminal state, then call `getNextTask` again.
+10. Repeat until `complete`, `BLOCKED`, or user stop.
 
 ## Registrar task state
 
 The registrar MCP server exposes one `taskStatus` tool with `get` and `update`
 operations. It persists state at `.sddtdd_skill/task-status.json`, next to the
 runtime logs. The document is durable runtime state, not a hand-edited artifact.
+Implementer and reviewer agents are the only writers of task progress. The
+orchestrator may read status but must not call `taskStatus(update)` on their
+behalf.
 
 Every delegated task status update must include, when available:
 
@@ -77,6 +81,18 @@ The orchestrator must read the status document through `taskStatus(get)` when
 reconciling running work. The registrar also injects the document into the
 `getNextTask` LLM context, so the model can reason from persisted state rather
 than guessing from stale prompts or report files.
+
+## `notReady` and task timeout
+
+`getNextTask` returns `status: "notReady"` with `next_task: null` and an
+`active_tasks` list when previously issued tasks are still unfinished. This is
+not a failure and must not cause the dispatcher to create duplicate work.
+
+The registrar expires an active task when it has not received a direct
+`taskStatus(update)` report for the configured timeout. The default is 600
+seconds; override it with `SDDTDD_TASK_TIMEOUT_SECONDS` for tests or deployment
+policy. Expired tasks become `FAILED` with `retryable: true` and can be issued
+again by a later `getNextTask` call.
 
 ## Required subagent fields
 

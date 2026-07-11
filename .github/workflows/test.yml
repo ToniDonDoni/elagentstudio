@@ -33,4 +33,4 @@ jobs:
         run: uv run --dev pytest
 
       - name: Run MCP task-status smoke test
-        run: uv run python server_e2e_test.py --test task_status_tool
+        run: uv run python server_e2e_test.py --test task_status
