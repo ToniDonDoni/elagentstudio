@@ -76,7 +76,7 @@ For SPEC, ARCHITECTURE, and TASKS, run synchronously. Create the requested artif
 
 ## Implementation tasks
 
-For IMPLEMENTATION, usually run as a background task. Work only in the new worktree and branch if the worktree doesn't exist - create it. Implement only the assigned task shard. Write the implementation report with commits, tests, changed files, blockers, and readiness for review. Commit all completed changes and evidence before reporting completion.
+For IMPLEMENTATION, usually run as a background task. Work only in the new worktree and branch if the worktree doesn't exist - create it (e.g. for task T021 git worktree add .worktrees/T021 -b task/T021 main). Implement only the assigned task shard. Write the implementation report with commits, tests, changed files, blockers, and readiness for review. Commit all completed changes and evidence before reporting completion.
 
 ## Merge tasks
 
