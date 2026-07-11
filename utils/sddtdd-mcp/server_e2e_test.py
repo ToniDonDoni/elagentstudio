@@ -564,6 +564,7 @@ def assert_review_tool(list_result: Json) -> None:
     names = [tool.get("name") for tool in tools]
     assert_true("review" in names, f"tools/list must include review, got {names!r}")
     assert_true("getNextTask" in names, f"tools/list must include getNextTask, got {names!r}")
+    assert_true("taskStatus" in names, f"tools/list must include taskStatus, got {names!r}")
     assert_true("reviewTask" not in names, f"tools/list must not include removed reviewTask, got {names!r}")
 
 
@@ -604,6 +605,39 @@ async def call_mcp_tool(
         timeout=timeout,
     )
     return extract_tool_call_response(result)
+
+
+async def test_task_status_tool(client: MCPStdioClient, repo: Path) -> None:
+    event("SCENARIO_BEGIN: task_status_tool")
+    updated = await call_mcp_tool(
+        client,
+        "taskStatus",
+        {
+            "repo_path": str(repo),
+            "operation": "update",
+            "task_id": "T-U2U-STATUS",
+            "task_kind": "IMPLEMENTATION",
+            "status": "RUNNING",
+            "role": "implementer",
+            "execution_id": "u2u-status-task",
+        },
+    )
+    assert_eq(updated["status"], "COMPLETED", "taskStatus update status")
+    assert_eq(updated["task"]["status"], "RUNNING", "taskStatus updated task state")
+
+    fetched = await call_mcp_tool(
+        client,
+        "taskStatus",
+        {"repo_path": str(repo), "operation": "get", "task_id": "T-U2U-STATUS"},
+    )
+    assert_eq(fetched["status"], "COMPLETED", "taskStatus get status")
+    assert_eq(fetched["task"]["execution_id"], "u2u-status-task", "taskStatus execution id")
+    assert_true(
+        (repo / ".sddtdd_skill" / "task-status.json").is_file(),
+        "taskStatus must persist task-status.json",
+    )
+    event("SCENARIO_DONE: task_status_tool")
+    ok("taskStatus persists and reads delegated task state through MCP")
 
 
 
@@ -1874,6 +1908,9 @@ async def run_all(args: argparse.Namespace) -> None:
 
         env = os.environ.copy()
         env["SDDTDD_LOG_PATH"] = str(log_path)
+        checkout_skill_root = server_path.parents[2] / "skills" / "spec-driven-tdd"
+        env.setdefault("SDDTDD_REVIEW_SKILL_ROOT", str(checkout_skill_root))
+        env.setdefault("SDDTDD_ORCHESTRATOR_SKILL_ROOT", str(checkout_skill_root))
         env.setdefault("SDDTDD_REVIEW_MAX_SAMPLING_TOKENS", "20000")
         env.setdefault("SDDTDD_REVIEW_MAX_SAMPLING_ROUNDS", "50")
         env.setdefault("SDDTDD_REVIEW_VERDICT_REPAIR_ATTEMPTS", "5")
@@ -1920,6 +1957,7 @@ async def run_all(args: argparse.Namespace) -> None:
                     event(f"RUN_TEST_DONE: {test_name}")
 
             await run_named_test("test_startup_and_list_tools", lambda: test_startup_and_list_tools(client))
+            await run_named_test("test_task_status_tool", lambda: test_task_status_tool(client, repo))
             await run_named_test("test_basic_review", lambda: test_basic_review(client, repo))
             await run_named_test(
                 "test_reviewer_system_prompt_happy_path",

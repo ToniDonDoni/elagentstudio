@@ -1,6 +1,6 @@
 # sddtdd-mcp
 
-Minimal MCP review proxy for Hermes Agent.
+MCP review and orchestration registrar for the Spec-Driven TDD skill.
 
 ## Quick Start
 
@@ -41,9 +41,32 @@ Accepts a repository path, review type, optional task ID, and prompt. Captures G
 Default: `<repo>/.git/sddtdd/review-access.jsonl`
 Override: `SDDTDD_LOG_PATH` env var
 
+## Task status
+
+The `taskStatus` tool has two operations:
+
+```json
+{
+  "repo_path": "/work/gorillas-game",
+  "operation": "update",
+  "task_id": "T-000003",
+  "task_kind": "IMPLEMENTATION",
+  "status": "RUNNING",
+  "role": "implementer",
+  "execution_id": "background-task-123",
+  "worktree_path": "/work/gorillas-game/.worktrees/T-000003"
+}
+```
+
+State is atomically persisted at `<repo>/.sddtdd_skill/task-status.json` and
+keeps the current task plus its status history. Use `operation: "get"` with a
+`task_id` to read one task, or without a task ID to read all tasks. The
+registrar includes this document in the `getNextTask` model context.
+
 ## Tests
 
 ```bash
+uv run --dev pytest tests/test_task_status.py
 uv run python server_e2e_test.py
 ```
 

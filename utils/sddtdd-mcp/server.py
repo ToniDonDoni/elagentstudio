@@ -1,7 +1,7 @@
-"""sddtdd-mcp — Minimal MCP review proxy for Hermes Agent.
+"""sddtdd-mcp — MCP review, orchestration, and task-state server.
 
-Tools: review and getNextTask. Captures Git state, delegates to LLM via MCP sampling,
-records everything in an append-only JSON Lines access log.
+Tools: review, getNextTask, and taskStatus. Captures Git state, delegates to LLM
+via MCP sampling, and records runtime state under the target repository.
 """
 import atexit
 import asyncio
@@ -10,6 +10,8 @@ import logging
 import os
 import signal
 import subprocess
+import tempfile
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -24,6 +26,17 @@ from mcp.server.stdio import stdio_server
 
 # Logger for our own lifecycle tracing (goes to stderr → mcp-stderr.log)
 logger = logging.getLogger("sddtdd-mcp")
+
+TASK_STATUS_VALUES = frozenset({
+    "PENDING",
+    "RUNNING",
+    "WAITING_REVIEW",
+    "COMPLETED",
+    "FAILED",
+    "BLOCKED",
+    "CANCELLED",
+})
+_task_status_lock = threading.Lock()
 
 def _trace_function(func):
     if  asyncio.iscoroutinefunction(func):
@@ -246,6 +259,126 @@ def _get_orchestrator_log_path(repo_path: str) -> str:
     if env:
         return env
     return os.path.join(repo_path, ".sddtdd_skill", "orchestrator-access.jsonl")
+
+
+def _get_task_status_path(repo_path: str) -> str:
+    """Return the durable task-state document for a target repository."""
+    env = os.environ.get("SDDTDD_TASK_STATUS_PATH")
+    if env:
+        return env
+    return os.path.join(repo_path, ".sddtdd_skill", "task-status.json")
+
+
+def _empty_task_status_document() -> dict[str, Any]:
+    return {"version": 1, "updated_at": None, "tasks": {}}
+
+
+def _read_task_status_document(path: str) -> dict[str, Any]:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            document = json.load(handle)
+    except FileNotFoundError:
+        return _empty_task_status_document()
+    if not isinstance(document, dict) or not isinstance(document.get("tasks", {}), dict):
+        raise ValueError(f"task status file is not a valid object: {path}")
+    document.setdefault("version", 1)
+    document.setdefault("updated_at", None)
+    return document
+
+
+def _write_task_status_document(path: str, document: dict[str, Any]) -> None:
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    fd, temporary_path = tempfile.mkstemp(prefix="task-status.", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(document, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        if os.path.exists(temporary_path):
+            os.unlink(temporary_path)
+
+
+def _task_status_update(arguments: dict[str, Any]) -> dict[str, Any]:
+    operation = arguments.get("operation")
+    if operation not in {"get", "update"}:
+        raise ValueError("operation must be 'get' or 'update'")
+
+    repo_path = arguments.get("repo_path")
+    if not isinstance(repo_path, str) or not repo_path:
+        raise ValueError("repo_path is required")
+
+    task_id = arguments.get("task_id")
+    if task_id is not None and (not isinstance(task_id, str) or not task_id):
+        raise ValueError("task_id must be a non-empty string when supplied")
+
+    path = _get_task_status_path(repo_path)
+    with _task_status_lock:
+        document = _read_task_status_document(path)
+        if operation == "get":
+            if task_id is None:
+                return {
+                    "status": "COMPLETED",
+                    "path": path,
+                    "tasks": document["tasks"],
+                    "updated_at": document.get("updated_at"),
+                }
+            task = document["tasks"].get(task_id)
+            if task is None:
+                return {"status": "ERROR", "path": path, "response": f"unknown task_id: {task_id}"}
+            return {"status": "COMPLETED", "path": path, "task": task}
+
+        status = arguments.get("status")
+        if status not in TASK_STATUS_VALUES:
+            allowed = ", ".join(sorted(TASK_STATUS_VALUES))
+            return {"status": "ERROR", "path": path, "response": f"status must be one of: {allowed}"}
+        if task_id is None:
+            raise ValueError("task_id is required for operation='update'")
+
+        now = datetime.now(timezone.utc).isoformat()
+        previous = document["tasks"].get(task_id, {})
+        task = dict(previous)
+        task.update({
+            "task_id": task_id,
+            "task_kind": arguments.get("task_kind", task.get("task_kind")),
+            "status": status,
+            "role": arguments.get("role", task.get("role")),
+            "execution_id": arguments.get("execution_id", task.get("execution_id")),
+            "worktree_path": arguments.get("worktree_path", task.get("worktree_path")),
+            "branch": arguments.get("branch", task.get("branch")),
+            "commit": arguments.get("commit", task.get("commit")),
+            "result": arguments.get("result", task.get("result")),
+            "error": arguments.get("error", task.get("error")),
+            "updated_at": now,
+        })
+        history = list(task.get("history", []))
+        history.append({
+            "status": status,
+            "at": now,
+            "execution_id": task.get("execution_id"),
+            "result": task.get("result"),
+            "error": task.get("error"),
+        })
+        task["history"] = history
+        if status == "RUNNING" and not task.get("started_at"):
+            task["started_at"] = now
+        if status in {"COMPLETED", "FAILED", "BLOCKED", "CANCELLED"}:
+            task["finished_at"] = now
+        document["tasks"][task_id] = task
+        document["updated_at"] = now
+        _write_task_status_document(path, document)
+        return {"status": "COMPLETED", "path": path, "task": task}
+
+
+async def _call_task_status_tool(arguments: dict[str, Any]) -> list[types.TextContent]:
+    try:
+        result = _task_status_update(arguments)
+    except Exception as exc:
+        result = {"status": "ERROR", "response": str(exc)}
+    return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
 
 
 
@@ -698,6 +831,33 @@ async def list_tools() -> list[types.Tool]:
                 },
             },
         ),
+        types.Tool(
+            name="taskStatus",
+            description=(
+                "Persist or read the current state of delegated orchestrator tasks. "
+                "The state is stored in .sddtdd_skill/task-status.json and is also "
+                "included in the next-task orchestrator context."
+            ),
+            inputSchema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["repo_path", "operation"],
+                "properties": {
+                    "repo_path": {"type": "string", "description": "Path to the Git repository."},
+                    "operation": {"type": "string", "enum": ["get", "update"]},
+                    "task_id": {"type": "string"},
+                    "task_kind": {"type": "string"},
+                    "status": {"type": "string", "enum": sorted(TASK_STATUS_VALUES)},
+                    "role": {"type": "string", "enum": ["implementer", "reviewer"]},
+                    "execution_id": {"type": "string"},
+                    "worktree_path": {"type": "string"},
+                    "branch": {"type": "string"},
+                    "commit": {"type": "string"},
+                    "result": {"type": "string"},
+                    "error": {"type": "string"},
+                },
+            },
+        ),
     ]
 
 
@@ -786,6 +946,7 @@ previous_task_id input. Derive the required independent reviewer verdict from th
 
 @_trace_function
 def _orchestrator_base_repo_context(repo_path: str, git: GitCapturer) -> dict[str, Any]:
+    task_status_path = _get_task_status_path(repo_path)
     return {
         "repo_path": repo_path,
         "branch": git.branch(),
@@ -796,7 +957,9 @@ def _orchestrator_base_repo_context(repo_path: str, git: GitCapturer) -> dict[st
             "journal": ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log",
             "review_log": ".sddtdd_skill/review-access.jsonl",
             "orchestrator_log": ".sddtdd_skill/orchestrator-access.jsonl",
+            "task_status": task_status_path,
         },
+        "task_status_document": _read_text_if_exists(Path(task_status_path)),
     }
 
 @_trace_function
@@ -1740,6 +1903,9 @@ async def call_tool(
 
     if name == "getNextTask":
         return await _call_orchestrator_tool(name, arguments)
+
+    if name == "taskStatus":
+        return await _call_task_status_tool(arguments)
 
     if name != "review":
         raise ValueError(f"Unknown tool: {name}")
