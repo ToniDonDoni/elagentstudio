@@ -1095,6 +1095,13 @@ When issuing a task with task_kind "MERGE" (backmerge), explicitly require synch
 execution in the task instruction; the implementer must wait for it to complete before 
 requesting or starting any other task.
 
+Do not return notReady solely because an active task exists. Inspect TASKS.md and the
+active task state before deciding. If an implementation, RED, or GREEN task is eligible
+and is not blocked by an active dependency, issue it even when other tasks are running;
+multiple independent implementation, RED, or GREEN tasks may run concurrently. Return
+notReady only when no eligible task is available, an active dependency blocks the work,
+or the registrar is temporarily throttling repeated requests.
+
 You are NOT the independent reviewer. The reviewer MCP performs semantic
 artifact review and records SPEC_REVIEW, ARCHITECTURE_REVIEW, TASK_REVIEW,
 RED_REVIEW, GREEN_REVIEW, REGRESSION_REVIEW, and FINAL_REVIEW. You verify process completion and decide the next task from committed state, journal state, and orchestrator/reviewer evidence inside getNextTask.
@@ -1156,9 +1163,11 @@ For getNextTask, return exactly one JSON object with this shape:
 Status and process policy are defined in the embedded installed Markdown policy,
 especially SKILL-ORCHESTRATOR.md. There is no reviewTask tool. There is no
 previous_task_id input. Derive the required independent reviewer verdict from the submitted task_kind by the fixed mapping in SKILL-ORCHESTRATOR.md. Return JSON only.
-If the registrar has already issued tasks that are still unfinished, return
-`status: "notReady"`, set `next_task` to null, include the active task IDs in
-`active_tasks`, and do not invent another task.
+If the registrar has already issued tasks that are still unfinished, include them in
+your decision context. Do not return `status: "notReady"` merely because they exist:
+issue another eligible independent task when its prerequisites are satisfied. Return
+`notReady` only when no eligible task is available, an active dependency blocks the
+work, or the registrar is temporarily throttling repeated requests.
 """.strip()
 
 
@@ -2058,30 +2067,7 @@ async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[
             return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
 
         orchestrator_policy_text = _orchestrator_policy_bundle_text()
-        unfinished_tasks = _unfinished_tasks_for_next_task(repo_path)
-        if unfinished_tasks:
-            parsed = _not_ready_result(unfinished_tasks)
-            result = {
-                "request_id": request_id,
-                "status": "COMPLETED",
-                "stale": False,
-                "head_sha": head_before,
-                "orchestrator_result": parsed,
-            }
-            log.append({
-                "event": f"{name}_completed",
-                "request_id": request_id,
-                "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-                "repo_path": repo_path,
-                "head_sha_before": head_before,
-                "head_sha_after": head_before,
-                "status": result["status"],
-                "stale": False,
-                "duration_ms": int((time.monotonic() - t_before) * 1000),
-                "result": result,
-                "stop_reason": "notReady",
-            })
-            return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+        _unfinished_tasks_for_next_task(repo_path)
 
         prompt = _get_next_prompt(repo_path, git, arguments)
         system_prompt = (
@@ -2456,3 +2442,4 @@ async def main():
 if __name__ == "__main__":
     import asyncio
     logger.debug("=== SDDTDD-MCP PROCESS STARTING (__main__) ===")
+    asyncio.run(main())

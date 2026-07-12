@@ -195,6 +195,24 @@ def test_get_next_task_returns_not_ready_when_registrar_has_no_available_task(tm
         )
     )
     monkeypatch.setattr(server, "_orchestrator_policy_bundle_text", lambda: "policy")
+    calls = 0
+
+    async def sampling(**kwargs):
+        nonlocal calls
+        calls += 1
+        return (
+            json.dumps({
+                "status": "notReady",
+                "task_review": None,
+                "next_task": None,
+                "active_tasks": [{"task_id": "T-000001", "status": "RUNNING"}],
+                "rationale": "No eligible independent task is available.",
+            }),
+            "endTurn",
+        )
+
+    monkeypatch.setattr(server, "_sample_with_tools", sampling)
+    monkeypatch.setattr(type(server.app), "request_context", property(lambda self: None))
     result = _tool_text(
         asyncio.run(
             server._call_orchestrator_tool(
@@ -213,6 +231,12 @@ def test_get_next_task_returns_not_ready_when_registrar_has_no_available_task(tm
 
     assert result["orchestrator_result"]["status"] == "notReady"
     assert result["orchestrator_result"]["next_task"] is None
+    assert calls == 1
+
+
+def test_orchestrator_prompt_allows_independent_tasks_while_one_is_active():
+    assert "Do not return notReady solely because an active task exists" in server.ORCHESTRATOR_SYSTEM_PROMPT
+    assert "multiple independent implementation, RED, or GREEN tasks" in server.ORCHESTRATOR_SYSTEM_PROMPT
 
 
 def test_get_next_task_throttles_repeated_requests_until_cooldown_expires(
