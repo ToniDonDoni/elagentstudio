@@ -83,3 +83,5 @@ Observed examples:
 - the orchestrator ran shell test commands itself after implementation work;
 - the orchestrator treated final or regression test execution as its own action;
 - this bypassed the dispatcher-only role boundary observed elsewhere in the run.
+
+### 9. mcp sampling is not available in opencode
