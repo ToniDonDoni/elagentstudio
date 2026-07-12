@@ -39,6 +39,39 @@ TASK_STATUS_VALUES = frozenset({
 TASK_ACTIVE_STATUS_VALUES = frozenset({"PENDING", "RUNNING", "WAITING_REVIEW"})
 DEFAULT_TASK_TIMEOUT_SECONDS = 600
 _task_status_lock = threading.Lock()
+DEFAULT_GET_NEXT_TASK_THROTTLE_SECONDS = 120
+_get_next_task_last_request_at: dict[str, float] = {}
+_get_next_task_throttle_lock = threading.Lock()
+
+
+def _get_next_task_throttle_seconds() -> float:
+    raw_value = os.environ.get(
+        "SDDTDD_GET_NEXT_TASK_THROTTLE_SECONDS",
+        str(DEFAULT_GET_NEXT_TASK_THROTTLE_SECONDS),
+    )
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise ValueError(
+            "SDDTDD_GET_NEXT_TASK_THROTTLE_SECONDS must be a non-negative number"
+        ) from exc
+    if value < 0:
+        raise ValueError("SDDTDD_GET_NEXT_TASK_THROTTLE_SECONDS must be a non-negative number")
+    return value
+
+
+def _get_next_task_throttle_remaining(repo_path: str, *, now: float | None = None) -> float | None:
+    """Reserve a getNextTask request or return the remaining cooldown in seconds."""
+    now = time.monotonic() if now is None else now
+    throttle_seconds = _get_next_task_throttle_seconds()
+    with _get_next_task_throttle_lock:
+        previous = _get_next_task_last_request_at.get(repo_path)
+        if previous is not None:
+            remaining = throttle_seconds - (now - previous)
+            if remaining > 0:
+                return remaining
+        _get_next_task_last_request_at[repo_path] = now
+    return None
 
 def _trace_function(func):
     if  asyncio.iscoroutinefunction(func):
@@ -1978,6 +2011,40 @@ async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[
             "working_tree_dirty": dirty,
             "arguments": arguments,
         })
+
+        throttle_remaining = _get_next_task_throttle_remaining(repo_path)
+        if throttle_remaining is not None:
+            parsed = {
+                "status": "notReady",
+                "task_review": None,
+                "next_task": None,
+                "active_tasks": [],
+                "rationale": (
+                    "The registrar is temporarily throttling repeated getNextTask requests; "
+                    f"retry after approximately {throttle_remaining:.1f} seconds."
+                ),
+            }
+            result = {
+                "request_id": request_id,
+                "status": "COMPLETED",
+                "stale": False,
+                "head_sha": head_before,
+                "orchestrator_result": parsed,
+            }
+            log.append({
+                "event": f"{name}_completed",
+                "request_id": request_id,
+                "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                "repo_path": repo_path,
+                "head_sha_before": head_before,
+                "head_sha_after": head_before,
+                "status": result["status"],
+                "stale": False,
+                "duration_ms": int((time.monotonic() - t_before) * 1000),
+                "result": result,
+                "stop_reason": "throttled",
+            })
+            return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
 
         orchestrator_policy_text = _orchestrator_policy_bundle_text()
         unfinished_tasks = _unfinished_tasks_for_next_task(repo_path)

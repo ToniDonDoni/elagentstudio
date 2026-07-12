@@ -87,3 +87,13 @@ Observed examples:
 ### 9. mcp sampling is not available in opencode
 
 Use own lln provider via langchain?
+
+### 10. Throttle repeated getNextTask sampling requests
+
+Observed: an agent can call getNextTask repeatedly while waiting for work,
+causing the registrar to sample the orchestrator LLM again unnecessarily.
+
+Required: after a getNextTask request, return notReady without sampling until a
+configurable cooldown has elapsed. The cooldown must be controlled by an
+environment variable and default to 120 seconds. Add a regression test before
+implementing the server behavior.

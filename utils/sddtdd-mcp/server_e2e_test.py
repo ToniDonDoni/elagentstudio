@@ -1134,6 +1134,10 @@ async def test_orchestrator_get_next_task_system_prompt_happy_path(client: MCPSt
     )
     assert_eq(not_ready["status"], "COMPLETED", "notReady getNextTask MCP status")
     assert_eq(not_ready["orchestrator_result"]["status"], "notReady", "unfinished getNextTask result")
+    assert_true(
+        "throttling repeated getNextTask" in not_ready["orchestrator_result"]["rationale"],
+        "repeated getNextTask must report the temporary throttling rationale",
+    )
     assert_eq(state.calls, 1, "notReady must not call the orchestrator sampler")
     event("SCENARIO_DONE: orchestrator_get_next_task_system_prompt_happy_path")
     ok("getNextTask sampling/createMessage receives orchestrator/orchestrator systemPrompt")
@@ -1142,6 +1146,7 @@ async def test_orchestrator_get_next_task_system_prompt_happy_path(client: MCPSt
 async def test_orchestrator_get_next_task_completed_task_process_gate_happy_path(client: MCPStdioClient, repo: Path) -> None:
     event("SCENARIO_BEGIN: orchestrator_get_next_task_completed_task_process_gate_happy_path")
     state = ScenarioState("orchestrator_get_next_task_completed_task_process_gate_happy_path")
+    await asyncio.sleep(1.05)
 
     await call_mcp_tool(
         client,
@@ -2068,6 +2073,7 @@ async def run_all(args: argparse.Namespace) -> None:
         env.setdefault("SDDTDD_REVIEW_VERDICT_REPAIR_ATTEMPTS", "5")
         env.setdefault("SDDTDD_REVIEW_SHELL_COMMAND_SECONDS", "2")
         env.setdefault("SDDTDD_REVIEW_TOOL_OUTPUT_CHARS", "2000")
+        env["SDDTDD_GET_NEXT_TASK_THROTTLE_SECONDS"] = "1"
         env.setdefault("PYTHONUNBUFFERED", "1")
 
         note(f"server: {server_path}")

@@ -215,6 +215,20 @@ def test_get_next_task_returns_not_ready_when_registrar_has_no_available_task(tm
     assert result["orchestrator_result"]["next_task"] is None
 
 
+def test_get_next_task_throttles_repeated_requests_until_cooldown_expires(
+    tmp_path: Path, monkeypatch
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setenv("SDDTDD_GET_NEXT_TASK_THROTTLE_SECONDS", "120")
+
+    assert server._get_next_task_throttle_remaining(str(repo), now=1000.0) is None
+    remaining = server._get_next_task_throttle_remaining(str(repo), now=1059.0)
+    assert remaining == 61.0
+    assert server._get_next_task_throttle_remaining(str(repo), now=1119.0) == 1.0
+    assert server._get_next_task_throttle_remaining(str(repo), now=1120.0) is None
+
+
 def test_get_next_task_records_issued_task_as_pending(tmp_path: Path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
