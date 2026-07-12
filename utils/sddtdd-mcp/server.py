@@ -2315,15 +2315,19 @@ async def main():
         async with stdio_server() as (read_stream, write_stream):
             logger.debug("stdio_server: connected, entering app.run()")
             try:
-                await app.run(
-                    read_stream,
-                    write_stream,
-                    InitializationOptions(
-                        server_name="sddtdd-mcp",
-                        server_version="1.0.0",
-                        capabilities=types.ServerCapabilities(),
-                    ),
-                )
+                    from mcp.server.lowlevel.server import NotificationOptions
+                    await app.run(
+                        read_stream,
+                        write_stream,
+                        InitializationOptions(
+                            server_name="sddtdd-mcp",
+                            server_version="1.0.0",
+                            capabilities=app.get_capabilities(
+                                notification_options=NotificationOptions(),
+                                experimental_capabilities={},
+                            ),
+                        ),
+                    )
             except Exception as exc:
                 logger.error("SERVE: app.run() raised %s: %s",
                              type(exc).__name__, exc, exc_info=True)
