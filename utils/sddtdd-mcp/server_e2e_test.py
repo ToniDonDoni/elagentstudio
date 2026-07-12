@@ -10,8 +10,7 @@ Run from the directory that contains server.py:
 What it does:
   1. Starts the MCP server over stdio.
   2. Sends initialize + initialized.
-  3. Verifies tools/list returns the review tool.
-  4. Calls review while mocking MCP sampling/createMessage as the LLM.
+  3. Verifies tools/list returns the active orchestration tools.
   5. Exercises normal final JSON review.
   6. Exercises model toolUse -> server shell_command -> tool_result -> final JSON.
   7. Exercises async non-blocking behavior:
@@ -49,6 +48,9 @@ Json = dict[str, Any]
 # Increase the stream reader limit to handle large JSON lines from MCP.
 STREAM_READER_LIMIT = 16 * 1024 * 1024
 VERBOSE_OUTPUT = False
+# MCP reviewer tests remain in this file for later re-enablement, but are
+# intentionally disabled while the review endpoint is commented out in server.py.
+REVIEW_TESTS_DISABLED = True
 
 
 class U2UFailure(AssertionError):
@@ -563,7 +565,7 @@ async def tools_list(client: MCPStdioClient) -> Json:
 def assert_review_tool(list_result: Json) -> None:
     tools = list_result.get("tools") or []
     names = [tool.get("name") for tool in tools]
-    assert_true("review" in names, f"tools/list must include review, got {names!r}")
+    assert_true("review" not in names, f"tools/list must not include disabled review, got {names!r}")
     assert_true("getNextTask" in names, f"tools/list must include getNextTask, got {names!r}")
     assert_true("taskStatus" in names, f"tools/list must include taskStatus, got {names!r}")
     assert_true("reviewTask" not in names, f"tools/list must not include removed reviewTask, got {names!r}")
@@ -902,7 +904,7 @@ async def test_startup_and_list_tools(client: MCPStdioClient) -> None:
     listed = await tools_list(client)
     assert_review_tool(listed)
     event("SCENARIO_DONE: startup_and_list_tools")
-    ok("tools/list returns review")
+    ok("tools/list returns active tools without disabled review")
 
 
 async def test_mcp_identity_and_tools(client: MCPStdioClient) -> None:
@@ -917,10 +919,8 @@ async def test_mcp_identity_and_tools(client: MCPStdioClient) -> None:
         "Configured namespace: `sddtdd`",
         "`getNextTask`",
         "`taskStatus`",
-        "`review`",
         "`sddtdd_getNextTask`",
         "`sddtdd_taskStatus`",
-        "`sddtdd_review`",
     ]
     for marker in required_identity:
         assert_true(marker in skill_text, f"orchestrator skill must identify registrar MCP with {marker}")
@@ -2167,6 +2167,11 @@ async def run_all(args: argparse.Namespace) -> None:
             test_results: list[tuple[str, bool, str | None]] = []
 
             async def run_named_test(test_name: str, test_fn: Callable[[], Awaitable[None]]) -> None:
+                # Keep the MCP reviewer scenarios in place for later re-enablement,
+                # but do not execute them while the review tool is disabled.
+                if REVIEW_TESTS_DISABLED and "review" in test_name:
+                    event(f"RUN_TEST_SKIP: {test_name} reviewer disabled")
+                    return
                 if not matches_test_mask(test_name, args.test):
                     event(f"RUN_TEST_SKIP: {test_name} masks={args.test!r}")
                     return
@@ -2336,6 +2341,8 @@ async def run_all(args: argparse.Namespace) -> None:
             )
             if matches_test_mask(name, args.test)
         )
+        # Review tests are disabled together with the MCP review endpoint.
+        expected_review_events = 0
         if expected_review_events > 0:
             assert_true(log_path.exists(), f"access log must exist at {log_path}")
             lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -2406,8 +2413,3 @@ def main(argv: list[str]) -> int:
         print("FAIL interrupted", file=sys.stderr, flush=True)
         return 130
     except Exception as exc:
-        print(f"FAIL u2u_test_suite: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
-        if VERBOSE_OUTPUT:
-            traceback.print_exc()
-        return 2
-

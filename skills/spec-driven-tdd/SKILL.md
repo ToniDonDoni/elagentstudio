@@ -21,9 +21,9 @@ There are exactly three roles:
 - Reviewer: reviews artifacts. A reviewed artifact can be SPEC.md, ARCHITECTURE.md, TASKS.md, tests, code, merge results, or evidence.
 
 The registrar is the `sddtdd-mcp` MCP server, configured under the `sddtdd`
-namespace. Its raw tools are `getNextTask`, `taskStatus`, and `review`; a
-namespaced client may show them as `sddtdd_getNextTask`, `sddtdd_taskStatus`,
-and `sddtdd_review`.
+namespace. Its active raw tools are `getNextTask` and `taskStatus`; a
+namespaced client may show them as `sddtdd_getNextTask` and
+`sddtdd_taskStatus`.
 
 ## Role files
 
@@ -82,6 +82,6 @@ Reviewer loads:
 
 ## Background requirement
 
-This skill requires an agent runtime that can launch background subagents and later query their task status. The registrar MCP server must provide `getNextTask`, `review`, and `taskStatus`.
+This skill requires an agent runtime that can launch background subagents and later query their task status. The registrar MCP server must provide `getNextTask` and `taskStatus`.
 
 If background tasks are unavailable, stop before code implementation instead of pretending async work exists.

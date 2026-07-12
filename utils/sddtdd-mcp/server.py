@@ -937,32 +937,9 @@ app = mcp_server.Server("sddtdd-mcp")
 @_trace_function
 async def list_tools() -> list[types.Tool]:
     return [
-        types.Tool(
-            name="review",
-            description="Review committed repository state through an independent LLM reviewer",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "repo_path": {
-                        "type": "string",
-                        "description": "Absolute path to the Git repository",
-                    },
-                    "review_type": {
-                        "type": "string",
-                        "description": "Review type, preferably one of SPEC_REVIEW, ARCHITECTURE_REVIEW, TASK_REVIEW, RED_REVIEW, GREEN_REVIEW, REGRESSION_REVIEW, FINAL_REVIEW",
-                    },
-                    "task_id": {
-                        "type": "string",
-                        "description": "Optional free-form task identifier",
-                    },
-                    "prompt": {
-                        "type": "string",
-                        "description": "Supplemental implementer review note. The server injects the full SDDTDD reviewer policy and requires repository-context reconstruction.",
-                    },
-                },
-                "required": ["repo_path", "review_type", "prompt"],
-            },
-        ),
+        # MCP reviewer is temporarily disabled; keep its implementation below
+        # commented out of the public tool list until the reviewer workflow is
+        # brought back.
         types.Tool(
             name="getNextTask",
             description=(
@@ -1908,3 +1885,549 @@ async def _sample_with_tools(
         if text_parts:
             last_text = "\n".join(text_parts)
 
+        # If the LLM didn't ask for tools, we're done
+        stop_reason = getattr(result, "stopReason", None) or "endTurn"
+        logger.debug(
+            "SAMPLING: round %d stop_reason=%s text_len=%d requested_max_tokens=%d",
+            _round + 1,
+            stop_reason,
+            len(last_text),
+            MAX_SAMPLING_TOKENS,
+        )
+        if stop_reason == "maxTokens":
+            max_token_continues += 1
+            if max_token_continues > MAX_MAXTOKEN_CONTINUES:
+                logger.warning(
+                    "SAMPLING: maxTokens continue limit exceeded (%d); returning maxTokens",
+                    MAX_MAXTOKEN_CONTINUES,
+                )
+                return last_text, stop_reason
+            logger.debug(
+                "SAMPLING: maxTokens in round %d; output hit requested_max_tokens=%d; "
+                "text_len=%d chars; missing_tokens=unknown; asking sampler to continue (%d/%d)",
+                _round + 1,
+                MAX_SAMPLING_TOKENS,
+                len(last_text),
+                max_token_continues,
+                MAX_MAXTOKEN_CONTINUES,
+            )
+            messages.append(
+                types.SamplingMessage(role="assistant", content=result.content)
+            )
+            messages.append(
+                types.SamplingMessage(
+                    role="user",
+                    content=types.TextContent(
+                        type="text",
+                        text=(
+                            "Your previous response stopped because stopReason=maxTokens. "
+                            "Continue from exactly where you stopped. Do not restart, do not repeat already emitted text, "
+                            "and keep the continuation as concise as possible. "
+                            "If you have enough evidence to conclude, produce the final review as a JSON object matching "
+                            "the required review response schema."
+                        ),
+                    ),
+                )
+            )
+            continue
+
+        if stop_reason != "toolUse":
+            return last_text, stop_reason
+
+        # Tool use: execute each tool call and resend results
+        tool_uses = [
+            b for b in (result.content if isinstance(result.content, list) else [result.content])
+            if isinstance(b, types.ToolUseContent)
+        ]
+        if not tool_uses:
+            logger.debug("SAMPLING: stop_reason=toolUse but no tool_uses found, returning")
+            return last_text, stop_reason
+
+        tool_results = []
+        for tu in tool_uses:
+            tool_args = tu.input if isinstance(tu.input, dict) else {}
+            arg_summary = ""
+            if tu.name == "shell_command":
+                command = str(tool_args.get("command", ""))
+                arg_summary = f" command={_safe_log_text(command)!r}"
+            output = await _execute_tool(tu.name, tool_args, repo_path, process_groups, leaked_pids)
+            logger.debug(
+                "SAMPLING_TOOL: round=%d tool_index=%d/%d name=%s%s output_len=%d",
+                _round + 1,
+                len(tool_results) + 1,
+                len(tool_uses),
+                tu.name,
+                arg_summary,
+                len(output),
+            )
+            tool_results.append(
+                types.ToolResultContent(
+                    type="tool_result",
+                    toolUseId=tu.id,
+                    content=[types.TextContent(type="text", text=output)],
+                )
+            )
+
+        # Append the assistant tool_use and the user tool_results to messages
+        messages.append(
+            types.SamplingMessage(role="assistant", content=result.content)
+        )
+        messages.append(
+            types.SamplingMessage(role="user", content=tool_results)
+        )
+
+    logger.warning("SAMPLING: exhausted max_rounds=%d", max_rounds)
+    return last_text, "maxRoundsExceeded"
+
+
+@_trace_function
+async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+    repo_path = arguments["repo_path"]
+    request_id = uuid.uuid4().hex
+    timestamp_before = datetime.now(timezone.utc).isoformat()
+    t_before = time.monotonic()
+
+    process_groups: list[int] = []
+    leaked_pids: list[int] = []
+    log: LogWriter | None = None
+    response_text = ""
+
+    try:
+        git = GitCapturer(repo_path)
+        head_before = git.head_sha()
+        branch = git.branch()
+        dirty = git.is_dirty()
+        log = LogWriter(_get_orchestrator_log_path(repo_path))
+
+        log.append({
+            "event": f"{name}_started",
+            "request_id": request_id,
+            "timestamp_utc": timestamp_before,
+            "repo_path": repo_path,
+            "branch": branch,
+            "head_sha": head_before,
+            "working_tree_dirty": dirty,
+            "arguments": arguments,
+        })
+
+        throttle_remaining = _get_next_task_throttle_remaining(repo_path)
+        if throttle_remaining is not None:
+            parsed = {
+                "status": "notReady",
+                "task_review": None,
+                "next_task": None,
+                "active_tasks": [],
+                "rationale": (
+                    "The registrar is temporarily throttling repeated getNextTask requests; "
+                    f"retry after approximately {throttle_remaining:.1f} seconds."
+                ),
+            }
+            result = {
+                "request_id": request_id,
+                "status": "COMPLETED",
+                "stale": False,
+                "head_sha": head_before,
+                "orchestrator_result": parsed,
+            }
+            log.append({
+                "event": f"{name}_completed",
+                "request_id": request_id,
+                "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                "repo_path": repo_path,
+                "head_sha_before": head_before,
+                "head_sha_after": head_before,
+                "status": result["status"],
+                "stale": False,
+                "duration_ms": int((time.monotonic() - t_before) * 1000),
+                "result": result,
+                "stop_reason": "throttled",
+            })
+            return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+
+        orchestrator_policy_text = _orchestrator_policy_bundle_text()
+        _unfinished_tasks_for_next_task(repo_path)
+
+        prompt = _get_next_prompt(repo_path, git, arguments)
+        system_prompt = (
+            ORCHESTRATOR_SYSTEM_PROMPT
+            + "\n\n===== BEGIN INSTALLED SDDTDD POLICY FILES =====\n"
+            + orchestrator_policy_text
+            + "\n===== END INSTALLED SDDTDD POLICY FILES ====="
+        )
+        response_text, stop_reason = await _sample_with_tools(
+            ctx=app.request_context,
+            initial_prompt=prompt,
+            repo_path=repo_path,
+            process_groups=process_groups,
+            leaked_pids=leaked_pids,
+            system_prompt=system_prompt,
+            max_rounds=MAX_SAMPLING_ROUNDS,
+        )
+
+        parsed = _extract_first_json_object(response_text)
+        head_after = git.head_sha()
+        stale = head_after != head_before
+        status = "STALE" if stale else "COMPLETED"
+
+        if stale:
+            result: dict[str, Any] = {
+                "request_id": request_id,
+                "status": "ERROR",
+                "error": "Repository HEAD changed during orchestrator operation; retry against current HEAD.",
+                "stale": True,
+                "head_sha_before": head_before,
+                "head_sha_after": head_after,
+            }
+        else:
+            if parsed.get("status") == "not_ready":
+                parsed["status"] = "notReady"
+            result = {
+                "request_id": request_id,
+                "status": status,
+                "stale": False,
+                "head_sha": head_before,
+                "orchestrator_result": parsed,
+            }
+            _record_issued_task(repo_path, parsed)
+
+        log.append({
+            "event": f"{name}_completed",
+            "request_id": request_id,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "repo_path": repo_path,
+            "head_sha_before": head_before,
+            "head_sha_after": head_after,
+            "status": result["status"],
+            "stale": result["stale"],
+            "duration_ms": int((time.monotonic() - t_before) * 1000),
+            "result": result,
+            "stop_reason": stop_reason,
+        })
+    except Exception as exc:
+        logger.error("call_tool: orchestrator %s EXCEPTION (%s) — %s", name, type(exc).__name__, exc, exc_info=True)
+        result = {
+            "request_id": request_id,
+            "status": "ERROR",
+            "stale": False,
+            "error": str(exc),
+        }
+        if response_text:
+            result["response"] = (
+                "LLM did not return a JSON object.\n\n"
+                "LLM response:\n"
+                + response_text
+            )
+        if log:
+            try:
+                log.append({
+                    "event": f"{name}_completed",
+                    "request_id": request_id,
+                    "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                    "repo_path": repo_path,
+                    "status": "ERROR",
+                    "stale": False,
+                    "duration_ms": int((time.monotonic() - t_before) * 1000),
+                    "result": result,
+                })
+            except Exception:
+                logger.exception("call_tool: failed to write orchestrator error event")
+    finally:
+        await _cleanup_process_groups(process_groups, leaked_pids)
+
+    return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+
+
+@app.call_tool()
+@_trace_function
+async def call_tool(
+    name: str,
+    arguments: dict,
+) -> list[types.TextContent]:
+    # Log the full incoming tool call for debugging
+    log_args = dict(arguments)
+    prompt = log_args.get("prompt", "")
+    if prompt:
+        log_args["prompt"] = _safe_log_text(prompt, limit=200)
+    safe_args = _safe_log_text(json.dumps(log_args, ensure_ascii=False, default=str), limit=1000)
+    logger.debug("call_tool: name=%s args=%s", name, safe_args)
+
+    if name == "getNextTask":
+        return await _call_orchestrator_tool(name, arguments)
+
+    if name == "taskStatus":
+        return await _call_task_status_tool(arguments)
+
+    # The MCP review endpoint is intentionally disabled, not deleted.
+    if name == "review":
+        raise ValueError("Unknown tool: review")
+
+    if name != "review":
+        raise ValueError(f"Unknown tool: {name}")
+
+    repo_path = arguments["repo_path"]
+    review_type = arguments["review_type"]
+    prompt = arguments["prompt"]
+    task_id = arguments.get("task_id")
+
+    request_id = uuid.uuid4().hex
+    timestamp_before = datetime.now(timezone.utc).isoformat()
+    t_before = time.monotonic()
+
+    process_groups: list[int] = []
+    leaked_pids: list[int] = []
+
+    log = None
+    started_logged = False
+    try:
+        # 1-2: Open log + capture Git state before
+        log_path = _get_log_path(repo_path)
+        log = LogWriter(log_path)
+
+        git = GitCapturer(repo_path)
+        branch = git.branch()
+        head_before = git.head_sha()
+        dirty = git.is_dirty()
+
+        # 3: Write review_started event
+        started_event = {
+            "event": "review_started",
+            "request_id": request_id,
+            "timestamp_utc": timestamp_before,
+            "repo_path": repo_path,
+            "branch": branch,
+            "head_sha": head_before,
+            "working_tree_dirty": dirty,
+            "review_type": review_type,
+            "task_id": task_id,
+            "prompt": prompt,
+            "reviewer_skill_paths": {
+                "skill_root": str(_review_skill_paths()["skill_root"]),
+                "policy_files": {k: str(v) for k, v in _review_policy_file_paths().items()},
+            },
+        }
+        log.append(started_event)
+        started_logged = True
+        logger.debug("call_tool: review_started logged, starting sampling")
+
+        # 4: Build the reviewer role/policy prompt inside the MCP server,
+        # then perform review via MCP sampling. The implementer prompt is
+        # only supplemental; the reviewer is required to reconstruct context
+        # from committed repo state, journal, tasks, architecture, and spec.
+        system_prompt, effective_prompt = _build_reviewer_prompt(
+            repo_path=repo_path,
+            review_type=review_type,
+            task_id=task_id,
+            implementer_prompt=prompt,
+            head_sha=head_before,
+            branch=branch,
+            dirty=dirty,
+        )
+        ctx = app.request_context
+        response_text, stop_reason = await _sample_with_tools(
+            ctx=ctx,
+            initial_prompt=effective_prompt,
+            repo_path=repo_path,
+            process_groups=process_groups,
+            leaked_pids=leaked_pids,
+            system_prompt=system_prompt,
+            max_rounds=MAX_SAMPLING_ROUNDS,
+        )
+        logger.debug("call_tool: sampling returned stop_reason=%s", stop_reason)
+
+        execution_error = stop_reason in {"maxTokens", "maxRoundsExceeded"}
+        if not response_text.strip():
+            execution_error = True
+            response_text = REVIEW_RETRY_RESPONSE
+            stop_reason = "emptyResponse"
+
+        repair_attempts: list[dict] = []
+        verdict = None
+        if not execution_error and _has_empty_review_response_field(response_text.strip()):
+            execution_error = True
+            response_text = REVIEW_RETRY_RESPONSE
+        if not execution_error:
+            verdict, parsed_response, parse_error = _parse_review_json(response_text.strip())
+            if parse_error is not None:
+                logger.debug(
+                    "REVIEW_RESPONSE_PARSE: source=primary attempt=1/%d stop_reason=%s success=False error=%s raw=%r",
+                    MAX_VERDICT_REPAIR_ATTEMPTS + 1,
+                    stop_reason,
+                    parse_error,
+                    _safe_log_text(response_text, limit=300),
+                )
+            else:
+                logger.debug(
+                    "REVIEW_RESPONSE_PARSE: source=primary attempt=1/%d stop_reason=%s success=True error=None",
+                    MAX_VERDICT_REPAIR_ATTEMPTS + 1,
+                    stop_reason,
+                )
+            if parse_error is None:
+                response_text = parsed_response or ""
+            else:
+                plain_verdict, plain_response, plain_error = _parse_plain_review_text(response_text)
+                if plain_error is None:
+                    verdict = plain_verdict
+                    response_text = plain_response or ""
+                    logger.debug(
+                        "REVIEW_RESPONSE_PARSE: source=plain_text attempt=2/%d stop_reason=%s success=True error=None",
+                        MAX_VERDICT_REPAIR_ATTEMPTS + 1,
+                        stop_reason,
+                    )
+                else:
+                    logger.debug(
+                        "REVIEW_RESPONSE_PARSE: source=plain_text attempt=2/%d stop_reason=%s success=False error=%s raw=%r",
+                        MAX_VERDICT_REPAIR_ATTEMPTS + 1,
+                        stop_reason,
+                        plain_error,
+                        _safe_log_text(response_text, limit=300),
+                    )
+                    verdict, repaired_response, repair_attempts = await _repair_verdict_with_sampling(
+                        ctx,
+                        raw_response=response_text,
+                        parse_error=parse_error,
+                        max_attempts=MAX_VERDICT_REPAIR_ATTEMPTS,
+                    )
+                    response_text = repaired_response
+
+        if verdict is None and not execution_error:
+            execution_error = True
+            response_text = REVIEW_RETRY_RESPONSE
+
+        # 5: Capture Git state after
+        head_after = git.head_sha()
+
+        # 6: Stale detection
+        stale = head_before != head_after
+        status = "ERROR" if execution_error else ("STALE" if stale else "COMPLETED")
+
+        # 7: Compute duration
+        duration_ms = int((time.monotonic() - t_before) * 1000)
+
+        # 8: Write review_completed event
+        timestamp_after = datetime.now(timezone.utc).isoformat()
+        completed_event = {
+            "event": "review_completed",
+            "request_id": request_id,
+            "timestamp_utc": timestamp_after,
+            "repo_path": repo_path,
+            "review_type": review_type,
+            "task_id": task_id,
+            "head_sha_before": head_before,
+            "head_sha_after": head_after,
+            "status": status,
+            "verdict": verdict,
+            "response": response_text,
+            "stale": stale,
+            "duration_ms": duration_ms,
+            # "verdict_repair_attempts": repair_attempts,  # Removed from reviewer access log
+        }
+        log.append(completed_event)
+        logger.debug("call_tool: review_completed verdict=%s status=%s duration_ms=%d",
+                     verdict, status, duration_ms)
+
+        result = {
+            "request_id": request_id,
+            "status": status,
+            "verdict": verdict,
+            "response": response_text,
+            "stale": stale,
+        }
+        logger.debug("call_tool: SUCCESS — returning result to Hermes")
+
+    except GitError as exc:
+        logger.error("call_tool: GitError — %s", exc, exc_info=True)
+        result = _error_result(request_id, f"Git error: {exc}")
+        if log:
+            if not started_logged:
+                log.append(_error_started_event(request_id, repo_path, review_type, task_id, prompt))
+            log.append(_error_event(request_id, repo_path, review_type, task_id, result["response"]))
+    except Exception as exc:
+        logger.error("call_tool: EXCEPTION (%s) — %s", type(exc).__name__, exc, exc_info=True)
+        result = _error_result(request_id, str(exc))
+        if log:
+            if not started_logged:
+                log.append(_error_started_event(request_id, repo_path, review_type, task_id, prompt))
+            log.append(_error_event(request_id, repo_path, review_type, task_id, result["response"]))
+
+    await _cleanup_process_groups(process_groups, leaked_pids)
+    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+@_trace_function
+def _error_result(request_id: str, message: str) -> dict:
+    return {
+        "request_id": request_id,
+        "status": "ERROR",
+        "verdict": None,
+        "response": message,
+        "stale": False,
+    }
+
+@_trace_function
+def _error_started_event(request_id: str, repo_path: str, review_type: str, task_id: str | None, prompt: str) -> dict:
+    return {
+        "event": "review_started",
+        "request_id": request_id,
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "repo_path": repo_path,
+        "branch": None,
+        "head_sha": None,
+        "working_tree_dirty": None,
+        "review_type": review_type,
+        "task_id": task_id,
+        "prompt": prompt,
+        "error_before_git_capture": True,
+    }
+
+@_trace_function
+def _error_event(request_id: str, repo_path: str, review_type: str, task_id: str | None, message: str) -> dict:
+    return {
+        "event": "review_completed",
+        "request_id": request_id,
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "repo_path": repo_path,
+        "review_type": review_type,
+        "task_id": task_id,
+        "status": "ERROR",
+        "verdict": None,
+        "response": message,
+        "stale": False,
+    }
+
+async def main():
+    _install_signal_lifecycle_logging()
+    logger.debug("=== SDDTDD-MCP SERVER STARTED ===")
+    logger.debug("PROCESS: pid=%d, ppid=%d, cwd=%s", os.getpid(), os.getppid(), os.getcwd())
+
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            logger.debug("stdio_server: connected, entering app.run()")
+            try:
+                    from mcp.server.lowlevel.server import NotificationOptions
+                    await app.run(
+                        read_stream,
+                        write_stream,
+                        InitializationOptions(
+                            server_name="sddtdd-mcp",
+                            server_version="1.0.0",
+                            capabilities=app.get_capabilities(
+                                notification_options=NotificationOptions(),
+                                experimental_capabilities={},
+                            ),
+                        ),
+                    )
+            except Exception as exc:
+                logger.error("SERVE: app.run() raised %s: %s",
+                             type(exc).__name__, exc, exc_info=True)
+                raise  # still propagate so the process exits
+        logger.debug("SERVE: stdio_server context exited (read stream closed by client)")
+    except Exception:
+        logger.exception("SERVE: main() caught exception in stdio_server block")
+        raise
+
+    logger.debug("=== SDDTDD-MCP SERVER EXITING (normal) ===")
+
+
+if __name__ == "__main__":
+    import asyncio
+    logger.debug("=== SDDTDD-MCP PROCESS STARTING (__main__) ===")
+    asyncio.run(main())

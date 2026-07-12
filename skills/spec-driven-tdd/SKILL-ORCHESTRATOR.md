@@ -12,6 +12,12 @@ The orchestrator controls the workflow. It does not create reviewed artifacts an
 
 The orchestrator is a dispatcher only. Its job is to ask the registrar MCP server for the next task, delegate work between implementer and reviewer subagents, verify process gates, route review findings back to implementers, and decide the next allowed workflow step.
 
+The orchestrator's primary responsibility is to call `getNextTask` on the
+registrar MCP server for every workflow decision, receive the next task, and
+delegate it to the appropriate agent. It repeats this get-next-task-and-delegate
+cycle until all work is complete, the registrar reports `complete` or `BLOCKED`,
+or the user stops the workflow. It must not invent the next task itself.
+
 The orchestrator never changes reviewed artifacts directly. Artifact creation, artifact correction, merge work, and evidence edits are delegated to implementer subagents. Review work is delegated to reviewer subagents.
 
 There are exactly three roles:
@@ -29,6 +35,10 @@ The dispatcher must call this server through the configured namespace. It
 exposes these raw tools:
 
 - `getNextTask` — obtain the next registrar task.
+- `taskStatus` — report or read delegated task state.
+
+A namespaced client may expose these as `sddtdd_getNextTask` and
+`sddtdd_taskStatus`.
 
 The orchestrator must not invent other roles. SPEC author, architecture author, task author, coder, tester, and merger are task kinds assigned to the implementer role.
 
