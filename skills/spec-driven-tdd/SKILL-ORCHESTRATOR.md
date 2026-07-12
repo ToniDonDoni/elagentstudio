@@ -29,13 +29,6 @@ The dispatcher must call this server through the configured namespace. It
 exposes these raw tools:
 
 - `getNextTask` — obtain the next registrar task.
-- `taskStatus` — read or update persisted task state.
-- `review` — run a delegated review.
-
-Clients that namespace MCP tools expose the same tools as
-`sddtdd_getNextTask`, `sddtdd_taskStatus`, and `sddtdd_review`. These names
-refer to the same `sddtdd-mcp` server; the dispatcher must not substitute a
-different MCP server or invent another tool name.
 
 The orchestrator must not invent other roles. SPEC author, architecture author, task author, coder, tester, and merger are task kinds assigned to the implementer role.
 
@@ -78,20 +71,11 @@ the only synchronous operation and handles exactly one worktree.
 9. If the registrar returns `notReady`, do not issue or invent a task. Query runtime task status and wait for an agent to report a terminal state, then call `getNextTask` again.
 10. Repeat until `complete`, `BLOCKED`, or user stop.
 
-## Registrar task state
+Tasks should run in background mode by default, allowing multiple tasks to start asynchronously without waiting for previous tasks to finish, unless getNextTask explicitly requests synchronous execution.
+For background tasks:
+* OpenCode: set background: true in the task tool.
+* Hermes: use kanban_create(assignee="default", ...).
 
-The registrar MCP server exposes one `sddtdd_taskStatus` tool with `get` and `update`
-operations. It persists state at `.sddtdd_skill/task-status.json`, next to the
-runtime logs. The document is durable runtime state, not a hand-edited artifact.
-Implementer and reviewer agents are the only writers of task progress. The
-orchestrator may read status but must not call `taskStatus(update)` on their
-behalf.
-
-The MCP server appends every orchestrator request to
-`.sddtdd_skill/orchestrator-access.jsonl`: `getNextTask` and both task-status
-operations produce `*_started` and `*_completed` JSONL events. Review requests
-remain in the separate `.sddtdd_skill/review-access.jsonl` because review is a
-distinct MCP role.
 
 Every delegated task status update must include, when available:
 
@@ -99,11 +83,6 @@ Every delegated task status update must include, when available:
 - the runtime `execution_id` returned by the background-task mechanism;
 - `worktree_path`, `branch`, and resulting `commit`;
 - a concise `result` or `error`.
-
-The orchestrator must read the status document through `taskStatus(get)` when
-reconciling running work. The registrar also injects the document into the
-`getNextTask` LLM context, so the model can reason from persisted state rather
-than guessing from stale prompts or report files.
 
 ## `notReady` and task timeout
 
@@ -209,7 +188,7 @@ Each entry MUST be one JSON object on one line with these required fields:
 - execution_id is mandatory for every delegated implementer or reviewer.
 - execution_id MUST contain the actual runtime identifier returned by OpenCode for the delegated work.
 - For background tasks, execution_id MUST contain the background task ID.
-- For non-background asynchronous tasks, execution_id MUST contain the corresponding runtime identifier returned by OpenCode.
-- If OpenCode returns no runtime identifier, execution_id MUST be NONE.
+- For non-background asynchronous tasks, execution_id MUST contain the corresponding runtime identifier returned by the runtime.
+- If the runtime returns no runtime identifier, execution_id MUST be NONE.
 - The same execution_id MUST be reused in the corresponding HANDOFF and CHECK entries.
 - The orchestrator MUST NOT invent, derive, or substitute an execution_id.
