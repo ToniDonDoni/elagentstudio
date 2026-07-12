@@ -65,7 +65,7 @@ If the chain is missing, list the missing files or commits in the review report.
 - Write the required review report.
 - Include inspected files, commits, evidence, findings, and required fixes.
 
-Report task state directly to the registrar MCP with `taskStatus(update)`:
+Report task state directly to the registrar MCP with `sddtdd_taskStatus(update)`:
 
 - `RUNNING` immediately after the runtime task starts;
 - `COMPLETED`, `FAILED`, or `BLOCKED` before reporting the verdict;

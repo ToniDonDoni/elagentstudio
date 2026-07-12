@@ -50,7 +50,7 @@ For each artifact that needs review, run this loop. Every operation is asynchron
 through the runtime's background-task mechanism except a `MERGE` task, which is
 the only synchronous operation and handles exactly one worktree.
 
-1. Call the registrar MCP `getNextTask` operation. For the initial request use `INITIAL_USER_INPUT`; for later calls submit the completed task and committed evidence.
+1. Call the registrar MCP `sddtdd_getNextTask` operation. For the initial request use `INITIAL_USER_INPUT`; for later calls submit the completed task and committed evidence.
 2. The registrar MCP server records the issued task as `PENDING`; the orchestrator does not report that state.
 3. Launch the implementer or reviewer through the runtime background-task mechanism, passing the required context and the task's isolated worktree. The launched agent must report `RUNNING` directly to the registrar with its role and returned runtime task id.
 4. Use the runtime task-status mechanism to detect completion. Do not infer completion from report files.
@@ -63,7 +63,7 @@ the only synchronous operation and handles exactly one worktree.
 
 ## Registrar task state
 
-The registrar MCP server exposes one `taskStatus` tool with `get` and `update`
+The registrar MCP server exposes one `sddtdd_taskStatus` tool with `get` and `update`
 operations. It persists state at `.sddtdd_skill/task-status.json`, next to the
 runtime logs. The document is durable runtime state, not a hand-edited artifact.
 Implementer and reviewer agents are the only writers of task progress. The
