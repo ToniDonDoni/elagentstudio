@@ -20,6 +20,11 @@ There are exactly three roles:
 - Implementer: creates artifacts. An artifact can be SPEC.md, ARCHITECTURE.md, TASKS.md, tests, code, merge results, or evidence.
 - Reviewer: reviews artifacts. A reviewed artifact can be SPEC.md, ARCHITECTURE.md, TASKS.md, tests, code, merge results, or evidence.
 
+The registrar is the `sddtdd-mcp` MCP server, configured under the `sddtdd`
+namespace. Its raw tools are `getNextTask`, `taskStatus`, and `review`; a
+namespaced client may show them as `sddtdd_getNextTask`, `sddtdd_taskStatus`,
+and `sddtdd_review`.
+
 ## Role files
 
 - SKILL.md: global rules

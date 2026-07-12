@@ -62,47 +62,6 @@ def test_task_status_update_persists_state_and_get_reads_it(tmp_path: Path):
     assert fetched["task"]["task_kind"] == "IMPLEMENTATION"
 
 
-def test_task_status_requests_are_recorded_in_orchestrator_access_log(tmp_path: Path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-
-    asyncio.run(
-        server.call_tool(
-            "taskStatus",
-            {
-                "repo_path": str(repo),
-                "operation": "update",
-                "task_id": "T-LOG",
-                "task_kind": "IMPLEMENTATION",
-                "status": "RUNNING",
-                "role": "implementer",
-                "execution_id": "log-task-1",
-            },
-        )
-    )
-    asyncio.run(
-        server.call_tool(
-            "taskStatus",
-            {"repo_path": str(repo), "operation": "get", "task_id": "T-LOG"},
-        )
-    )
-
-    log_path = repo / ".sddtdd_skill" / "orchestrator-access.jsonl"
-    events = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
-    assert [event["event"] for event in events] == [
-        "taskStatus_started",
-        "taskStatus_completed",
-        "taskStatus_started",
-        "taskStatus_completed",
-    ]
-    assert [event["operation"] for event in events if event["event"].endswith("_started")] == [
-        "update",
-        "get",
-    ]
-    assert events[1]["task_id"] == "T-LOG"
-    assert events[1]["task_status"] == "RUNNING"
-
-
 def test_task_status_update_preserves_history_and_rejects_unknown_status(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()

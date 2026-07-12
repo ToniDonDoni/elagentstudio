@@ -9,6 +9,13 @@ uv sync
 uv run server.py
 ```
 
+## MCP Identity
+
+The MCP server name is `sddtdd-mcp`. In a client configuration it is normally
+registered under the `sddtdd` namespace. The raw tools are `getNextTask`,
+`taskStatus`, and `review`; namespaced clients may display them as
+`sddtdd_getNextTask`, `sddtdd_taskStatus`, and `sddtdd_review`.
+
 ## MCP Tool
 
 ### `review`

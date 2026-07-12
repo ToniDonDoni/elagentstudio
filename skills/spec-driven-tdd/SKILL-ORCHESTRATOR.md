@@ -20,6 +20,23 @@ There are exactly three roles:
 - implementer
 - reviewer
 
+## Registrar MCP identity
+
+MCP server: `sddtdd-mcp`
+Configured namespace: `sddtdd`
+
+The dispatcher must call this server through the configured namespace. It
+exposes these raw tools:
+
+- `getNextTask` — obtain the next registrar task.
+- `taskStatus` — read or update persisted task state.
+- `review` — run a delegated review.
+
+Clients that namespace MCP tools expose the same tools as
+`sddtdd_getNextTask`, `sddtdd_taskStatus`, and `sddtdd_review`. These names
+refer to the same `sddtdd-mcp` server; the dispatcher must not substitute a
+different MCP server or invent another tool name.
+
 The orchestrator must not invent other roles. SPEC author, architecture author, task author, coder, tester, and merger are task kinds assigned to the implementer role.
 
 ## Orchestrator load set
