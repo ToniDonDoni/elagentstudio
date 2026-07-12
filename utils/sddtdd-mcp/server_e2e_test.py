@@ -608,6 +608,7 @@ async def call_mcp_tool(
     return extract_tool_call_response(result)
 
 
+<<<<<<< Updated upstream
 async def test_task_status_tool(client: MCPStdioClient, repo: Path) -> None:
     event("SCENARIO_BEGIN: task_status_tool")
     updated = await call_mcp_tool(
@@ -691,6 +692,9 @@ async def test_task_status_timeout(client: MCPStdioClient, repo: Path) -> None:
 
 
 # --- Required installed skill policy file helpers and tests ---
+=======
+# --- Required skill policy file helpers and tests ---
+>>>>>>> Stashed changes
 
 REVIEW_REQUIRED_POLICY_FILES = [
     "SKILL.md",
@@ -834,6 +838,12 @@ async def assert_missing_orchestrator_policy_file_returns_error(
             f"getNextTask error must name the missing orchestrator policy file: {missing_file}",
         )
         assert_eq(state.calls, 0, f"orchestrator missing policy file must fail before sampling: {missing_file}")
+<<<<<<< Updated upstream
+=======
+
+
+# --- Access log helpers and test ---
+>>>>>>> Stashed changes
 
 def read_access_log_events(log_path: Path) -> list[Json]:
     if not log_path.exists():
@@ -961,6 +971,19 @@ async def test_reviewer_system_prompt_happy_path(client: MCPStdioClient, repo: P
             "review sampling systemPrompt must include the acceptance boundary guide examples",
         )
 
+        assert_true(
+            "ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md" in system_prompt,
+            "review sampling systemPrompt must include the acceptance criteria boundary guide filename",
+        )
+        assert_true(
+            "UI user journey rule" in system_prompt,
+            "review sampling systemPrompt must include the UI user journey rule from the acceptance boundary guide",
+        )
+        assert_true(
+            "Canvas onboarding journey" in system_prompt,
+            "review sampling systemPrompt must include the acceptance boundary guide examples",
+        )
+
         return text_result(valid_review_json("PASS", "reviewer system prompt happy path response"))
 
     client.sampling_handler = sampling
@@ -1021,6 +1044,19 @@ async def test_orchestrator_get_next_task_system_prompt_happy_path(client: MCPSt
         assert_true('"task_kind": "INITIAL_USER_INPUT"' in prompt_text, "initial getNextTask prompt must include task_kind=INITIAL_USER_INPUT")
         assert_true('"user_input": "U2U orchestrator getNextTask happy path scenario"' in prompt_text, "initial getNextTask prompt must carry user_input in evidence")
         assert_true("There is no reviewTask tool." in prompt_text, "getNextTask schema must remove reviewTask tool")
+
+        assert_true(
+            "ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md" in system_prompt,
+            "getNextTask systemPrompt must include the acceptance criteria boundary guide filename",
+        )
+        assert_true(
+            "UI user journey rule" in system_prompt,
+            "getNextTask systemPrompt must include the UI user journey rule from the acceptance boundary guide",
+        )
+        assert_true(
+            "Canvas onboarding journey" in system_prompt,
+            "getNextTask systemPrompt must include the acceptance boundary guide examples",
+        )
 
         return text_result(json_dumps({
             "status": "task",
@@ -1142,6 +1178,19 @@ async def test_orchestrator_get_next_task_completed_task_process_gate_happy_path
         assert_true('"task_id": "O-000001"' in prompt_text, "completed-task getNextTask prompt must include submitted task_id")
         assert_true('"work_journal_id": "J-U2U-WORK-0001"' in prompt_text, "completed-task getNextTask prompt must include work_journal_id")
         assert_true("Derive the required independent reviewer verdict from the submitted task_kind" in prompt_text, "schema must tell orchestrator to derive review type from task_kind")
+
+        assert_true(
+            "ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md" in system_prompt,
+            "completed-task getNextTask systemPrompt must include the acceptance criteria boundary guide filename",
+        )
+        assert_true(
+            "UI user journey rule" in system_prompt,
+            "completed-task getNextTask systemPrompt must include the UI user journey rule from the acceptance boundary guide",
+        )
+        assert_true(
+            "Canvas onboarding journey" in system_prompt,
+            "completed-task getNextTask systemPrompt must include the acceptance boundary guide examples",
+        )
 
         return text_result(json_dumps({
             "status": "task",
