@@ -167,25 +167,3 @@ def test_task_status_expires_stale_running_task_and_marks_it_retryable(tmp_path:
     assert retried["status"] == "PENDING"
     assert retried["retryable"] is False
     assert retried["attempt"] == 2
-
-
-def test_get_next_task_records_issued_task_as_pending(tmp_path: Path, monkeypatch):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
-    (repo / "README.md").write_text("test\n", encoding="utf-8")
-    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
-
-    server._record_issued_task(
-        str(repo),
-        {
-            "status": "task",
-            "next_task": {"task_id": "O-000001", "task_kind": "IMPLEMENTATION"},
-        },
-    )
-    state = json.loads((repo / ".sddtdd_skill" / "task-status.json").read_text(encoding="utf-8"))
-    assert state["tasks"]["O-000001"]["status"] == "PENDING"
-    assert state["tasks"]["O-000001"]["role"] == "implementer"

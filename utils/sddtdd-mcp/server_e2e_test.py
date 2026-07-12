@@ -1118,6 +1118,9 @@ async def test_orchestrator_get_next_task_system_prompt_happy_path(client: MCPSt
     assert_eq(response["orchestrator_result"]["task_review"], None, "initial getNextTask must not return task_review")
     assert_eq(response["orchestrator_result"]["next_task"]["task_id"], "O-000001", "getNextTask orchestrator next task id")
     assert_eq(state.calls, 1, "getNextTask system prompt test must sample exactly once")
+    issued_state = json.loads((repo / ".sddtdd_skill" / "task-status.json").read_text(encoding="utf-8"))
+    assert_eq(issued_state["tasks"]["O-000001"]["status"], "PENDING", "getNextTask must record issued task as pending")
+    assert_eq(issued_state["tasks"]["O-000001"]["role"], "implementer", "issued implementation task role")
 
     not_ready = await call_mcp_tool(
         client,
@@ -2408,6 +2411,3 @@ def main(argv: list[str]) -> int:
             traceback.print_exc()
         return 2
 
-
-if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
