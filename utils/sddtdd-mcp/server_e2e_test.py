@@ -1204,6 +1204,8 @@ async def test_orchestrator_get_next_task_completed_task_process_gate_happy_path
         assert_true('"task_kind": "USER_INPUT_CAPTURE"' in prompt_text, "completed-task getNextTask prompt must include submitted task_kind")
         assert_true('"task_id": "O-000001"' in prompt_text, "completed-task getNextTask prompt must include submitted task_id")
         assert_true('"work_journal_id": "J-U2U-WORK-0001"' in prompt_text, "completed-task getNextTask prompt must include work_journal_id")
+        assert_true("task-status.json" in prompt_text, "completed-task getNextTask prompt must include persisted task status")
+        assert_true('"O-000001"' in prompt_text, "completed-task getNextTask prompt must include the persisted task id")
         assert_true("Derive the required independent reviewer verdict from the submitted task_kind" in prompt_text, "schema must tell orchestrator to derive review type from task_kind")
 
         assert_true(
@@ -1264,6 +1266,73 @@ async def test_orchestrator_get_next_task_completed_task_process_gate_happy_path
     assert_eq(state.calls, 1, "completed-task getNextTask system prompt test must sample exactly once")
     event("SCENARIO_DONE: orchestrator_get_next_task_completed_task_process_gate_happy_path")
     ok("completed-task getNextTask performs process gate and returns next task")
+
+
+async def test_get_next_task_allows_independent_task_while_active(client: MCPStdioClient, repo: Path) -> None:
+    event("SCENARIO_BEGIN: get_next_task_allows_independent_task_while_active")
+    await asyncio.sleep(1.05)
+    await call_mcp_tool(client, "taskStatus", {
+        "repo_path": str(repo),
+        "operation": "update",
+        "task_id": "ACTIVE-001",
+        "task_kind": "IMPLEMENTATION",
+        "status": "RUNNING",
+        "role": "implementer",
+        "execution_id": "active-implementation-1",
+    })
+    calls = 0
+
+    async def sampling(params: Json) -> Json:
+        nonlocal calls
+        calls += 1
+        return text_result(json_dumps({
+            "status": "notReady",
+            "task_review": None,
+            "next_task": None,
+            "active_tasks": [{"task_id": "ACTIVE-001", "status": "RUNNING"}],
+            "rationale": "No eligible independent task is available.",
+        }))
+
+    client.sampling_handler = sampling
+    result = await call_mcp_tool(client, "getNextTask", {
+        "repo_path": str(repo),
+        "task_kind": "INITIAL_USER_INPUT",
+        "task_id": None,
+        "claimed_result": None,
+        "work_journal_id": None,
+        "evidence": {"user_input": "U2U independent task while active scenario"},
+    })
+    assert_eq(result["orchestrator_result"]["status"], "notReady", "active task must not force server-side notReady")
+    assert_eq(calls, 1, "server must invoke sampler when an active task may coexist with an independent task")
+    event("SCENARIO_DONE: get_next_task_allows_independent_task_while_active")
+    ok("active task does not prevent orchestrator from selecting an independent task")
+
+
+async def test_get_next_task_json_error_returns_llm_output(client: MCPStdioClient, repo: Path) -> None:
+    event("SCENARIO_BEGIN: get_next_task_json_error_returns_llm_output")
+    await asyncio.sleep(1.05)
+
+    async def sampling(params: Json) -> Json:
+        return text_result("This is not JSON from the orchestrator.")
+
+    client.sampling_handler = sampling
+    result = await call_mcp_tool(client, "getNextTask", {
+        "repo_path": str(repo),
+        "task_kind": "INITIAL_USER_INPUT",
+        "task_id": None,
+        "claimed_result": None,
+        "work_journal_id": None,
+        "evidence": {"user_input": "U2U invalid orchestrator JSON scenario"},
+    })
+    assert_eq(result["status"], "ERROR", "invalid orchestrator JSON must return ERROR")
+    assert_eq(result["error"], "LLM response did not contain a JSON object", "invalid orchestrator JSON error")
+    assert_eq(
+        result["response"],
+        "LLM did not return a JSON object.\n\nLLM response:\nThis is not JSON from the orchestrator.",
+        "invalid orchestrator JSON response body",
+    )
+    event("SCENARIO_DONE: get_next_task_json_error_returns_llm_output")
+    ok("invalid orchestrator JSON is returned in response")
 
 
 async def test_missing_installed_skill_policy_returns_error(
@@ -2130,6 +2199,14 @@ async def run_all(args: argparse.Namespace) -> None:
             await run_named_test(
                 "test_orchestrator_get_next_task_completed_task_process_gate_happy_path",
                 lambda: test_orchestrator_get_next_task_completed_task_process_gate_happy_path(client, repo),
+            )
+            await run_named_test(
+                "test_get_next_task_allows_independent_task_while_active",
+                lambda: test_get_next_task_allows_independent_task_while_active(client, repo),
+            )
+            await run_named_test(
+                "test_get_next_task_json_error_returns_llm_output",
+                lambda: test_get_next_task_json_error_returns_llm_output(client, repo),
             )
             await run_named_test(
                 "test_missing_installed_skill_policy_returns_error",

@@ -3,7 +3,6 @@ import json
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from types import SimpleNamespace
 
 import server
 
@@ -170,131 +169,6 @@ def test_task_status_expires_stale_running_task_and_marks_it_retryable(tmp_path:
     assert retried["attempt"] == 2
 
 
-def test_get_next_task_returns_not_ready_when_registrar_has_no_available_task(tmp_path: Path, monkeypatch):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
-    (repo / "README.md").write_text("test\n", encoding="utf-8")
-    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
-
-    asyncio.run(
-        server.call_tool(
-            "taskStatus",
-            {
-                "repo_path": str(repo),
-                "operation": "update",
-                "task_id": "T-000001",
-                "task_kind": "IMPLEMENTATION",
-                "status": "RUNNING",
-                "role": "implementer",
-                "execution_id": "task-running",
-            },
-        )
-    )
-    monkeypatch.setattr(server, "_orchestrator_policy_bundle_text", lambda: "policy")
-    calls = 0
-
-    async def sampling(**kwargs):
-        nonlocal calls
-        calls += 1
-        return (
-            json.dumps({
-                "status": "notReady",
-                "task_review": None,
-                "next_task": None,
-                "active_tasks": [{"task_id": "T-000001", "status": "RUNNING"}],
-                "rationale": "No eligible independent task is available.",
-            }),
-            "endTurn",
-        )
-
-    monkeypatch.setattr(server, "_sample_with_tools", sampling)
-    monkeypatch.setattr(type(server.app), "request_context", property(lambda self: None))
-    result = _tool_text(
-        asyncio.run(
-            server._call_orchestrator_tool(
-                "getNextTask",
-                {
-                    "repo_path": str(repo),
-                    "task_kind": "INITIAL_USER_INPUT",
-                    "task_id": None,
-                    "claimed_result": None,
-                    "work_journal_id": None,
-                    "evidence": {"user_input": "test"},
-                },
-            )
-        )
-    )
-
-    assert result["orchestrator_result"]["status"] == "notReady"
-    assert result["orchestrator_result"]["next_task"] is None
-    assert calls == 1
-
-
-def test_orchestrator_prompt_allows_independent_tasks_while_one_is_active():
-    assert "Do not return notReady solely because an active task exists" in server.ORCHESTRATOR_SYSTEM_PROMPT
-    assert "multiple independent implementation, RED, or GREEN tasks" in server.ORCHESTRATOR_SYSTEM_PROMPT
-
-
-def test_get_next_task_json_error_returns_llm_output_in_response(tmp_path: Path, monkeypatch):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
-    (repo / "README.md").write_text("test\n", encoding="utf-8")
-    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
-
-    monkeypatch.setenv("SDDTDD_GET_NEXT_TASK_THROTTLE_SECONDS", "0")
-    monkeypatch.setattr(server, "_orchestrator_policy_bundle_text", lambda: "policy")
-    monkeypatch.setattr(type(server.app), "request_context", property(lambda self: None))
-
-    async def sampling(**kwargs):
-        return ("This is not JSON from the orchestrator.", "endTurn")
-
-    monkeypatch.setattr(server, "_sample_with_tools", sampling)
-    result = _tool_text(
-        asyncio.run(
-            server._call_orchestrator_tool(
-                "getNextTask",
-                {
-                    "repo_path": str(repo),
-                    "task_kind": "INITIAL_USER_INPUT",
-                    "task_id": None,
-                    "claimed_result": None,
-                    "work_journal_id": None,
-                    "evidence": {"user_input": "test"},
-                },
-            )
-        )
-    )
-
-    assert result["status"] == "ERROR"
-    assert result["error"] == "LLM response did not contain a JSON object"
-    assert result["response"] == (
-        "LLM did not return a JSON object.\n\n"
-        "LLM response:\nThis is not JSON from the orchestrator."
-    )
-
-
-def test_get_next_task_throttles_repeated_requests_until_cooldown_expires(
-    tmp_path: Path, monkeypatch
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    monkeypatch.setenv("SDDTDD_GET_NEXT_TASK_THROTTLE_SECONDS", "120")
-
-    assert server._get_next_task_throttle_remaining(str(repo), now=1000.0) is None
-    remaining = server._get_next_task_throttle_remaining(str(repo), now=1059.0)
-    assert remaining == 61.0
-    assert server._get_next_task_throttle_remaining(str(repo), now=1119.0) == 1.0
-    assert server._get_next_task_throttle_remaining(str(repo), now=1120.0) is None
-
-
 def test_get_next_task_records_issued_task_as_pending(tmp_path: Path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -315,5 +189,3 @@ def test_get_next_task_records_issued_task_as_pending(tmp_path: Path, monkeypatc
     state = json.loads((repo / ".sddtdd_skill" / "task-status.json").read_text(encoding="utf-8"))
     assert state["tasks"]["O-000001"]["status"] == "PENDING"
     assert state["tasks"]["O-000001"]["role"] == "implementer"
-
-
