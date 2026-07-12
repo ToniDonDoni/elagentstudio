@@ -30,7 +30,6 @@ import asyncio
 import json
 import os
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -51,6 +50,34 @@ VERBOSE_OUTPUT = False
 # MCP reviewer tests remain in this file for later re-enablement, but are
 # intentionally disabled while the review endpoint is commented out in server.py.
 REVIEW_TESTS_DISABLED = True
+REVIEW_TEST_NAMES = frozenset({
+    'test_basic_review',
+    'test_reviewer_system_prompt_happy_path',
+    'test_missing_installed_skill_policy_returns_error',
+    'test_access_log_records_review_start_and_completion',
+    'test_tool_use_roundtrip',
+    'test_async_shell_command_does_not_block_list_tools',
+    'test_invalid_review_triggers_repair',
+    'test_empty_response_with_verdict_returns_retry_error_without_repair',
+    'test_empty_response_without_verdict_returns_retry_error_without_repair',
+    'test_repair_maxtokens_retries_before_accepting_result',
+    'test_repair_maxtokens_retry_prompt_includes_budget_guidance',
+    'test_primary_sampling_maxtokens_retries_before_accepting_result',
+    'test_primary_sampling_maxtokens_exhaustion_is_not_accepted_as_completed_review',
+    'test_repair_sampling_does_not_block_list_tools',
+    'test_sampling_jsonrpc_error_returns_error_and_logs_completion',
+    'test_repair_sampling_error_returns_error_and_logs_completion',
+    'test_primary_sampling_maxrounds_exceeded_is_not_accepted_as_completed_review',
+    'test_repair_maxrounds_exceeded_retries_before_accepting_result',
+    'test_unknown_tool_use_name_returns_error_tool_result_and_allows_final_verdict',
+    'test_malformed_shell_command_tool_args_return_deterministic_errors',
+    'test_shell_command_timeout_returns_timed_out_result_and_continues',
+    'test_shell_command_process_leak_warning_and_cleanup',
+    'test_large_tool_output_is_truncated',
+    'test_malformed_tools_call_arguments_return_error',
+    'test_plain_text_verdict_fallback_accepts_pass_with_body',
+    'test_repair_exhaustion_returns_error_not_completed_review',
+})
 
 
 class U2UFailure(AssertionError):
@@ -1122,7 +1149,18 @@ async def test_orchestrator_get_next_task_system_prompt_happy_path(client: MCPSt
     assert_eq(issued_state["tasks"]["O-000001"]["status"], "PENDING", "getNextTask must record issued task as pending")
     assert_eq(issued_state["tasks"]["O-000001"]["role"], "implementer", "issued implementation task role")
 
-    not_ready = await call_mcp_tool(
+    async def not_ready_sampling(params: Json) -> Json:
+        state.calls += 1
+        return text_result(json_dumps({
+            "status": "notReady",
+            "task_review": None,
+            "next_task": None,
+            "active_tasks": [{"task_id": "O-000001", "status": "PENDING"}],
+            "rationale": "No eligible task is currently available.",
+        }))
+
+    client.sampling_handler = not_ready_sampling
+    first_not_ready = await call_mcp_tool(
         client,
         "getNextTask",
         {
@@ -1135,13 +1173,30 @@ async def test_orchestrator_get_next_task_system_prompt_happy_path(client: MCPSt
         },
         timeout=5,
     )
-    assert_eq(not_ready["status"], "COMPLETED", "notReady getNextTask MCP status")
-    assert_eq(not_ready["orchestrator_result"]["status"], "notReady", "unfinished getNextTask result")
-    assert_true(
-        "throttling repeated getNextTask" in not_ready["orchestrator_result"]["rationale"],
-        "repeated getNextTask must report the temporary throttling rationale",
+    assert_eq(first_not_ready["status"], "COMPLETED", "sampled notReady getNextTask MCP status")
+    assert_eq(first_not_ready["orchestrator_result"]["status"], "notReady", "sampled notReady result")
+    assert_eq(state.calls, 2, "a previous non-notReady result must not throttle the next getNextTask call")
+
+    throttled = await call_mcp_tool(
+        client,
+        "getNextTask",
+        {
+            "repo_path": str(repo),
+            "task_kind": "INITIAL_USER_INPUT",
+            "task_id": None,
+            "claimed_result": None,
+            "work_journal_id": None,
+            "evidence": {},
+        },
+        timeout=5,
     )
-    assert_eq(state.calls, 1, "notReady must not call the orchestrator sampler")
+    assert_eq(throttled["status"], "COMPLETED", "throttled getNextTask MCP status")
+    assert_eq(throttled["orchestrator_result"]["status"], "notReady", "throttled getNextTask result")
+    assert_true(
+        "throttling repeated getNextTask" in throttled["orchestrator_result"]["rationale"],
+        "a repeated call after notReady must report the temporary throttling rationale",
+    )
+    assert_eq(state.calls, 2, "throttled notReady must not call the orchestrator sampler")
     event("SCENARIO_DONE: orchestrator_get_next_task_system_prompt_happy_path")
     ok("getNextTask sampling/createMessage receives orchestrator/orchestrator systemPrompt")
 
@@ -1480,7 +1535,7 @@ async def test_invalid_review_triggers_repair(client: MCPStdioClient, repo: Path
     assert_eq(response["status"], "COMPLETED", "repair review status")
     assert_eq(response["verdict"], "PASS", "repair review verdict")
     assert_true(state.calls >= 4, f"repair scenario should use primary + repair attempts, calls={state.calls}")
-    event(f"SCENARIO_DONE: invalid_review_triggers_repair")
+    event("SCENARIO_DONE: invalid_review_triggers_repair")
     ok(f"invalid reviewer output triggered repair and completed after {state.calls} sampling calls")
 
 
@@ -2169,7 +2224,7 @@ async def run_all(args: argparse.Namespace) -> None:
             async def run_named_test(test_name: str, test_fn: Callable[[], Awaitable[None]]) -> None:
                 # Keep the MCP reviewer scenarios in place for later re-enablement,
                 # but do not execute them while the review tool is disabled.
-                if REVIEW_TESTS_DISABLED and "review" in test_name:
+                if REVIEW_TESTS_DISABLED and test_name in REVIEW_TEST_NAMES:
                     event(f"RUN_TEST_SKIP: {test_name} reviewer disabled")
                     return
                 if not matches_test_mask(test_name, args.test):
@@ -2413,3 +2468,10 @@ def main(argv: list[str]) -> int:
         print("FAIL interrupted", file=sys.stderr, flush=True)
         return 130
     except Exception as exc:
+        print(f"FAIL unexpected error: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+        traceback.print_exc()
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

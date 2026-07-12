@@ -40,7 +40,7 @@ TASK_ACTIVE_STATUS_VALUES = frozenset({"PENDING", "RUNNING", "WAITING_REVIEW"})
 DEFAULT_TASK_TIMEOUT_SECONDS = 600
 _task_status_lock = threading.Lock()
 DEFAULT_GET_NEXT_TASK_THROTTLE_SECONDS = 120
-_get_next_task_last_request_at: dict[str, float] = {}
+_get_next_task_last_result: dict[str, tuple[float, str]] = {}
 _get_next_task_throttle_lock = threading.Lock()
 
 
@@ -61,17 +61,33 @@ def _get_next_task_throttle_seconds() -> float:
 
 
 def _get_next_task_throttle_remaining(repo_path: str, *, now: float | None = None) -> float | None:
-    """Reserve a getNextTask request or return the remaining cooldown in seconds."""
+    """Return remaining cooldown only when the previous result was notReady."""
     now = time.monotonic() if now is None else now
     throttle_seconds = _get_next_task_throttle_seconds()
     with _get_next_task_throttle_lock:
-        previous = _get_next_task_last_request_at.get(repo_path)
-        if previous is not None:
-            remaining = throttle_seconds - (now - previous)
-            if remaining > 0:
-                return remaining
-        _get_next_task_last_request_at[repo_path] = now
+        previous = _get_next_task_last_result.get(repo_path)
+        if previous is None:
+            return None
+        previous_at, previous_status = previous
+        if previous_status != "notReady":
+            return None
+        remaining = throttle_seconds - (now - previous_at)
+        if remaining > 0:
+            return remaining
     return None
+
+
+def _record_get_next_task_result(
+    repo_path: str,
+    status: object,
+    *,
+    now: float | None = None,
+) -> None:
+    """Remember the most recent getNextTask result for in-memory throttling."""
+    now = time.monotonic() if now is None else now
+    normalized_status = status if isinstance(status, str) else "unknown"
+    with _get_next_task_throttle_lock:
+        _get_next_task_last_result[repo_path] = (now, normalized_status)
 
 def _trace_function(func):
     if  asyncio.iscoroutinefunction(func):
@@ -937,9 +953,35 @@ app = mcp_server.Server("sddtdd-mcp")
 @_trace_function
 async def list_tools() -> list[types.Tool]:
     return [
-        # MCP reviewer is temporarily disabled; keep its implementation below
-        # commented out of the public tool list until the reviewer workflow is
-        # brought back.
+        # MCP reviewer is temporarily disabled; keep the original declaration
+        # commented out so it can be restored without reconstructing the schema.
+        #
+        # types.Tool(
+        #     name="review",
+        #     description="Review committed repository state through an independent LLM reviewer",
+        #     inputSchema={
+        #         "type": "object",
+        #         "properties": {
+        #             "repo_path": {
+        #                 "type": "string",
+        #                 "description": "Absolute path to the Git repository",
+        #             },
+        #             "review_type": {
+        #                 "type": "string",
+        #                 "description": "Review type, preferably one of SPEC_REVIEW, ARCHITECTURE_REVIEW, TASK_REVIEW, RED_REVIEW, GREEN_REVIEW, REGRESSION_REVIEW, FINAL_REVIEW",
+        #             },
+        #             "task_id": {
+        #                 "type": "string",
+        #                 "description": "Optional free-form task identifier",
+        #             },
+        #             "prompt": {
+        #                 "type": "string",
+        #                 "description": "Supplemental implementer review note. The server injects the full SDDTDD reviewer policy and requires repository-context reconstruction.",
+        #             },
+        #         },
+        #         "required": ["repo_path", "review_type", "prompt"],
+        #     },
+        # ),
         types.Tool(
             name="getNextTask",
             description=(
@@ -2036,6 +2078,7 @@ async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[
                 "head_sha": head_before,
                 "orchestrator_result": parsed,
             }
+            _record_get_next_task_result(repo_path, parsed.get("status"))
             log.append({
                 "event": f"{name}_completed",
                 "request_id": request_id,
@@ -2096,6 +2139,7 @@ async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[
                 "orchestrator_result": parsed,
             }
             _record_issued_task(repo_path, parsed)
+            _record_get_next_task_result(repo_path, parsed.get("status"))
 
         log.append({
             "event": f"{name}_completed",
@@ -2165,6 +2209,10 @@ async def call_tool(
         return await _call_task_status_tool(arguments)
 
     # The MCP review endpoint is intentionally disabled, not deleted.
+    #
+    # if name == "review":
+    #     return await _call_review_tool(arguments)
+    #
     if name == "review":
         raise ValueError("Unknown tool: review")
 
