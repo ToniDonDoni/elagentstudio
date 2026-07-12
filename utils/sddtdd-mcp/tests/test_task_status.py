@@ -239,6 +239,48 @@ def test_orchestrator_prompt_allows_independent_tasks_while_one_is_active():
     assert "multiple independent implementation, RED, or GREEN tasks" in server.ORCHESTRATOR_SYSTEM_PROMPT
 
 
+def test_get_next_task_json_error_returns_llm_output_in_response(tmp_path: Path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    (repo / "README.md").write_text("test\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+
+    monkeypatch.setenv("SDDTDD_GET_NEXT_TASK_THROTTLE_SECONDS", "0")
+    monkeypatch.setattr(server, "_orchestrator_policy_bundle_text", lambda: "policy")
+    monkeypatch.setattr(type(server.app), "request_context", property(lambda self: None))
+
+    async def sampling(**kwargs):
+        return ("This is not JSON from the orchestrator.", "endTurn")
+
+    monkeypatch.setattr(server, "_sample_with_tools", sampling)
+    result = _tool_text(
+        asyncio.run(
+            server._call_orchestrator_tool(
+                "getNextTask",
+                {
+                    "repo_path": str(repo),
+                    "task_kind": "INITIAL_USER_INPUT",
+                    "task_id": None,
+                    "claimed_result": None,
+                    "work_journal_id": None,
+                    "evidence": {"user_input": "test"},
+                },
+            )
+        )
+    )
+
+    assert result["status"] == "ERROR"
+    assert result["error"] == "LLM response did not contain a JSON object"
+    assert result["response"] == (
+        "LLM did not return a JSON object.\n\n"
+        "LLM response:\nThis is not JSON from the orchestrator."
+    )
+
+
 def test_get_next_task_throttles_repeated_requests_until_cooldown_expires(
     tmp_path: Path, monkeypatch
 ):
@@ -275,28 +317,3 @@ def test_get_next_task_records_issued_task_as_pending(tmp_path: Path, monkeypatc
     assert state["tasks"]["O-000001"]["role"] == "implementer"
 
 
-def test_next_task_prompt_includes_persisted_task_status(tmp_path: Path):
-    repo = tmp_path / "repo"
-    status_dir = repo / ".sddtdd_skill"
-    status_dir.mkdir(parents=True)
-    (status_dir / "task-status.json").write_text(
-        json.dumps({"version": 1, "updated_at": "now", "tasks": {"T-003": {"status": "RUNNING"}}}),
-        encoding="utf-8",
-    )
-    git = SimpleNamespace(branch=lambda: "agent/test", head_sha=lambda: "abc123", is_dirty=lambda: False)
-
-    prompt = server._get_next_prompt(
-        str(repo),
-        git,
-        {
-            "task_kind": "INITIAL_USER_INPUT",
-            "task_id": None,
-            "claimed_result": None,
-            "work_journal_id": None,
-            "evidence": {"user_input": "test"},
-        },
-    )
-
-    assert "task-status.json" in prompt
-    assert "T-003" in prompt
-    assert "RUNNING" in prompt

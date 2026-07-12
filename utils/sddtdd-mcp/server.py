@@ -2013,6 +2013,7 @@ async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[
     process_groups: list[int] = []
     leaked_pids: list[int] = []
     log: LogWriter | None = None
+    response_text = ""
 
     try:
         git = GitCapturer(repo_path)
@@ -2133,6 +2134,12 @@ async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[
             "stale": False,
             "error": str(exc),
         }
+        if response_text:
+            result["response"] = (
+                "LLM did not return a JSON object.\n\n"
+                "LLM response:\n"
+                + response_text
+            )
         if log:
             try:
                 log.append({
