@@ -507,10 +507,45 @@ def _task_status_update(arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _call_task_status_tool(arguments: dict[str, Any]) -> list[types.TextContent]:
+    request_id = uuid.uuid4().hex
+    repo_path = arguments.get("repo_path")
+    log: LogWriter | None = None
+    if isinstance(repo_path, str) and repo_path:
+        log = LogWriter(_get_orchestrator_log_path(repo_path))
+        log.append({
+            "event": "taskStatus_started",
+            "request_id": request_id,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "repo_path": repo_path,
+            "operation": arguments.get("operation"),
+            "task_id": arguments.get("task_id"),
+            "task_kind": arguments.get("task_kind"),
+            "role": arguments.get("role"),
+            "execution_id": arguments.get("execution_id"),
+            "requested_status": arguments.get("status"),
+        })
     try:
         result = _task_status_update(arguments)
     except Exception as exc:
         result = {"status": "ERROR", "response": str(exc)}
+    finally:
+        if log is not None:
+            task = result.get("task") if isinstance(result, dict) else None
+            log.append({
+                "event": "taskStatus_completed",
+                "request_id": request_id,
+                "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                "repo_path": repo_path,
+                "operation": arguments.get("operation"),
+                "task_id": arguments.get("task_id"),
+                "task_kind": arguments.get("task_kind"),
+                "role": arguments.get("role"),
+                "execution_id": arguments.get("execution_id"),
+                "status": result.get("status") if isinstance(result, dict) else "ERROR",
+                "task_status": task.get("status") if isinstance(task, dict) else None,
+                "response": result.get("response") if isinstance(result, dict) else None,
+            })
+            log.close()
     return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
 
 

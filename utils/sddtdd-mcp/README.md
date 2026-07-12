@@ -41,6 +41,10 @@ Accepts a repository path, review type, optional task ID, and prompt. Captures G
 Default: `<repo>/.git/sddtdd/review-access.jsonl`
 Override: `SDDTDD_LOG_PATH` env var
 
+Orchestrator requests are appended to `<repo>/.sddtdd_skill/orchestrator-access.jsonl`.
+This includes `getNextTask` and both task-status operations. Review requests
+remain in the separate review access log.
+
 ## Task status
 
 The `taskStatus` tool has two operations:

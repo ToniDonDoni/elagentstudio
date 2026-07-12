@@ -608,7 +608,6 @@ async def call_mcp_tool(
     return extract_tool_call_response(result)
 
 
-<<<<<<< Updated upstream
 async def test_task_status_tool(client: MCPStdioClient, repo: Path) -> None:
     event("SCENARIO_BEGIN: task_status_tool")
     updated = await call_mcp_tool(
@@ -652,6 +651,16 @@ async def test_task_status_tool(client: MCPStdioClient, repo: Path) -> None:
             "result": "Smoke test completed.",
         },
     )
+    access_log = repo / ".sddtdd_skill" / "orchestrator-access.jsonl"
+    access_events = [json.loads(line) for line in access_log.read_text(encoding="utf-8").splitlines()]
+    assert_true(
+        {event_record["event"] for event_record in access_events} >= {"taskStatus_started", "taskStatus_completed"},
+        "taskStatus requests must be recorded in the orchestrator access log",
+    )
+    assert_true(
+        {event_record["operation"] for event_record in access_events} >= {"get", "update"},
+        "orchestrator access log must include taskStatus get and update operations",
+    )
     event("SCENARIO_DONE: task_status_tool")
     ok("taskStatus persists and reads delegated task state through MCP")
 
@@ -691,10 +700,7 @@ async def test_task_status_timeout(client: MCPStdioClient, repo: Path) -> None:
 
 
 
-# --- Required installed skill policy file helpers and tests ---
-=======
-# --- Required skill policy file helpers and tests ---
->>>>>>> Stashed changes
+# --- Required installed skill policy helpers and tests ---
 
 REVIEW_REQUIRED_POLICY_FILES = [
     "SKILL.md",
@@ -838,13 +844,6 @@ async def assert_missing_orchestrator_policy_file_returns_error(
             f"getNextTask error must name the missing orchestrator policy file: {missing_file}",
         )
         assert_eq(state.calls, 0, f"orchestrator missing policy file must fail before sampling: {missing_file}")
-<<<<<<< Updated upstream
-=======
-
-
-# --- Access log helpers and test ---
->>>>>>> Stashed changes
-
 def read_access_log_events(log_path: Path) -> list[Json]:
     if not log_path.exists():
         return []

@@ -70,6 +70,12 @@ Implementer and reviewer agents are the only writers of task progress. The
 orchestrator may read status but must not call `taskStatus(update)` on their
 behalf.
 
+The MCP server appends every orchestrator request to
+`.sddtdd_skill/orchestrator-access.jsonl`: `getNextTask` and both task-status
+operations produce `*_started` and `*_completed` JSONL events. Review requests
+remain in the separate `.sddtdd_skill/review-access.jsonl` because review is a
+distinct MCP role.
+
 Every delegated task status update must include, when available:
 
 - `task_id`, `task_kind`, `status`, and `role`;
