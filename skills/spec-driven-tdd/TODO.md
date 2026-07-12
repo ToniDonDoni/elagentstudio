@@ -85,3 +85,5 @@ Observed examples:
 - this bypassed the dispatcher-only role boundary observed elsewhere in the run.
 
 ### 9. mcp sampling is not available in opencode
+
+Use own lln provider via langchain?
