@@ -68,7 +68,7 @@ the only synchronous operation and handles exactly one worktree.
 6. As soon as one implementer result is ready, launch its separate reviewer immediately. Do not wait for unrelated tasks or a batch.
 7. If the reviewer returns `PASS`, submit its committed evidence to `getNextTask`. If it returns `FAIL` or `NEEDS_CHANGES`, launch a new asynchronous implementer with the findings and full ancestry context.
 8. For `MERGE`, launch one synchronous implementer for one reviewed worktree, resolve conflicts, run required tests, update task status, and commit the merge result before requesting the next task.
-9. If the registrar returns `notReady`, do not issue or invent a task. Query runtime task status and wait for an agent to report a terminal state, then call `getNextTask` again.
+9. If the registrar returns `notReady`, do not issue or invent a task. `notReady` may mean that an issued task is still active, or that the registrar is temporarily busy and is throttling repeated requests. Wait briefly, query runtime task status when relevant, and call `getNextTask` again after the wait.
 10. Repeat until `complete`, `BLOCKED`, or user stop.
 
 Tasks should run in background mode by default, allowing multiple tasks to start asynchronously without waiting for previous tasks to finish, unless getNextTask explicitly requests synchronous execution.
@@ -86,9 +86,11 @@ Every delegated task status update must include, when available:
 
 ## `notReady` and task timeout
 
-`getNextTask` returns `status: "notReady"` with `next_task: null` and an
-`active_tasks` list when previously issued tasks are still unfinished. This is
-not a failure and must not cause the dispatcher to create duplicate work.
+`getNextTask` returns `status: "notReady"` with `next_task: null` when a
+previously issued task is still unfinished or when the registrar is temporarily
+busy and throttling repeated requests. This is not a failure and must not cause
+the dispatcher to create duplicate work. In either case, wait briefly and call
+`getNextTask` again; do not treat `notReady` as a terminal task result.
 
 The registrar expires an active task when it has not received a direct
 `taskStatus(update)` report for the configured timeout. The default is 600
