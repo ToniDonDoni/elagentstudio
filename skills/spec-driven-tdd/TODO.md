@@ -97,3 +97,19 @@ Required: after a getNextTask request, return notReady without sampling until a
 configurable cooldown has elapsed. The cooldown must be controlled by an
 environment variable and default to 120 seconds. Add a regression test before
 implementing the server behavior.
+
+### 11. Retro on a browser game
+Findings: Async SDD/TDD Workflow Gaps
+
+- Most tasks lacked real runtime execution_id, worktree, branch, or commit metadata.
+- task-status.json contained contradictory states, including tasks marked both COMPLETED and TASK_TIMEOUT.
+- orchestrator.log was not valid JSONL, missed exact delegated prompts, and lacked reliable HANDOFF/CHECK pairs.
+- Some reviews were self-reviews or performed retroactively after downstream work had already started.
+- Reviewers were not always launched immediately after implementer completion.
+- The required isolated-worktree and synchronous MERGE flow was skipped for most tasks.
+- Background Kanban tasks existed, but their lifecycle was not reliably synchronized with the registrar.
+- Clean-worktree checks were sometimes bypassed.
+- Full ancestry context could not be proven for most delegated tasks.
+- An unresolved RED test caused by conflicting acceptance criteria was accepted instead of triggering SPEC replanning.
+- Final completion was recorded before the registrar workflow reached a consistent terminal state.
+- Agents modified the installed Hermes skill files directly. Skill development should happen in a version-controlled source workspace, with explicit editor permissions and a controlled install/sync step. Direct mutation of installed skills makes changes unauditable, non-reproducible, and easy to lose.
