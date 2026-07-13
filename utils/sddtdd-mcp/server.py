@@ -2225,14 +2225,6 @@ async def call_tool(
     if name == "taskStatus":
         return await _call_task_status_tool(arguments)
 
-    # The MCP review endpoint is intentionally disabled, not deleted.
-    #
-    # if name == "review":
-    #     return await _call_review_tool(arguments)
-    #
-    if name == "review":
-        raise ValueError("Unknown tool: review")
-
     if name != "review":
         raise ValueError(f"Unknown tool: {name}")
 

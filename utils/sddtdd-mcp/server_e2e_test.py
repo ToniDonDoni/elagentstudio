@@ -47,8 +47,7 @@ Json = dict[str, Any]
 # Increase the stream reader limit to handle large JSON lines from MCP.
 STREAM_READER_LIMIT = 16 * 1024 * 1024
 VERBOSE_OUTPUT = False
-# MCP reviewer tests remain in this file for later re-enablement, but are
-# intentionally disabled while the review endpoint is commented out in server.py.
+# MCP reviewer endpoint is enabled; reviewer tests run normally.
 REVIEW_TESTS_DISABLED = False
 REVIEW_TEST_NAMES = frozenset({
     'test_basic_review',
@@ -592,7 +591,7 @@ async def tools_list(client: MCPStdioClient) -> Json:
 def assert_review_tool(list_result: Json) -> None:
     tools = list_result.get("tools") or []
     names = [tool.get("name") for tool in tools]
-    assert_true("review" not in names, f"tools/list must not include disabled review, got {names!r}")
+    assert_true("review" in names, f"tools/list must include enabled review, got {names!r}")
     assert_true("getNextTask" in names, f"tools/list must include getNextTask, got {names!r}")
     assert_true("taskStatus" in names, f"tools/list must include taskStatus, got {names!r}")
     assert_true("reviewTask" not in names, f"tools/list must not include removed reviewTask, got {names!r}")
@@ -931,7 +930,7 @@ async def test_startup_and_list_tools(client: MCPStdioClient) -> None:
     listed = await tools_list(client)
     assert_review_tool(listed)
     event("SCENARIO_DONE: startup_and_list_tools")
-    ok("tools/list returns active tools without disabled review")
+    ok("tools/list returns review, getNextTask, and taskStatus")
 
 
 async def test_mcp_identity_and_tools(client: MCPStdioClient) -> None:
