@@ -1681,8 +1681,10 @@ async def test_repair_maxtokens_retry_prompt_includes_budget_guidance(
         "sampling max output budget" in retry_prompt_text,
         "repair retry prompt after maxTokens must mention the sampling max output budget",
     )
+    MAX_SAMPLING_TOKENS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_TOKENS", "20000")
+    )
     assert_true(
-        "20000 tokens" in retry_prompt_text,
+        f"{MAX_SAMPLING_TOKENS} tokens" in retry_prompt_text,
         "repair retry prompt after maxTokens must include the configured sampling token budget",
     )
     assert_true(
