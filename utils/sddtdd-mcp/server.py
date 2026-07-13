@@ -953,35 +953,32 @@ app = mcp_server.Server("sddtdd-mcp")
 @_trace_function
 async def list_tools() -> list[types.Tool]:
     return [
-        # MCP reviewer is temporarily disabled; keep the original declaration
-        # commented out so it can be restored without reconstructing the schema.
-        #
-        # types.Tool(
-        #     name="review",
-        #     description="Review committed repository state through an independent LLM reviewer",
-        #     inputSchema={
-        #         "type": "object",
-        #         "properties": {
-        #             "repo_path": {
-        #                 "type": "string",
-        #                 "description": "Absolute path to the Git repository",
-        #             },
-        #             "review_type": {
-        #                 "type": "string",
-        #                 "description": "Review type, preferably one of SPEC_REVIEW, ARCHITECTURE_REVIEW, TASK_REVIEW, RED_REVIEW, GREEN_REVIEW, REGRESSION_REVIEW, FINAL_REVIEW",
-        #             },
-        #             "task_id": {
-        #                 "type": "string",
-        #                 "description": "Optional free-form task identifier",
-        #             },
-        #             "prompt": {
-        #                 "type": "string",
-        #                 "description": "Supplemental implementer review note. The server injects the full SDDTDD reviewer policy and requires repository-context reconstruction.",
-        #             },
-        #         },
-        #         "required": ["repo_path", "review_type", "prompt"],
-        #     },
-        # ),
+        types.Tool(
+            name="review",
+            description="Review committed repository state through an independent LLM reviewer",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo_path": {
+                        "type": "string",
+                        "description": "Absolute path to the Git repository",
+                    },
+                    "review_type": {
+                        "type": "string",
+                        "description": "Review type, preferably one of SPEC_REVIEW, ARCHITECTURE_REVIEW, TASK_REVIEW, RED_REVIEW, GREEN_REVIEW, REGRESSION_REVIEW, FINAL_REVIEW",
+                    },
+                    "task_id": {
+                        "type": "string",
+                        "description": "Optional free-form task identifier",
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "Supplemental implementer review note. The server injects the full SDDTDD reviewer policy and requires repository-context reconstruction.",
+                    },
+                },
+                "required": ["repo_path", "review_type", "prompt"],
+            },
+        ),
         types.Tool(
             name="getNextTask",
             description=(
@@ -1113,9 +1110,22 @@ installed Markdown files are supporting policy. If this short system prompt
 conflicts with embedded Markdown policy, the embedded Markdown policy wins except
 for read-only safety and JSON-output requirements.
 
-In orchestrator mode, you own the workflow order. getNextTask is the only orchestrator tool: 
-it verifies a submitted completed task when present and issues at most one next task. 
+In orchestrator mode, you own the workflow order. getNextTask is the only orchestrator tool:
+it verifies a submitted completed task when present and issues at most one next task.
 The implementer only receives your task and must not cut corners.
+
+The `next_task` object is a delegation envelope for the caller, not an instruction
+for the caller to execute directly. When you issue a task, formulate
+`next_task.instruction` as an explicit handoff to a separate downstream agent. It
+MUST begin with exactly:
+
+`Assign this task to a separate implementer agent; do not execute it yourself:`
+
+After that prefix, describe the work the agent must perform. Never write
+`next_task.instruction` as a bare imperative such as "Implement...", "Create...",
+"Run...", or "Commit..." because the caller may interpret that as permission to do
+the work itself. The caller/orchestrator must only delegate, monitor status, collect
+evidence, and submit completion back through getNextTask.
 
 When issuing a task with task_kind "MERGE" (backmerge), explicitly require synchronous 
 execution in the task instruction; the implementer must wait for it to complete before 
@@ -1173,7 +1183,7 @@ For getNextTask, return exactly one JSON object with this shape:
   "next_task": {
     "task_id": "O-000001",
     "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | FINAL | DONE",
-    "instruction": "one concrete instruction in English",
+    "instruction": "Delegate this task to a separate implementer agent; do not execute it yourself: <one concrete self-contained instruction in English for that implementer agent>",
     "allowed_scope": ["exact repo paths or artifact globs the implementer may touch"],
     "required_evidence": ["concrete required evidence the implementer must produce"],
     "independent_review_required": true,
@@ -1188,7 +1198,13 @@ For getNextTask, return exactly one JSON object with this shape:
 
 Status and process policy are defined in the embedded installed Markdown policy,
 especially SKILL-ORCHESTRATOR.md. There is no reviewTask tool. There is no
-previous_task_id input. Derive the required independent reviewer verdict from the submitted task_kind by the fixed mapping in SKILL-ORCHESTRATOR.md. Return JSON only.
+previous_task_id input. Derive the required independent reviewer verdict from the submitted task_kind by the fixed mapping in SKILL-ORCHESTRATOR.md.
+
+Every non-null `next_task.instruction` MUST be a delegation instruction, not a direct
+execution instruction. It MUST begin exactly with:
+`Assign this task to a separate implementer agent; do not execute it yourself:`
+The text after the prefix is the task assigned to that separate implementer agent.
+Return JSON only.
 If the registrar has already issued tasks that are still unfinished, include them in
 your decision context. Do not return `status: "notReady"` merely because they exist:
 issue another eligible independent task when its prerequisites are satisfied. Return
@@ -1229,6 +1245,7 @@ def _get_next_prompt(repo_path: str, git: GitCapturer, args: dict[str, Any]) -> 
     return (
         GET_NEXT_SCHEMA
         + "\n\nInspect the repository using tools before deciding. Apply the embedded installed policy from the system prompt. "
+        + "When returning a non-null next_task, make instruction an explicit assignment to a separate agent and begin it with the exact required delegation prefix. "
         + "Return JSON only.\n\nREQUEST:\n"
         + json.dumps(payload, ensure_ascii=False, indent=2)
     )

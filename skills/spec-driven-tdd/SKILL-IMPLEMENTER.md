@@ -57,6 +57,9 @@ If the chain is missing, report the missing files and wait for the orchestrator.
 - Do not review your own work.
 - Do not ask the user for review.
 - Do not advance the workflow yourself.
+- Call mcp_sddtdd_review before finshing task.
+- Commit all completed artifacts, journal entries, and evidence before requesting review.
+- Do not report task completion until the independent review has passed.
 
 Report task state directly to the registrar MCP with `sddtdd_taskStatus(update)`:
 
@@ -65,7 +68,6 @@ Report task state directly to the registrar MCP with `sddtdd_taskStatus(update)`
 - include `role: implementer`, the runtime `execution_id`, worktree, branch,
   commit, and concise result or error when available.
 
-The orchestrator must not report these states on the implementer's behalf.
 
 ## Evidence rules
 

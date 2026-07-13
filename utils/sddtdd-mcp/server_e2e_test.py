@@ -49,7 +49,7 @@ STREAM_READER_LIMIT = 16 * 1024 * 1024
 VERBOSE_OUTPUT = False
 # MCP reviewer tests remain in this file for later re-enablement, but are
 # intentionally disabled while the review endpoint is commented out in server.py.
-REVIEW_TESTS_DISABLED = True
+REVIEW_TESTS_DISABLED = False
 REVIEW_TEST_NAMES = frozenset({
     'test_basic_review',
     'test_reviewer_system_prompt_happy_path',
