@@ -93,6 +93,7 @@ Every delegated task status update must include, when available:
 - the runtime `execution_id` returned by the background-task mechanism;
 - `worktree_path`, `branch`, and resulting `commit`;
 - a concise `result` or `error`.
+- use instruct to use spec-driven-tdd skill with the assigned role (eg. implementer or reviewer)
 
 ## `notReady` and task timeout
 
