@@ -933,6 +933,14 @@ async def test_startup_and_list_tools(client: MCPStdioClient) -> None:
     ok("tools/list returns review, getNextTask, and taskStatus")
 
 
+async def test_mcp_identity_and_tools(client: MCPStdioClient) -> None:
+    event("SCENARIO_BEGIN: mcp_identity_and_tools")
+    listed = await tools_list(client)
+    assert_review_tool(listed)
+    event("SCENARIO_DONE: mcp_identity_and_tools")
+    ok("review tool is listed")
+
+
 async def test_basic_review(client: MCPStdioClient, repo: Path) -> None:
     event("SCENARIO_BEGIN: basic_review")
     state = ScenarioState("basic_review")
@@ -2227,6 +2235,7 @@ async def run_all(args: argparse.Namespace) -> None:
                     event(f"RUN_TEST_DONE: {test_name}")
 
             await run_named_test("test_startup_and_list_tools", lambda: test_startup_and_list_tools(client))
+            await run_named_test("test_mcp_identity_and_tools", lambda: test_mcp_identity_and_tools(client))
             await run_named_test("test_task_status_tool", lambda: test_task_status_tool(client, repo))
             await run_named_test("test_task_status_timeout", lambda: test_task_status_timeout(client, repo))
             await run_named_test("test_basic_review", lambda: test_basic_review(client, repo))
