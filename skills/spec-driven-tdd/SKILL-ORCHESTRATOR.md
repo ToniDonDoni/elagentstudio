@@ -178,7 +178,7 @@ Each entry MUST be one JSON object on one line with these required fields:
 
 
 ```json
-{"timestamp":"<UTC_ISO8601>","event":"<HANDOFF|CHECK>","role":"<implementer|reviewer>","task_kind":"<TASK_KIND>","task_number":"<TASK_NUMBER_OR_NONE>","task_id":"<BUSINESS_TASK_ID>","execution_id":"<OPENCODE_RUNTIME_ID_OR_NONE>","commit":"<COMMIT_SHA_OR_NONE>","head":"<HEAD_SHA>","summary":"<SHORT_DESCRIPTION>"}
+{"timestamp":"<UTC_ISO8601>","event":"<HANDOFF|CHECK>","role":"<implementer|reviewer>","task_kind":"<TASK_KIND>","task_number":"<TASK_NUMBER_OR_NONE>","task_id":"<BUSINESS_TASK_ID>","execution_id":"<OPENCODE_RUNTIME_ID_OR_NONE>","commit":"<COMMIT_SHA_OR_NONE>","head":"<HEAD_SHA>","summary":"<SHORT_DESCRIPTION>", "prompt":"<EXACT_DELEGATED_PROMPT>"}
 ```
 
 - task_id identifies the business workflow task from TASKS.md.
@@ -189,3 +189,4 @@ Each entry MUST be one JSON object on one line with these required fields:
 - If the runtime returns no runtime identifier, execution_id MUST be NONE.
 - The same execution_id MUST be reused in the corresponding HANDOFF and CHECK entries.
 - The orchestrator MUST NOT invent, derive, or substitute an execution_id.
+- prompt MUST contain the exact prompt text sent to the assigned implementer or reviewer for this execution.
