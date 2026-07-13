@@ -1,7 +1,7 @@
-"""sddtdd-mcp — Minimal MCP review proxy for Hermes Agent.
+"""sddtdd-mcp — MCP review, orchestration, and task-state server.
 
-Tools: review and getNextTask. Captures Git state, delegates to LLM via MCP sampling,
-records everything in an append-only JSON Lines access log.
+Tools: review, getNextTask, and taskStatus. Captures Git state, delegates to LLM
+via MCP sampling, and records runtime state under the target repository.
 """
 import atexit
 import asyncio
@@ -10,6 +10,8 @@ import logging
 import os
 import signal
 import subprocess
+import tempfile
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -24,6 +26,68 @@ from mcp.server.stdio import stdio_server
 
 # Logger for our own lifecycle tracing (goes to stderr → mcp-stderr.log)
 logger = logging.getLogger("sddtdd-mcp")
+
+TASK_STATUS_VALUES = frozenset({
+    "PENDING",
+    "RUNNING",
+    "WAITING_REVIEW",
+    "COMPLETED",
+    "FAILED",
+    "BLOCKED",
+    "CANCELLED",
+})
+TASK_ACTIVE_STATUS_VALUES = frozenset({"PENDING", "RUNNING", "WAITING_REVIEW"})
+DEFAULT_TASK_TIMEOUT_SECONDS = 600
+_task_status_lock = threading.Lock()
+DEFAULT_GET_NEXT_TASK_THROTTLE_SECONDS = 120
+_get_next_task_last_result: dict[str, tuple[float, str]] = {}
+_get_next_task_throttle_lock = threading.Lock()
+
+
+def _get_next_task_throttle_seconds() -> float:
+    raw_value = os.environ.get(
+        "SDDTDD_GET_NEXT_TASK_THROTTLE_SECONDS",
+        str(DEFAULT_GET_NEXT_TASK_THROTTLE_SECONDS),
+    )
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise ValueError(
+            "SDDTDD_GET_NEXT_TASK_THROTTLE_SECONDS must be a non-negative number"
+        ) from exc
+    if value < 0:
+        raise ValueError("SDDTDD_GET_NEXT_TASK_THROTTLE_SECONDS must be a non-negative number")
+    return value
+
+
+def _get_next_task_throttle_remaining(repo_path: str, *, now: float | None = None) -> float | None:
+    """Return remaining cooldown only when the previous result was notReady."""
+    now = time.monotonic() if now is None else now
+    throttle_seconds = _get_next_task_throttle_seconds()
+    with _get_next_task_throttle_lock:
+        previous = _get_next_task_last_result.get(repo_path)
+        if previous is None:
+            return None
+        previous_at, previous_status = previous
+        if previous_status != "notReady":
+            return None
+        remaining = throttle_seconds - (now - previous_at)
+        if remaining > 0:
+            return remaining
+    return None
+
+
+def _record_get_next_task_result(
+    repo_path: str,
+    status: object,
+    *,
+    now: float | None = None,
+) -> None:
+    """Remember the most recent getNextTask result for in-memory throttling."""
+    now = time.monotonic() if now is None else now
+    normalized_status = status if isinstance(status, str) else "unknown"
+    with _get_next_task_throttle_lock:
+        _get_next_task_last_result[repo_path] = (now, normalized_status)
 
 def _trace_function(func):
     if  asyncio.iscoroutinefunction(func):
@@ -246,6 +310,292 @@ def _get_orchestrator_log_path(repo_path: str) -> str:
     if env:
         return env
     return os.path.join(repo_path, ".sddtdd_skill", "orchestrator-access.jsonl")
+
+
+def _get_task_status_path(repo_path: str) -> str:
+    """Return the durable task-state document for a target repository."""
+    env = os.environ.get("SDDTDD_TASK_STATUS_PATH")
+    if env:
+        return env
+    return os.path.join(repo_path, ".sddtdd_skill", "task-status.json")
+
+
+def _empty_task_status_document() -> dict[str, Any]:
+    return {"version": 1, "updated_at": None, "tasks": {}}
+
+
+def _task_timeout_seconds() -> float:
+    raw_value = os.environ.get("SDDTDD_TASK_TIMEOUT_SECONDS", str(DEFAULT_TASK_TIMEOUT_SECONDS))
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise ValueError("SDDTDD_TASK_TIMEOUT_SECONDS must be a positive number") from exc
+    if value <= 0:
+        raise ValueError("SDDTDD_TASK_TIMEOUT_SECONDS must be a positive number")
+    return value
+
+
+def _parse_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        timestamp = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=timezone.utc)
+    return timestamp
+
+
+def _expire_stale_tasks(document: dict[str, Any], *, now: datetime | None = None) -> bool:
+    now = now or datetime.now(timezone.utc)
+    timeout = _task_timeout_seconds()
+    changed = False
+    for task in document["tasks"].values():
+        if not isinstance(task, dict) or task.get("status") not in TASK_ACTIVE_STATUS_VALUES:
+            continue
+        updated_at = _parse_timestamp(task.get("updated_at"))
+        if updated_at is None or (now - updated_at).total_seconds() < timeout:
+            continue
+        task["status"] = "FAILED"
+        task["retryable"] = True
+        task["error"] = "TASK_TIMEOUT"
+        task["updated_at"] = now.isoformat()
+        task["finished_at"] = now.isoformat()
+        history = list(task.get("history", []))
+        history.append({
+            "status": "FAILED",
+            "at": now.isoformat(),
+            "execution_id": task.get("execution_id"),
+            "result": None,
+            "error": "TASK_TIMEOUT",
+        })
+        task["history"] = history
+        changed = True
+    if changed:
+        document["updated_at"] = now.isoformat()
+    return changed
+
+
+def _task_role(task_kind: object) -> str:
+    if isinstance(task_kind, str) and task_kind.endswith("_REVIEW"):
+        return "reviewer"
+    return "implementer"
+
+
+def _record_issued_task(repo_path: str, orchestrator_result: dict[str, Any]) -> None:
+    if orchestrator_result.get("status") not in {"task", "TASK"}:
+        return
+    next_task = orchestrator_result.get("next_task")
+    if not isinstance(next_task, dict) or not next_task.get("task_id"):
+        return
+    task_id = str(next_task["task_id"])
+    path = _get_task_status_path(repo_path)
+    now = datetime.now(timezone.utc).isoformat()
+    with _task_status_lock:
+        document = _read_task_status_document(path)
+        _expire_stale_tasks(document, now=datetime.now(timezone.utc))
+        previous = document["tasks"].get(task_id, {})
+        task = dict(previous)
+        task.update({
+            "task_id": task_id,
+            "task_kind": next_task.get("task_kind"),
+            "status": "PENDING",
+            "role": _task_role(next_task.get("task_kind")),
+            "updated_at": now,
+            "retryable": False,
+            "error": None,
+        })
+        task["attempt"] = int(previous.get("attempt", 0)) + 1
+        history = list(task.get("history", []))
+        history.append({
+            "status": "PENDING",
+            "at": now,
+            "execution_id": None,
+            "result": "ISSUED",
+            "error": None,
+        })
+        task["history"] = history
+        document["tasks"][task_id] = task
+        document["updated_at"] = now
+        _write_task_status_document(path, document)
+
+
+def _not_ready_result(active_tasks: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "status": "notReady",
+        "task_review": None,
+        "next_task": None,
+        "active_tasks": [
+            {"task_id": task.get("task_id"), "status": task.get("status"), "updated_at": task.get("updated_at")}
+            for task in active_tasks
+        ],
+        "rationale": "No new task is available while previously issued tasks are unfinished.",
+    }
+
+
+def _unfinished_tasks_for_next_task(repo_path: str) -> list[dict[str, Any]]:
+    path = _get_task_status_path(repo_path)
+    with _task_status_lock:
+        document = _read_task_status_document(path)
+        changed = _expire_stale_tasks(document)
+        if changed:
+            _write_task_status_document(path, document)
+        return [
+            task for task in document["tasks"].values()
+            if isinstance(task, dict) and task.get("status") in TASK_ACTIVE_STATUS_VALUES
+        ]
+
+
+def _read_task_status_document(path: str) -> dict[str, Any]:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            document = json.load(handle)
+    except FileNotFoundError:
+        return _empty_task_status_document()
+    if not isinstance(document, dict) or not isinstance(document.get("tasks", {}), dict):
+        raise ValueError(f"task status file is not a valid object: {path}")
+    document.setdefault("version", 1)
+    document.setdefault("updated_at", None)
+    return document
+
+
+def _write_task_status_document(path: str, document: dict[str, Any]) -> None:
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    fd, temporary_path = tempfile.mkstemp(prefix="task-status.", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(document, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        if os.path.exists(temporary_path):
+            os.unlink(temporary_path)
+
+
+def _task_status_update(arguments: dict[str, Any]) -> dict[str, Any]:
+    operation = arguments.get("operation")
+    if operation not in {"get", "update"}:
+        raise ValueError("operation must be 'get' or 'update'")
+
+    repo_path = arguments.get("repo_path")
+    if not isinstance(repo_path, str) or not repo_path:
+        raise ValueError("repo_path is required")
+
+    task_id = arguments.get("task_id")
+    if task_id is not None and (not isinstance(task_id, str) or not task_id):
+        raise ValueError("task_id must be a non-empty string when supplied")
+
+    path = _get_task_status_path(repo_path)
+    with _task_status_lock:
+        document = _read_task_status_document(path)
+        changed = _expire_stale_tasks(document)
+        if changed:
+            _write_task_status_document(path, document)
+        if operation == "get":
+            if task_id is None:
+                return {
+                    "status": "COMPLETED",
+                    "path": path,
+                    "tasks": document["tasks"],
+                    "updated_at": document.get("updated_at"),
+                }
+            task = document["tasks"].get(task_id)
+            if task is None:
+                return {"status": "ERROR", "path": path, "response": f"unknown task_id: {task_id}"}
+            return {"status": "COMPLETED", "path": path, "task": task}
+
+        status = arguments.get("status")
+        if status not in TASK_STATUS_VALUES:
+            allowed = ", ".join(sorted(TASK_STATUS_VALUES))
+            return {"status": "ERROR", "path": path, "response": f"status must be one of: {allowed}"}
+        if task_id is None:
+            raise ValueError("task_id is required for operation='update'")
+        role = arguments.get("role")
+        if role not in {"implementer", "reviewer"}:
+            raise ValueError("role must be 'implementer' or 'reviewer'")
+
+        now = datetime.now(timezone.utc).isoformat()
+        previous = document["tasks"].get(task_id, {})
+        task = dict(previous)
+        task.update({
+            "task_id": task_id,
+            "task_kind": arguments.get("task_kind", task.get("task_kind")),
+            "status": status,
+            "role": role,
+            "execution_id": arguments.get("execution_id", task.get("execution_id")),
+            "worktree_path": arguments.get("worktree_path", task.get("worktree_path")),
+            "branch": arguments.get("branch", task.get("branch")),
+            "commit": arguments.get("commit", task.get("commit")),
+            "result": arguments.get("result", task.get("result")),
+            "error": arguments.get("error", task.get("error")),
+            "retryable": False,
+            "updated_at": now,
+        })
+        task["attempt"] = int(task.get("attempt", 1))
+        history = list(task.get("history", []))
+        history.append({
+            "status": status,
+            "at": now,
+            "execution_id": task.get("execution_id"),
+            "result": task.get("result"),
+            "error": task.get("error"),
+        })
+        task["history"] = history
+        if status == "RUNNING" and not task.get("started_at"):
+            task["started_at"] = now
+        if status in {"COMPLETED", "FAILED", "BLOCKED", "CANCELLED"}:
+            task["finished_at"] = now
+        document["tasks"][task_id] = task
+        document["updated_at"] = now
+        _write_task_status_document(path, document)
+        return {"status": "COMPLETED", "path": path, "task": task}
+
+
+async def _call_task_status_tool(arguments: dict[str, Any]) -> list[types.TextContent]:
+    request_id = uuid.uuid4().hex
+    repo_path = arguments.get("repo_path")
+    log: LogWriter | None = None
+    if isinstance(repo_path, str) and repo_path:
+        log = LogWriter(_get_orchestrator_log_path(repo_path))
+        log.append({
+            "event": "taskStatus_started",
+            "request_id": request_id,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "repo_path": repo_path,
+            "operation": arguments.get("operation"),
+            "task_id": arguments.get("task_id"),
+            "task_kind": arguments.get("task_kind"),
+            "role": arguments.get("role"),
+            "execution_id": arguments.get("execution_id"),
+            "requested_status": arguments.get("status"),
+        })
+    try:
+        result = _task_status_update(arguments)
+    except Exception as exc:
+        result = {"status": "ERROR", "response": str(exc)}
+    finally:
+        if log is not None:
+            task = result.get("task") if isinstance(result, dict) else None
+            log.append({
+                "event": "taskStatus_completed",
+                "request_id": request_id,
+                "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                "repo_path": repo_path,
+                "operation": arguments.get("operation"),
+                "task_id": arguments.get("task_id"),
+                "task_kind": arguments.get("task_kind"),
+                "role": arguments.get("role"),
+                "execution_id": arguments.get("execution_id"),
+                "status": result.get("status") if isinstance(result, dict) else "ERROR",
+                "task_status": task.get("status") if isinstance(task, dict) else None,
+                "response": result.get("response") if isinstance(result, dict) else None,
+            })
+            log.close()
+    return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
 
 
 
@@ -509,6 +859,11 @@ Task ancestry and context reconstruction:
 5. Use parent tasks, requirement IDs, architecture references, acceptance criteria, and prior reviewed entries as mandatory review context.
 6. Sibling tasks are not parents. Do not infer task ancestry from execution order.
 
+You must read the status document from .sddtdd_skill/task-status.json  when
+reconciling running work. The document is durable runtime state, not a hand-edited artifact.
+Implementer and reviewer agents are the only writers of task progress. You
+must not call upate the status document.
+
     General SDDTDD review invariants:
 - Every agent-generated artifact must be reviewed by an independent reviewer before later work depends on it.
 - Every automatically testable behavior must go through reviewed RED-GREEN TDD.
@@ -698,6 +1053,33 @@ async def list_tools() -> list[types.Tool]:
                 },
             },
         ),
+        types.Tool(
+            name="taskStatus",
+            description=(
+                "Persist or read the current state reported directly by implementer and reviewer tasks. "
+                "The state is stored in .sddtdd_skill/task-status.json and is also "
+                "included in the next-task orchestrator context."
+            ),
+            inputSchema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["repo_path", "operation"],
+                "properties": {
+                    "repo_path": {"type": "string", "description": "Path to the Git repository."},
+                    "operation": {"type": "string", "enum": ["get", "update"]},
+                    "task_id": {"type": "string"},
+                    "task_kind": {"type": "string"},
+                    "status": {"type": "string", "enum": sorted(TASK_STATUS_VALUES)},
+                    "role": {"type": "string", "enum": ["implementer", "reviewer"], "description": "Required for update; identifies the reporting agent."},
+                    "execution_id": {"type": "string"},
+                    "worktree_path": {"type": "string"},
+                    "branch": {"type": "string"},
+                    "commit": {"type": "string"},
+                    "result": {"type": "string"},
+                    "error": {"type": "string"},
+                },
+            },
+        ),
     ]
 
 
@@ -714,6 +1096,13 @@ journal, change the working tree, stage files, commit, run formatters, or alter
 repository state. You only inspect committed repository state and runtime orchestrator
 logs, then return a single getNextTask response containing any process-gate verdict and the next self-contained task.
 
+You MUST NOT run tests, builds, the application, servers, previews, browser or E2E
+harnesses, or any other executable verification command. Running tests or the program
+is not part of the orchestrator's responsibilities and is never required for a process
+gate to pass. Verify only that the required committed process artifacts, journal entries,
+review evidence, task state, and declared evidence exist and are consistent. The presence
+of the required artifacts is sufficient; do not independently execute their test commands.
+
 You MUST apply the installed Spec-Driven TDD policy Markdown embedded below.
 SKILL-ORCHESTRATOR.md is your primary role policy. The shared SKILL.md,
 SKILL-IMPLEMENTER.md, references/JOURNAL.md, references/STAGES.md, and all other
@@ -721,7 +1110,33 @@ installed Markdown files are supporting policy. If this short system prompt
 conflicts with embedded Markdown policy, the embedded Markdown policy wins except
 for read-only safety and JSON-output requirements.
 
-In orchestrator mode, you own the workflow order. getNextTask is the only orchestrator tool: it verifies a submitted completed task when present and issues at most one next task. The implementer only receives your task and must not cut corners.
+In orchestrator mode, you own the workflow order. getNextTask is the only orchestrator tool:
+it verifies a submitted completed task when present and issues at most one next task.
+The implementer only receives your task and must not cut corners.
+
+The `next_task` object is a delegation envelope for the caller, not an instruction
+for the caller to execute directly. When you issue a task, formulate
+`next_task.instruction` as an explicit handoff to a separate downstream agent. It
+MUST begin with exactly:
+
+`Assign this task to a separate implementer agent; do not execute it yourself:`
+
+After that prefix, describe the work the agent must perform. Never write
+`next_task.instruction` as a bare imperative such as "Implement...", "Create...",
+"Run...", or "Commit..." because the caller may interpret that as permission to do
+the work itself. The caller/orchestrator must only delegate, monitor status, collect
+evidence, and submit completion back through getNextTask.
+
+When issuing a task with task_kind "MERGE" (backmerge), explicitly require synchronous 
+execution in the task instruction; the implementer must wait for it to complete before 
+requesting or starting any other task.
+
+Do not return notReady solely because an active task exists. Inspect TASKS.md and the
+active task state before deciding. If an implementation, RED, or GREEN task is eligible
+and is not blocked by an active dependency, issue it even when other tasks are running;
+multiple independent implementation, RED, or GREEN tasks may run concurrently. Return
+notReady only when no eligible task is available, an active dependency blocks the work,
+or the registrar is temporarily throttling repeated requests.
 
 You are NOT the independent reviewer. The reviewer MCP performs semantic
 artifact review and records SPEC_REVIEW, ARCHITECTURE_REVIEW, TASK_REVIEW,
@@ -756,7 +1171,7 @@ For getNextTask, the input always has one shape:
 For getNextTask, return exactly one JSON object with this shape:
 
 {
-  "status": "task | fail | needs_clarification | error | complete",
+  "status": "task | notReady | fail | needs_clarification | error | complete",
   "task_review": {
     "status": "PASS | FAIL | NEEDS_CLARIFICATION | ERROR",
     "findings": ["specific process findings"],
@@ -768,24 +1183,39 @@ For getNextTask, return exactly one JSON object with this shape:
   "next_task": {
     "task_id": "O-000001",
     "task_kind": "USER_INPUT_CAPTURE | SPEC_SPEC | ARCHITECTURE | DECOMPOSE | RED | GREEN | TASKS_COMPLETE | REGRESSION | FINAL | DONE",
-    "instruction": "one concrete instruction in English",
+    "instruction": "Delegate this task to a separate implementer agent; do not execute it yourself: <one concrete self-contained instruction in English for that implementer agent>",
     "allowed_scope": ["exact repo paths or artifact globs the implementer may touch"],
     "required_evidence": ["concrete required evidence the implementer must produce"],
     "independent_review_required": true,
     "review_type": "SPEC_REVIEW | ARCHITECTURE_REVIEW | TASK_REVIEW | RED_REVIEW | GREEN_REVIEW | REGRESSION_REVIEW | FINAL_REVIEW | null",
     "rationale": "brief process reason for this task"
   } | null,
+  "active_tasks": [
+    {"task_id": "currently issued task id", "status": "PENDING | RUNNING | WAITING_REVIEW", "updated_at": "ISO timestamp"}
+  ],
   "rationale": "overall explanation of the orchestrator decision"
 }
 
 Status and process policy are defined in the embedded installed Markdown policy,
 especially SKILL-ORCHESTRATOR.md. There is no reviewTask tool. There is no
-previous_task_id input. Derive the required independent reviewer verdict from the submitted task_kind by the fixed mapping in SKILL-ORCHESTRATOR.md. Return JSON only.
+previous_task_id input. Derive the required independent reviewer verdict from the submitted task_kind by the fixed mapping in SKILL-ORCHESTRATOR.md.
+
+Every non-null `next_task.instruction` MUST be a delegation instruction, not a direct
+execution instruction. It MUST begin exactly with:
+`Assign this task to a separate implementer agent; do not execute it yourself:`
+The text after the prefix is the task assigned to that separate implementer agent.
+Return JSON only.
+If the registrar has already issued tasks that are still unfinished, include them in
+your decision context. Do not return `status: "notReady"` merely because they exist:
+issue another eligible independent task when its prerequisites are satisfied. Return
+`notReady` only when no eligible task is available, an active dependency blocks the
+work, or the registrar is temporarily throttling repeated requests.
 """.strip()
 
 
 @_trace_function
 def _orchestrator_base_repo_context(repo_path: str, git: GitCapturer) -> dict[str, Any]:
+    task_status_path = _get_task_status_path(repo_path)
     return {
         "repo_path": repo_path,
         "branch": git.branch(),
@@ -796,7 +1226,9 @@ def _orchestrator_base_repo_context(repo_path: str, git: GitCapturer) -> dict[st
             "journal": ".sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log",
             "review_log": ".sddtdd_skill/review-access.jsonl",
             "orchestrator_log": ".sddtdd_skill/orchestrator-access.jsonl",
+            "task_status": task_status_path,
         },
+        "task_status_document": _read_text_if_exists(Path(task_status_path)),
     }
 
 @_trace_function
@@ -813,6 +1245,7 @@ def _get_next_prompt(repo_path: str, git: GitCapturer, args: dict[str, Any]) -> 
     return (
         GET_NEXT_SCHEMA
         + "\n\nInspect the repository using tools before deciding. Apply the embedded installed policy from the system prompt. "
+        + "When returning a non-null next_task, make instruction an explicit assignment to a separate agent and begin it with the exact required delegation prefix. "
         + "Return JSON only.\n\nREQUEST:\n"
         + json.dumps(payload, ensure_ascii=False, indent=2)
     )
@@ -1623,6 +2056,7 @@ async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[
     process_groups: list[int] = []
     leaked_pids: list[int] = []
     log: LogWriter | None = None
+    response_text = ""
 
     try:
         git = GitCapturer(repo_path)
@@ -1642,8 +2076,45 @@ async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[
             "arguments": arguments,
         })
 
-        prompt = _get_next_prompt(repo_path, git, arguments)
+        throttle_remaining = _get_next_task_throttle_remaining(repo_path)
+        if throttle_remaining is not None:
+            parsed = {
+                "status": "notReady",
+                "task_review": None,
+                "next_task": None,
+                "active_tasks": [],
+                "rationale": (
+                    "The registrar is temporarily throttling repeated getNextTask requests; "
+                    f"retry after approximately {throttle_remaining:.1f} seconds."
+                ),
+            }
+            result = {
+                "request_id": request_id,
+                "status": "COMPLETED",
+                "stale": False,
+                "head_sha": head_before,
+                "orchestrator_result": parsed,
+            }
+            _record_get_next_task_result(repo_path, parsed.get("status"))
+            log.append({
+                "event": f"{name}_completed",
+                "request_id": request_id,
+                "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                "repo_path": repo_path,
+                "head_sha_before": head_before,
+                "head_sha_after": head_before,
+                "status": result["status"],
+                "stale": False,
+                "duration_ms": int((time.monotonic() - t_before) * 1000),
+                "result": result,
+                "stop_reason": "throttled",
+            })
+            return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+
         orchestrator_policy_text = _orchestrator_policy_bundle_text()
+        _unfinished_tasks_for_next_task(repo_path)
+
+        prompt = _get_next_prompt(repo_path, git, arguments)
         system_prompt = (
             ORCHESTRATOR_SYSTEM_PROMPT
             + "\n\n===== BEGIN INSTALLED SDDTDD POLICY FILES =====\n"
@@ -1675,6 +2146,8 @@ async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[
                 "head_sha_after": head_after,
             }
         else:
+            if parsed.get("status") == "not_ready":
+                parsed["status"] = "notReady"
             result = {
                 "request_id": request_id,
                 "status": status,
@@ -1682,6 +2155,8 @@ async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[
                 "head_sha": head_before,
                 "orchestrator_result": parsed,
             }
+            _record_issued_task(repo_path, parsed)
+            _record_get_next_task_result(repo_path, parsed.get("status"))
 
         log.append({
             "event": f"{name}_completed",
@@ -1704,6 +2179,12 @@ async def _call_orchestrator_tool(name: str, arguments: dict[str, Any]) -> list[
             "stale": False,
             "error": str(exc),
         }
+        if response_text:
+            result["response"] = (
+                "LLM did not return a JSON object.\n\n"
+                "LLM response:\n"
+                + response_text
+            )
         if log:
             try:
                 log.append({
@@ -1740,6 +2221,9 @@ async def call_tool(
 
     if name == "getNextTask":
         return await _call_orchestrator_tool(name, arguments)
+
+    if name == "taskStatus":
+        return await _call_task_status_tool(arguments)
 
     if name != "review":
         raise ValueError(f"Unknown tool: {name}")
@@ -1982,15 +2466,19 @@ async def main():
         async with stdio_server() as (read_stream, write_stream):
             logger.debug("stdio_server: connected, entering app.run()")
             try:
-                await app.run(
-                    read_stream,
-                    write_stream,
-                    InitializationOptions(
-                        server_name="sddtdd-mcp",
-                        server_version="1.0.0",
-                        capabilities=types.ServerCapabilities(),
-                    ),
-                )
+                    from mcp.server.lowlevel.server import NotificationOptions
+                    await app.run(
+                        read_stream,
+                        write_stream,
+                        InitializationOptions(
+                            server_name="sddtdd-mcp",
+                            server_version="1.0.0",
+                            capabilities=app.get_capabilities(
+                                notification_options=NotificationOptions(),
+                                experimental_capabilities={},
+                            ),
+                        ),
+                    )
             except Exception as exc:
                 logger.error("SERVE: app.run() raised %s: %s",
                              type(exc).__name__, exc, exc_info=True)
@@ -2006,14 +2494,4 @@ async def main():
 if __name__ == "__main__":
     import asyncio
     logger.debug("=== SDDTDD-MCP PROCESS STARTING (__main__) ===")
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.debug("=== SDDTDD-MCP PROCESS: KeyboardInterrupt ===")
-    except SystemExit:
-        logger.debug("=== SDDTDD-MCP PROCESS: SystemExit ===")
-    except BaseException:
-        logger.exception("=== SDDTDD-MCP PROCESS: UNHANDLED EXCEPTION ===")
-    else:
-        logger.debug("=== SDDTDD-MCP PROCESS EXITED cleanly ===")
-    logger.debug("=== SDDTDD-MCP PROCESS WILL NOW EXIT ===")
+    asyncio.run(main())

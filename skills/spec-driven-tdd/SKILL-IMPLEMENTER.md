@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-implementer
 description: "Implementer role for all Spec-Driven TDD artifact creation."
-version: 5.7.0-async
+version: 5.8.0-async
 author: Hermes Agent
 license: MIT
 ---
@@ -57,6 +57,17 @@ If the chain is missing, report the missing files and wait for the orchestrator.
 - Do not review your own work.
 - Do not ask the user for review.
 - Do not advance the workflow yourself.
+- Call mcp_sddtdd_review before finshing task.
+- Commit all completed artifacts, journal entries, and evidence before requesting review.
+- Do not report task completion until the independent review has passed.
+
+Report task state directly to the registrar MCP with `sddtdd_taskStatus(update)`:
+
+- `RUNNING` immediately after the runtime task starts;
+- `COMPLETED`, `FAILED`, or `BLOCKED` before reporting the result;
+- include `role: implementer`, the runtime `execution_id`, worktree, branch,
+  commit, and concise result or error when available.
+
 
 ## Evidence rules
 
@@ -72,7 +83,7 @@ The expected result is empty status for the relevant worktree. If status is not 
 
 ## Planning artifact tasks
 
-For SPEC, ARCHITECTURE, and TASKS, run synchronously. Create the requested artifact from the provided ancestry. Append journal evidence. Commit the artifact and journal entry before reporting completion. The orchestrator will launch a reviewer after clean-status verification.
+For SPEC, ARCHITECTURE, and TASKS, run as background tasks. Create the requested artifact from the provided ancestry. Append journal evidence. Commit the artifact and journal entry before reporting completion. The orchestrator will launch a reviewer after clean-status verification.
 
 ## Implementation tasks
 
@@ -80,4 +91,4 @@ For IMPLEMENTATION, usually run as a background task. Work only in the new workt
 
 ## Merge tasks
 
-For MERGE, run synchronously. Merge exactly one reviewed worktree into the integration branch. Resolve conflicts, rerun required tests, commit the result, and write a merge report. Do not process more than one worktree per invocation.
+For MERGE, run synchronously. This is the only synchronous task kind. Merge exactly one reviewed worktree into the integration branch. Resolve conflicts, rerun required tests, commit the result, and write a merge report. Do not process more than one worktree per invocation.

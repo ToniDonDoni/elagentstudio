@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd-orchestrator
 description: "Orchestrator role for Spec-Driven TDD."
-version: 5.7.0-async
+version: 5.8.0-async
 author: Hermes Agent
 license: MIT
 ---
@@ -10,7 +10,13 @@ license: MIT
 
 The orchestrator controls the workflow. It does not create reviewed artifacts and it does not review artifacts.
 
-The orchestrator is a dispatcher only. Its job is to delegate work between implementer and reviewer subagents, verify process gates, route review findings back to implementers, and decide the next allowed workflow step.
+The orchestrator is a dispatcher only. Its job is to ask the registrar MCP server for the next task, delegate work between implementer and reviewer subagents, verify process gates, route review findings back to implementers, and decide the next allowed workflow step.
+
+The orchestrator's primary responsibility is to call `getNextTask` on the
+registrar MCP server for every workflow decision, receive the next task, and
+delegate it to the appropriate agent. It repeats this get-next-task-and-delegate
+cycle until all work is complete, the registrar reports `complete` or `BLOCKED`,
+or the user stops the workflow. It must not invent the next task itself.
 
 The orchestrator never changes reviewed artifacts directly. Artifact creation, artifact correction, merge work, and evidence edits are delegated to implementer subagents. Review work is delegated to reviewer subagents.
 
@@ -19,8 +25,6 @@ There are exactly three roles:
 - orchestrator
 - implementer
 - reviewer
-
-The orchestrator must not invent other roles. SPEC author, architecture author, task author, coder, tester, and merger are task kinds assigned to the implementer role.
 
 ## Orchestrator load set
 
@@ -46,19 +50,48 @@ Minimum ancestry by stage:
 
 ## Core loop
 
-For each artifact that needs review, run this loop:
+For each artifact that needs review, run this loop. Every operation is asynchronous
+through the runtime's background-task mechanism except a `MERGE` task, which is
+the only synchronous operation and handles exactly one worktree.
 
-1. Launch an implementer subagent with the task kind, allowed write scope, required references, and full ancestry context.
-2. Wait for the implementer to finish.
-3. Verify that the implementer committed the artifact, journal entry, and evidence.
-4. Verify clean git status in the relevant worktree.
-5. If the worktree is not clean, send the task back to the implementer and require a commit before review.
-6. Launch a separate reviewer subagent for that committed artifact or implementation result with required references and full ancestry context.
-7. Wait for the reviewer to finish.
-8. Read the reviewer verdict.
-9. If PASS, move to the next stage.
-10. If FAIL or NEEDS_CHANGES, launch an implementer again with the review findings and full ancestry context.
-11. Repeat until PASS, BLOCKED, or user stop.
+1. Call the registrar MCP `sddtdd_getNextTask` operation. For the initial request use `INITIAL_USER_INPUT`; for later calls submit the completed task and committed evidence.
+2. The registrar MCP server records the issued task as `PENDING`; the orchestrator does not report that state.
+3. Launch the implementer or reviewer through the runtime background-task mechanism, passing the required context and the task's isolated worktree. The launched agent must report `RUNNING` directly to the registrar with its role and returned runtime task id.
+4. Use the runtime task-status mechanism to detect completion. Do not infer completion from report files.
+5. The implementer or reviewer reports `COMPLETED`, `FAILED`, or `BLOCKED` directly to the registrar with the evidence. The orchestrator verifies the result's commit and clean worktree but must not impersonate the reporting agent. If review is required, the implementer may report `WAITING_REVIEW` until the reviewer starts.
+6. As soon as one implementer result is ready, launch its separate reviewer immediately. Do not wait for unrelated tasks or a batch.
+7. If the reviewer returns `PASS`, submit its committed evidence to `getNextTask`. If it returns `FAIL` or `NEEDS_CHANGES`, launch a new asynchronous implementer with the findings and full ancestry context.
+8. For `MERGE`, launch one synchronous implementer for one reviewed worktree, resolve conflicts, run required tests, update task status, and commit the merge result before requesting the next task.
+9. If the registrar returns `notReady`, do not issue or invent a task. `notReady` may mean that an issued task is still active, or that the registrar is temporarily busy and is throttling repeated requests. Wait briefly, query runtime task status when relevant, and call `getNextTask` again after the wait.
+10. Repeat until `complete`, `BLOCKED`, or user stop.
+
+Tasks should run in background mode by default, allowing multiple tasks to start asynchronously without waiting for previous tasks to finish, unless getNextTask explicitly requests synchronous execution.
+For background tasks:
+* OpenCode: set background: true in the task tool.
+* Hermes: use kanban_create(assignee="default", ...).
+
+
+Every delegated task status update must include, when available:
+
+- `task_id`, `task_kind`, `status`, and `role`;
+- the runtime `execution_id` returned by the background-task mechanism;
+- `worktree_path`, `branch`, and resulting `commit`;
+- a concise `result` or `error`.
+- use instruct to use spec-driven-tdd skill with the assigned role (eg. implementer or reviewer)
+
+## `notReady` and task timeout
+
+`getNextTask` returns `status: "notReady"` with `next_task: null` when a
+previously issued task is still unfinished or when the registrar is temporarily
+busy and throttling repeated requests. This is not a failure and must not cause
+the dispatcher to create duplicate work. In either case, wait briefly and call
+`getNextTask` again; do not treat `notReady` as a terminal task result.
+
+The registrar expires an active task when it has not received a direct
+`taskStatus(update)` report for the configured timeout. The default is 600
+seconds; override it with `SDDTDD_TASK_TIMEOUT_SECONDS` for tests or deployment
+policy. Expired tasks become `FAILED` with `retryable: true` and can be issued
+again by a later `getNextTask` call.
 
 ## Required subagent fields
 
@@ -99,27 +132,9 @@ Before review, verify `git status --short` for the relevant worktree.
 
 The expected result is an empty status. If status is not empty, return the task to the implementer with an instruction to commit all completed artifacts, journal entries, and evidence using an ASCII-only commit message.
 
-## Planning stages
-
-SPEC, ARCHITECTURE, and TASKS are synchronous implementer tasks. The implementer creates the artifact, appends journal evidence, and commits both before reporting completion.
-
-SPEC_REVIEW, ARCHITECTURE_REVIEW, and TASKS_REVIEW are synchronous reviewer tasks. The reviewer inspects committed artifacts and committed evidence.
-
-## Code implementation
-
-After TASKS.md is reviewed, launch code implementation as background implementer tasks (use background: true task tool parameter in OpenCode for that). Record every returned task_id or jobId in `.sddtdd_skill/async-tasks.jsonl` immediately.
-
-Use the runtime task-status mechanism to check progress. Do not infer progress from report files.
-
-## Code review
-
-When any background implementer completes, verify committed evidence and clean git status for that implementer result, then launch exactly one background reviewer for that result immediately.
-
-Do not wait for unrelated background implementers or for a whole batch/wave to finish before reviewing a completed result.
-
 ## Merge
 
-Merge is sequential. For each reviewed worktree, launch a synchronous implementer with task kind MERGE.
+Merge is sequential and is the only synchronous task type. For each reviewed worktree, launch one synchronous implementer with task kind MERGE.
 
 The MERGE implementer merges exactly one reviewed worktree into the integration branch. If conflicts appear, the MERGE implementer resolves them, then runs the required test command before committing the merge result or reporting merge completion.
 
@@ -133,10 +148,8 @@ If merge review is required, verify committed merge evidence and clean git statu
 - The orchestrator must not create, edit, or correct reviewed artifacts itself.
 - The orchestrator must not review artifacts itself.
 - Every subagent request must name the skill, role, role file, task kind, allowed write scope, required output, required references, and full ancestry context.
-- Planning artifacts are created and committed by synchronous implementer subagents.
-- Planning artifacts are reviewed by synchronous reviewer subagents only after commit and clean-status verification.
-- Code implementation uses background implementer tasks.
-- Code review uses background reviewer tasks immediately after each implementer result is committed and clean-status verified.
+- All non-MERGE implementer and reviewer work uses background tasks.
+- A reviewer is launched immediately after each implementer result is committed and clean-status verified.
 - Merge work is sequential and is performed by synchronous MERGE implementer subagents.
 - A MERGE implementer must run the required tests after resolving conflicts and before committing or reporting merge completion.
 - Commit messages must be ASCII-only.
@@ -165,15 +178,15 @@ Each entry MUST be one JSON object on one line with these required fields:
 
 
 ```json
-{"timestamp":"<UTC_ISO8601>","event":"<HANDOFF|CHECK>","role":"<implementer|reviewer>","task_kind":"<TASK_KIND>","task_number":"<TASK_NUMBER_OR_NONE>","task_id":"<BUSINESS_TASK_ID>","execution_id":"<OPENCODE_RUNTIME_ID_OR_NONE>","commit":"<COMMIT_SHA_OR_NONE>","head":"<HEAD_SHA>","summary":"<SHORT_DESCRIPTION>"}
+{"timestamp":"<UTC_ISO8601>","event":"<HANDOFF|CHECK>","role":"<implementer|reviewer>","task_kind":"<TASK_KIND>","task_number":"<TASK_NUMBER_OR_NONE>","task_id":"<BUSINESS_TASK_ID>","execution_id":"<OPENCODE_RUNTIME_ID_OR_NONE>","commit":"<COMMIT_SHA_OR_NONE>","head":"<HEAD_SHA>","summary":"<SHORT_DESCRIPTION>", "prompt":"<EXACT_DELEGATED_PROMPT>"}
 ```
 
 - task_id identifies the business workflow task from TASKS.md.
 - execution_id is mandatory for every delegated implementer or reviewer.
 - execution_id MUST contain the actual runtime identifier returned by OpenCode for the delegated work.
 - For background tasks, execution_id MUST contain the background task ID.
-- For non-background asynchronous tasks, execution_id MUST contain the corresponding runtime identifier returned by OpenCode.
-- If OpenCode returns no runtime identifier, execution_id MUST be NONE.
+- For non-background asynchronous tasks, execution_id MUST contain the corresponding runtime identifier returned by the runtime.
+- If the runtime returns no runtime identifier, execution_id MUST be NONE.
 - The same execution_id MUST be reused in the corresponding HANDOFF and CHECK entries.
 - The orchestrator MUST NOT invent, derive, or substitute an execution_id.
-
+- prompt MUST contain the exact prompt text sent to the assigned implementer or reviewer for this execution.

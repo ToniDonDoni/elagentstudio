@@ -1,6 +1,6 @@
 # sddtdd-mcp
 
-Minimal MCP review proxy for Hermes Agent.
+MCP review and orchestration registrar for the Spec-Driven TDD skill.
 
 ## Quick Start
 
@@ -8,6 +8,13 @@ Minimal MCP review proxy for Hermes Agent.
 uv sync
 uv run server.py
 ```
+
+## MCP Identity
+
+The MCP server name is `sddtdd-mcp`. In a client configuration it is normally
+registered under the `sddtdd` namespace. The raw tools are `getNextTask`,
+`taskStatus`, and `review`; namespaced clients may display them as
+`sddtdd_getNextTask`, `sddtdd_taskStatus`, and `sddtdd_review`.
 
 ## MCP Tool
 
@@ -41,9 +48,44 @@ Accepts a repository path, review type, optional task ID, and prompt. Captures G
 Default: `<repo>/.git/sddtdd/review-access.jsonl`
 Override: `SDDTDD_LOG_PATH` env var
 
+Orchestrator requests are appended to `<repo>/.sddtdd_skill/orchestrator-access.jsonl`.
+This includes `getNextTask` and both task-status operations. Review requests
+remain in the separate review access log.
+
+## Task status
+
+The `taskStatus` tool has two operations:
+
+```json
+{
+  "repo_path": "/work/gorillas-game",
+  "operation": "update",
+  "task_id": "T-000003",
+  "task_kind": "IMPLEMENTATION",
+  "status": "RUNNING",
+  "role": "implementer",
+  "execution_id": "background-task-123",
+  "worktree_path": "/work/gorillas-game/.worktrees/T-000003"
+}
+```
+
+State is atomically persisted at `<repo>/.sddtdd_skill/task-status.json` and
+keeps the current task plus its status history. Use `operation: "get"` with a
+`task_id` to read one task, or without a task ID to read all tasks. The
+registrar includes this document in the `getNextTask` model context. Only
+implementer and reviewer agents should call `operation: "update"`; the
+dispatcher reads state and does not impersonate them.
+
+`getNextTask` returns `orchestrator_result.status: "notReady"` with no
+`next_task` while issued tasks are still active. A task that receives no
+`taskStatus(update)` report for 600 seconds is marked `FAILED` with
+`retryable: true` and can be issued again. Configure the timeout with
+`SDDTDD_TASK_TIMEOUT_SECONDS`.
+
 ## Tests
 
 ```bash
+uv run --dev pytest tests/test_task_status.py
 uv run python server_e2e_test.py
 ```
 
@@ -65,7 +107,7 @@ mcp_servers:
       timeout: 1228
       max_rpm: 5555
       max_tool_rounds: 5555
+      max_tokens_cap: 20000
     timeout: 1228
     connect_timeout: 30
-    max_tokens_cap: 40000
 ```
