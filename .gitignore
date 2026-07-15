@@ -1,4 +1,6 @@
-.DS_Store
-
-# Python bytecode cache
+uv.lock
 __pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.DS_Store

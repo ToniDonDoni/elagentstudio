@@ -1,0 +1,71 @@
+# sddtdd-mcp
+
+Minimal MCP review proxy for Hermes Agent.
+
+## Quick Start
+
+```bash
+uv sync
+uv run server.py
+```
+
+## MCP Tool
+
+### `review`
+
+Accepts a repository path, review type, optional task ID, and prompt. Captures Git state, asks an independent reviewer via MCP sampling, records to access log, returns verdict.
+
+**Request:**
+```json
+{
+  "repo_path": "/work/gorillas-game",
+  "review_type": "RED review",
+  "task_id": "T-000003",
+  "prompt": "Review the committed tests and RED evidence."
+}
+```
+
+**Response:**
+```json
+{
+  "request_id": "01JXW8W6Q6Q8M2Q6S2T5W9R4P7",
+  "status": "COMPLETED",
+  "verdict": "PASS",
+  "response": "The tests correctly prove the missing behavior.",
+  "stale": false
+}
+```
+
+## Access Log
+
+Default: `<repo>/.git/sddtdd/review-access.jsonl`
+Override: `SDDTDD_LOG_PATH` env var
+
+## Tests
+
+```bash
+uv run python server_e2e_test.py
+```
+
+## Hermes Config
+
+```yaml
+mcp_servers:
+  sddtdd:
+    command: uv
+    args:
+    - --directory
+    - /work/elagentstudio/utils/sddtdd-mcp
+    - run
+    - server.py
+    env:
+      PATH: /root/.local/bin:/usr/bin:/bin
+    sampling:
+      enabled: true
+      timeout: 1228
+      max_rpm: 5555
+      max_tool_rounds: 5555
+    timeout: 1228
+    connect_timeout: 30
+    max_tokens_cap: 40000
+```
