@@ -118,7 +118,7 @@ def _install_signal_lifecycle_logging() -> None:
             )
 
 MAX_SAMPLING_ROUNDS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_ROUNDS", "5555"))
-MAX_SAMPLING_TOKENS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_TOKENS", "20000"))
+MAX_SAMPLING_TOKENS = int(os.environ.get("SDDTDD_REVIEW_MAX_SAMPLING_TOKENS", "40000"))
 MAX_VERDICT_REPAIR_ATTEMPTS = int(os.environ.get("SDDTDD_REVIEW_VERDICT_REPAIR_ATTEMPTS", "21"))
 
 MAX_MAXTOKEN_CONTINUES = int(os.environ.get("SDDTDD_REVIEW_MAXTOKEN_CONTINUES", "6"))
@@ -523,6 +523,7 @@ Task ancestry and context reconstruction:
 - For coverage audits, inspect the actual assertions and test actions for each requirement group. A PASS requires evidence that tests exercise observable behavior, not merely that tests mention the requirement ID or instantiate the implementation class.
 - If a user-visible requirement is covered only by unit/module tests while an end-to-end or rendered-application test is practical, FAIL and name the missing scenario.
 - A review response is not a completed workflow event until the implementer records it in the journal and commits it; you only return source verdict data.
+- RED tests must fail because of the target unimplemented feature or target bug, not because of unrelated missing prerequisites or unrelated failures. If the observed failure reason differs from the target failure reason, the review verdict MUST be FAIL.
 
 Stage-specific review rules:
 - Use the embedded installed SDDTDD Markdown policy as the authoritative source
