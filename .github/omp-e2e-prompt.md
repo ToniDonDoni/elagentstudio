@@ -28,7 +28,8 @@ Process requirements:
 - Independently review every exact integration commit with mandatory MERGE_REVIEW before any downstream use.
 - Complete regression and final independent reviews.
 - Record committed workflow verdicts with the original journal schema, including IMPLEMENTATION_PLAN, IMPLEMENTATION_PLAN_REVIEW, ORCHESTRATOR_TASK_REVIEW, MERGE, MERGE_REVIEW, and DONE.
-- Record actual OMP agent/job ids, commits, prompts, and handoffs in `.sddtdd_skill/orchestrator.log` JSONL.
+- Record complete `.sddtdd_skill/orchestrator.log` JSONL rows with actual OMP agent/job ids, exact prompts, task ids, result commits, reviewer verdicts, and `reviewed_commit` values matching the exact implementer commits.
+- Every recorded agent and job id must be the actual id returned in the raw OMP task event stream.
 - Use ASCII-only commit messages.
 - Commit every generated artifact and journal entry.
 - Finish only after the repository is clean and the game is runnable.
