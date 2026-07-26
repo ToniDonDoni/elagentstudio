@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+echo "[script run_omp_e2e] START $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
 : "${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}"
 : "${OMP_E2E_WORKDIR:?OMP_E2E_WORKDIR is required}"
 : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
@@ -13,14 +15,15 @@ stderr_log="$RUNNER_TEMP/omp-stderr.log"
 heartbeat_stop="$RUNNER_TEMP/omp-heartbeat.stop"
 rm -f "$heartbeat_stop"
 
-started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-echo "::notice title=OMP E2E::Starting live OMP event stream at $started_at"
-echo "Raw JSONL: $raw_events"
-echo "Readable log: $live_log"
-echo "OMP stderr: $stderr_log"
-echo "::group::OMP live event stream"
+echo "[script run_omp_e2e] Workdir: $OMP_E2E_WORKDIR"
+echo "[script run_omp_e2e] Model: opencode-go/deepseek-v4-flash"
+echo "[script run_omp_e2e] Raw JSONL: $raw_events"
+echo "[script run_omp_e2e] Readable log: $live_log"
+echo "[script run_omp_e2e] OMP stderr: $stderr_log"
+echo "[script run_omp_e2e] Starting foreground OMP pipeline now"
 
 heartbeat() {
+  echo "[script run_omp_e2e] Heartbeat process started"
   while [[ ! -e "$heartbeat_stop" ]]; do
     sleep 10
     [[ -e "$heartbeat_stop" ]] && break
@@ -34,6 +37,7 @@ heartbeat() {
     echo "[OMP heartbeat] git status:"
     git status --short || true
   done
+  echo "[script run_omp_e2e] Heartbeat process stopped"
 }
 
 heartbeat &
@@ -43,7 +47,7 @@ cleanup() {
   touch "$heartbeat_stop"
   kill "$heartbeat_pid" 2>/dev/null || true
   wait "$heartbeat_pid" 2>/dev/null || true
-  echo "::endgroup::"
+  echo "[script run_omp_e2e] Cleanup complete"
 }
 trap cleanup EXIT INT TERM
 
@@ -71,6 +75,6 @@ for status in "${pipeline_statuses[@]}"; do
   fi
 done
 
-printf 'OMP pipeline statuses: %s\n' "${pipeline_statuses[*]}"
-echo "OMP pipeline exited with status $pipeline_status at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf '[script run_omp_e2e] Pipeline statuses: %s\n' "${pipeline_statuses[*]}"
+echo "[script run_omp_e2e] DONE status=$pipeline_status $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 exit "$pipeline_status"
