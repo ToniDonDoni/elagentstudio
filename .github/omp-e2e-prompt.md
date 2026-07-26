@@ -24,4 +24,5 @@ Process requirements:
 - Complete regression and final independent reviews.
 - Record native OMP agent/job ids, commits, test evidence, review verdicts, ORCHESTRATOR_GATE events, and DONE in the committed journal.
 - Use ASCII-only commit messages.
+- Commit every generated artifact and journal entry.
 - Finish only after the repository is clean and the game is runnable.
