@@ -1,115 +1,57 @@
 # Spec-Driven TDD TODO
 
-## Prompt-only orchestrator issues found
+These are observed process risks for the OMP-native workflow. This file records
+observations; normative requirements live in the skill and role policies.
 
-These are observed process failures from the prompt-only orchestrator experiment. This file records observations only; it does not add new process requirements by itself.
+## 1. Event-driven review
 
-### 1. Batch thinking instead of event-driven review
+The orchestrator must launch a reviewer as soon as one implementer result is
+ready instead of waiting for a whole wave or batch.
 
-Observed: the orchestrator waited for a whole wave or batch of background implementers to finish before launching reviewers.
+## 2. No process shortcuts
 
-Observed examples:
+Cost or convenience is not permission to skip independent review, committed
+evidence, worktree isolation, or post-integration tests.
 
-- waited for multiple independent implementation tasks before starting review;
-- described the mistake as batch thinking instead of event-driven review;
-- later said it would review a task immediately only after being challenged.
+## 3. Dispatcher-only orchestrator
 
-### 2. Shortcutting the process for speed
+After `FAIL`, the orchestrator delegates correction to an implementer. After
+`NEEDS_CLARIFICATION`, it asks the user and pauses affected work. After
+`BLOCKED`, it records and surfaces the blocker. It never edits the result itself.
 
-Observed: the orchestrator treated the process as something it could optimize when it thought a shortcut was faster.
+## 4. Dedicated implementation worktrees
 
-Observed examples:
+Parallel implementers must use separate worktrees and branches with safe write
+scopes. They must not write directly to the integration branch.
 
-- batch-launching reviewers instead of reviewing each completed implementation result as it became ready;
-- waiting for all tasks in a batch before starting review;
-- rationalizing shortcuts as cheaper than launching another subagent.
+## 5. Review before merge
 
-### 3. Orchestrator implemented fixes itself
+Implementation commits must remain unintegrated until independent review PASS.
+A synchronous MERGE implementer then integrates one reviewed result at a time.
 
-Observed: when review returned FAIL or NEEDS_CHANGES, the orchestrator edited code directly instead of launching an implementer with the review findings.
+## 6. Conflict and post-integration evidence
 
-Observed examples:
+Conflict resolution belongs to the MERGE implementer. Required tests must run
+against the final integrated commit, not only inside the worker worktree.
 
-- admitted it broke the process after receiving FAIL/NEEDS_CHANGES for implementation tasks;
-- said it wanted to avoid launching another subagent for a small fix;
-- described the direct edit as a role violation.
+## 7. Bounded execution
 
-### 4. Orchestrator quoted rules and still violated them
+Potentially long tests, builds, application runs, and end-to-end checks need
+explicit timeouts and targeted output capture.
 
-Observed: the orchestrator was aware of the rule but violated it anyway.
+## 8. Runtime audit quality
 
-Observed examples:
+Every delegation/check should preserve actual OMP agent/job ids, exact prompts,
+branch, commit, output/transcript references, verdict, and clean-state evidence.
+The handoff/check logs must remain valid JSONL.
 
-- quoted that the process required launching an implementer with review findings;
-- admitted it directly edited code despite that rule;
-- admitted it consciously ignored worktree/branch requirements because it expected conflicts to be manageable.
+## 9. Scope changes
 
-### 5. Parallel implementation isolation is not working
+New user product requirements are appended to `SPEC-DRAFT.md` under `ADDITION:`,
+journaled, committed, and routed through replanning and review from the earliest
+affected stage.
 
-Observed: background implementers wrote directly into the main project worktree/branch instead of isolated per-task worktrees and branches.
+## 10. Skill development hygiene
 
-Observed examples:
-
-- the orchestrator said all implementers were writing directly to master/main;
-- the orchestrator said no separate branches/worktrees were created;
-- the orchestrator admitted it consciously ignored the worktree/branch requirement because all tasks edited one file and it expected conflicts to be manageable.
-
-### 6. Merge/backmerge sequencing is not working
-
-Observed: because implementation shards were not isolated into separate worktrees/branches, there was no real sequential merge/backmerge step from reviewed implementation result into the integration branch.
-
-Observed examples:
-
-- implementation changes were already in the shared branch before a MERGE task;
-- there was no separate reviewed branch/worktree to merge;
-- the orchestrator described merge/backmerge as absent or ineffective under the current run.
-
-### 7. Test commands are launched without reliable timeouts
-
-Observed: during the prompt-only orchestrator run, test execution could hang or run too long, and the orchestrator had to intervene by rerunning tests with an explicit shell timeout.
-
-Observed examples:
-
-- the orchestrator said the run appeared stuck on tests;
-- the orchestrator said it would rerun tests itself with a timeout;
-- the visible command used `timeout 30 node tests/runner.js`, implying timeout handling was added ad hoc after the hang risk appeared.
-
-### 8. Orchestrator ran tests itself instead of delegating
-
-Observed: near the end of the prompt-only orchestrator run, the orchestrator launched tests directly instead of delegating test execution through an implementer or reviewer subagent.
-
-Observed examples:
-
-- the orchestrator ran shell test commands itself after implementation work;
-- the orchestrator treated final or regression test execution as its own action;
-- this bypassed the dispatcher-only role boundary observed elsewhere in the run.
-
-### 9. mcp sampling is not available in opencode
-
-Use own lln provider via langchain?
-
-### 10. Throttle repeated getNextTask sampling requests
-
-Observed: an agent can call getNextTask repeatedly while waiting for work,
-causing the registrar to sample the orchestrator LLM again unnecessarily.
-
-Required: after a getNextTask request, return notReady without sampling until a
-configurable cooldown has elapsed. The cooldown must be controlled by an
-environment variable and default to 120 seconds. Add a regression test before
-implementing the server behavior.
-
-### 11. Retro on a browser game
-Findings: Async SDD/TDD Workflow Gaps
-
-- Most tasks lacked real runtime execution_id, worktree, branch, or commit metadata.
-- task-status.json contained contradictory states, including tasks marked both COMPLETED and TASK_TIMEOUT.
-- orchestrator.log was not valid JSONL, missed exact delegated prompts, and lacked reliable HANDOFF/CHECK pairs.
-- Some reviews were self-reviews or performed retroactively after downstream work had already started.
-- Reviewers were not always launched immediately after implementer completion.
-- The required isolated-worktree and synchronous MERGE flow was skipped for most tasks.
-- Background Kanban tasks existed, but their lifecycle was not reliably synchronized with the registrar.
-- Clean-worktree checks were sometimes bypassed.
-- Full ancestry context could not be proven for most delegated tasks.
-- An unresolved RED test caused by conflicting acceptance criteria was accepted instead of triggering SPEC replanning.
-- Final completion was recorded before the registrar workflow reached a consistent terminal state.
-- Agents modified the installed Hermes skill files directly. Skill development should happen in a version-controlled source workspace, with explicit editor permissions and a controlled install/sync step. Direct mutation of installed skills makes changes unauditable, non-reproducible, and easy to lose.
+Edit the version-controlled source skill and install/sync it deliberately. Do
+not mutate installed user-level skill copies during project execution.
