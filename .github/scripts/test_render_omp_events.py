@@ -44,7 +44,21 @@ def main() -> int:
         },
         {
             "type": "message_update",
-            "assistantMessageEvent": {"type": "text_delta", "delta": "Visible answer"},
+            "assistantMessageEvent": {
+                "type": "text_delta",
+                "delta": "streamed text that must stay hidden",
+            },
+        },
+        {
+            "type": "message_update",
+            "assistantMessageEvent": {
+                "type": "future_delta",
+                "delta": "unknown future delta that must stay hidden",
+            },
+        },
+        {
+            "type": "message_update",
+            "assistantMessageEvent": {"type": "text", "text": "Visible completed text"},
         },
     ]
 
@@ -65,7 +79,7 @@ def main() -> int:
         "tasks=1",
         "names=CreateSPEC",
         "context_chars=",
-        "text_delta: Visible answer",
+        "text: Visible completed text",
     )
     for marker in required:
         if marker not in output:
@@ -77,12 +91,16 @@ def main() -> int:
         "long context",
         "toolcall_delta",
         "thinking_delta",
+        "text_delta",
+        "future_delta",
         "tool payload that must stay hidden",
         "private reasoning that must stay hidden",
+        "streamed text that must stay hidden",
+        "unknown future delta that must stay hidden",
     )
     for marker in forbidden:
         if marker in output:
-            raise AssertionError(f"hidden event leaked into live output: {marker!r}")
+            raise AssertionError(f"delta event leaked into live output: {marker!r}")
 
     print("render_omp_events concise rendering: PASS")
     return 0
