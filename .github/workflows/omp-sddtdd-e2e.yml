@@ -1,0 +1,153 @@
+name: OMP Spec-Driven TDD E2E
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "skills/spec-driven-tdd/**"
+      - ".github/omp-e2e-config.yml"
+      - ".github/omp-e2e-prompt.md"
+      - ".github/workflows/omp-sddtdd-e2e.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: omp-sddtdd-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  arkanoid-e2e:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    env:
+      CI: "true"
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+      OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Oh My Pi
+        run: |
+          bun install -g @oh-my-pi/pi-coding-agent
+          omp --version
+
+      - name: Validate OpenCode Go secret
+        run: |
+          test -n "$OPENCODE_API_KEY" || {
+            echo "Repository secret OPENCODE_GO_API_KEY is required" >&2
+            exit 1
+          }
+
+      - name: Prepare isolated test repository
+        run: |
+          set -euo pipefail
+          workdir="$RUNNER_TEMP/omp-sddtdd-arkanoid"
+          rm -rf "$workdir"
+          mkdir -p "$workdir/skills"
+          cp -R "$GITHUB_WORKSPACE/skills/spec-driven-tdd" "$workdir/skills/spec-driven-tdd"
+
+          cat > "$workdir/AGENTS.md" <<'EOF'
+          @skills/spec-driven-tdd/AGENTS.md
+          EOF
+
+          cat > "$workdir/WATCHDOG.md" <<'EOF'
+          @skills/spec-driven-tdd/WATCHDOG.md
+          EOF
+
+          git -C "$workdir" init -b main
+          git -C "$workdir" config user.name "OMP E2E"
+          git -C "$workdir" config user.email "omp-e2e@example.invalid"
+          git -C "$workdir" add .
+          git -C "$workdir" commit -m "Initialize OMP SDDTDD E2E fixture"
+
+          echo "OMP_E2E_WORKDIR=$workdir" >> "$GITHUB_ENV"
+
+      - name: Run OMP Spec-Driven TDD workflow
+        run: |
+          set -euo pipefail
+          cd "$OMP_E2E_WORKDIR"
+          prompt="$(cat "$GITHUB_WORKSPACE/.github/omp-e2e-prompt.md")"
+          timeout 60m omp -p \
+            --advisor \
+            --no-pty \
+            --yolo \
+            --model opencode-go/deepseek-v4-flash \
+            --config "$GITHUB_WORKSPACE/.github/omp-e2e-config.yml" \
+            "$prompt" 2>&1 | tee "$RUNNER_TEMP/omp-e2e-output.log"
+
+      - name: Verify runnable Arkanoid application
+        run: |
+          set -euo pipefail
+          cd "$OMP_E2E_WORKDIR"
+
+          test -f package.json
+          test -f app/index.html
+          test -f app/game.js
+          npm test
+
+          npm run start > "$RUNNER_TEMP/arkanoid-server.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+
+          ready=0
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4173/ > "$RUNNER_TEMP/arkanoid-index.html"; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+
+          test "$ready" -eq 1
+          grep -qi "canvas" "$RUNNER_TEMP/arkanoid-index.html"
+
+      - name: Verify committed SDDTDD evidence
+        run: |
+          set -euo pipefail
+          cd "$OMP_E2E_WORKDIR"
+          journal=.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log
+
+          test -s "$journal"
+          for event in \
+            USER_INPUT \
+            SPEC_REVIEW \
+            ARCHITECTURE_REVIEW \
+            TASK_REVIEW \
+            RED_REVIEW \
+            GREEN_REVIEW \
+            ORCHESTRATOR_GATE \
+            REGRESSION_REVIEW \
+            FINAL_REVIEW \
+            DONE; do
+            grep -q "TYPE: $event" "$journal"
+          done
+
+          grep -q "STATUS: PASS" "$journal"
+          grep -q "STATUS: COMPLETED" "$journal"
+          grep -Eq "AGENT_ID: [^-[:space:]]" "$journal"
+          grep -Eq "JOB_ID: [^-[:space:]]" "$journal"
+          grep -Eq "COMMIT: [0-9a-f]{7,40}" "$journal"
+
+          test -z "$(git status --porcelain)"
+          test "$(git rev-list --count HEAD)" -gt 1
+
+      - name: Upload OMP E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omp-sddtdd-arkanoid-evidence
+          if-no-files-found: warn
+          path: |
+            ${{ env.OMP_E2E_WORKDIR }}
+            ${{ runner.temp }}/omp-e2e-output.log
+            ${{ runner.temp }}/arkanoid-server.log
+            ${{ runner.temp }}/arkanoid-index.html
