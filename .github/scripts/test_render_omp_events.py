@@ -30,15 +30,21 @@ def main() -> int:
         },
         {
             "type": "message_update",
-            "assistantMessageEvent": {"type": "toolcall_delta", "delta": "  \n\t"},
+            "assistantMessageEvent": {
+                "type": "toolcall_delta",
+                "delta": "tool payload that must stay hidden",
+            },
         },
         {
             "type": "message_update",
-            "assistantMessageEvent": {"type": "thinking_delta", "delta": "   "},
+            "assistantMessageEvent": {
+                "type": "thinking_delta",
+                "delta": "private reasoning that must stay hidden",
+            },
         },
         {
             "type": "message_update",
-            "assistantMessageEvent": {"type": "thinking_delta", "delta": "Useful thought"},
+            "assistantMessageEvent": {"type": "text_delta", "delta": "Visible answer"},
         },
     ]
 
@@ -59,7 +65,7 @@ def main() -> int:
         "tasks=1",
         "names=CreateSPEC",
         "context_chars=",
-        "thinking_delta: Useful thought",
+        "text_delta: Visible answer",
     )
     for marker in required:
         if marker not in output:
@@ -69,12 +75,14 @@ def main() -> int:
         "# Goal",
         "FULL SECRETLY NOISY TASK PROMPT",
         "long context",
-        "toolcall_delta:",
-        "thinking_delta:    ",
+        "toolcall_delta",
+        "thinking_delta",
+        "tool payload that must stay hidden",
+        "private reasoning that must stay hidden",
     )
     for marker in forbidden:
         if marker in output:
-            raise AssertionError(f"noisy or empty event leaked into live output: {marker!r}")
+            raise AssertionError(f"hidden event leaked into live output: {marker!r}")
 
     print("render_omp_events concise rendering: PASS")
     return 0

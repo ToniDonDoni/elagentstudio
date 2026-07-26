@@ -10,6 +10,7 @@ from typing import Any
 
 MAX_MESSAGE_FIELD = 1200
 MAX_TOOL_FIELD = 500
+IGNORED_MESSAGE_UPDATE_TYPES = {"thinking_delta", "toolcall_delta"}
 
 
 def compact(value: Any, limit: int) -> str:
@@ -85,6 +86,8 @@ def render(event: dict[str, Any], last_tool_updates: dict[str, str]) -> None:
         payload = event.get("assistantMessageEvent")
         if isinstance(payload, dict):
             update_type = str(payload.get("type") or "update")
+            if update_type in IGNORED_MESSAGE_UPDATE_TYPES:
+                return
             delta = first_present(payload, "delta", "text", "thinking", "content")
             if isinstance(delta, str) and not delta.strip():
                 delta = None
