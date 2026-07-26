@@ -1,6 +1,6 @@
 ---
 name: spec-driven-tdd-implementer
-version: 6.0.1-omp
+version: 6.0.2-omp
 description: "Implementer role for Spec-Driven TDD artifact and code work on Oh My Pi."
 author: GPT-5.6
 license: MIT
@@ -69,7 +69,9 @@ Return the actual worktree, branch, and commit. The orchestrator will launch an
 independent reviewer before any merge.
 
 A MERGE task is synchronous, handles exactly one reviewed worker result, and is
-the only task allowed to modify the integration branch.
+the only task allowed to modify the integration branch. It must return the exact
+integration commit for mandatory independent `MERGE_REVIEW`; it cannot approve
+or advance its own merge result.
 
 ## RED
 
@@ -114,7 +116,8 @@ For one reviewed worker result against one integration HEAD:
 4. resolve every conflict marker and verify no unmerged paths remain;
 5. run required tests on the integrated tree after resolution;
 6. record conflict decisions, commands, results, and final commit;
-7. commit only when required integrated tests pass.
+7. commit only when required integrated tests pass;
+8. yield the exact integration commit as `READY_FOR_REVIEW` and stop; mandatory `MERGE_REVIEW` is performed by a separate reviewer.
 
 ## User additions
 
