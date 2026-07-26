@@ -33,15 +33,8 @@ printf '@../skills/spec-driven-tdd/WATCHDOG.md\n' > .omp/WATCHDOG.md
 cp skills/spec-driven-tdd/WATCHDOG.yml .omp/WATCHDOG.yml
 ```
 
-`AGENTS.md` loads the orchestrator policy. `.omp/WATCHDOG.md` loads the advisor
-policy. `.omp/WATCHDOG.yml` grants the advisor `read`, `grep`, `glob`, and
-`bash`. Its prompt restricts shell use to read-only inspection, but granting
-`bash` remains a trust decision because OMP cannot make arbitrary shell commands
-read-only.
-
-The watchdog entrypoint explicitly treats OMP's
-`[in progress — more steps follow]` marker as transport metadata. Hard workflow
-gates still require immediate `blocker` advice during an active tool loop.
+`AGENTS.md` loads the orchestrator workflow. OMP loads `.omp/WATCHDOG.md` for the
+advisor.
 
 ### 3. Configure the model and API key
 
@@ -131,8 +124,7 @@ and final implementation in the project repository.
 `IMPLEMENTATION-PLAN.md` is created and independently reviewed after `TASKS.md`
 and before the first RED/GREEN delegation. It defines one task id per assignment,
 dependency waves, safe parallel scopes, RED/review/GREEN/review order, and merge
-order so the advisor and reviewer can reject bad batching before implementation
-starts.
+order.
 
 ## Skill files
 
@@ -142,7 +134,7 @@ starts.
 - `SKILL-REVIEWER.md` - independent committed-state review, including `IMPLEMENTATION_PLAN_REVIEW`.
 - `SKILL-WATCHDOG.md` - advisor process supervision.
 - `AGENTS.md` - primary-agent entrypoint.
-- `WATCHDOG.md` - advisor policy template imported by `.omp/WATCHDOG.md`.
-- `WATCHDOG.yml` - advisor roster template copied to `.omp/WATCHDOG.yml`, including read-only-intended `bash`.
-- `tests/verify_evidence.py` - required journal/runtime evidence verifier.
-- `tests/test_verify_evidence.py` - positive and negative verifier tests.
+- `WATCHDOG.md` - advisor entrypoint.
+- `WATCHDOG.yml` - advisor configuration template.
+- `tests/verify_evidence.py` - journal/runtime evidence verifier.
+- `tests/test_verify_evidence.py` - verifier tests.
