@@ -27,6 +27,7 @@ policy, ancestry, or evidence.
 - `SPEC_REVIEW`
 - `ARCHITECTURE_REVIEW`
 - `TASK_REVIEW`
+- `IMPLEMENTATION_PLAN_REVIEW`
 - `RED_REVIEW`
 - `GREEN_REVIEW`
 - `MERGE_REVIEW`
@@ -73,7 +74,7 @@ requirement ids appearing only in names/comments are not proof.
 
 - Follow task parent ids to the root user request.
 - Preserve the original user-input id.
-- Use requirement ids, architecture references, acceptance criteria, reviewed predecessor commits, and journal parent/root links.
+- Use requirement ids, architecture references, acceptance criteria, reviewed predecessor commits, implementation-plan rows, and journal parent/root links.
 - Sibling tasks are not ancestors merely because they ran earlier.
 - For corrections, inspect the failed verdict and verify each required fix.
 
@@ -83,6 +84,8 @@ If required ancestry cannot be reconstructed, return `FAIL` or
 ## Review invariants
 
 - Every generated artifact requires independent review before downstream use.
+- `IMPLEMENTATION-PLAN.md` must pass independent review before any RED, GREEN, test, code, or implementation delegation.
+- Every RED or GREEN assignment must cover exactly one reviewed `TASKS.md` task node and match one reviewed implementation-plan row.
 - Every automatically testable behavior requires reviewed RED and GREEN.
 - Passing tests do not replace independent review.
 - Independent review does not replace RED/GREEN.
@@ -107,11 +110,12 @@ return `FAIL`. This incorporates commit
 - `SPEC_REVIEW`: compare SPEC against exact SPEC-DRAFT and append-only additions; check stable ids, acceptance criteria, edge cases, ambiguities, and traceability.
 - `ARCHITECTURE_REVIEW`: check coverage of reviewed requirements, boundaries, risks, testability, and acceptance preservation.
 - `TASK_REVIEW`: check dependency correctness, traceability, independent testability, safe parallel scopes, and explicit RED/GREEN and merge evidence.
-- `RED_REVIEW`: inspect the proving test and actual target-specific failure at the highest practical behavior boundary.
-- `GREEN_REVIEW`: confirm reviewed RED ancestry, minimal implementation, real wiring, passing proving/affected tests, committed evidence, and clean state.
-- `MERGE_REVIEW`: inspect the exact integrated commit, conflict decisions, absence of unresolved markers/unmerged paths, preservation of both sides, and tests run after integration.
+- `IMPLEMENTATION_PLAN_REVIEW`: inspect the exact committed `IMPLEMENTATION-PLAN.md`; require complete coverage of reviewed task nodes, exactly one task id per RED/GREEN assignment, legal dependency waves, non-overlapping parallel write scopes, explicit RED then RED_REVIEW then GREEN then GREEN_REVIEW sequencing, serialized merge order, proving commands, and stop/reroute behavior. Fail any monolithic assignment or plan that begins work before a required gate.
+- `RED_REVIEW`: inspect the proving test and actual target-specific failure at the highest practical behavior boundary, and verify the assignment matches the reviewed implementation-plan row.
+- `GREEN_REVIEW`: confirm reviewed RED ancestry, matching implementation-plan row, minimal implementation, real wiring, passing proving/affected tests, committed evidence, and clean state.
+- `MERGE_REVIEW`: inspect the exact integrated commit, planned merge position, conflict decisions, absence of unresolved markers/unmerged paths, preservation of both sides, and tests run after integration.
 - `REGRESSION_REVIEW`: inspect final-candidate commands, scope, results, omissions, and exact tested commit.
-- `FINAL_REVIEW`: verify complete requirement-to-test-to-commit traceability, reviewed gates, deviations, risks, artifact list, and journal integrity.
+- `FINAL_REVIEW`: verify complete requirement-to-task-to-plan-to-test-to-commit traceability, reviewed gates, deviations, risks, artifact list, and journal integrity.
 
 ## Output contract
 
