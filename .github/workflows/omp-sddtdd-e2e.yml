@@ -7,6 +7,7 @@ on:
       - "skills/spec-driven-tdd/**"
       - ".github/omp-e2e-config.yml"
       - ".github/omp-e2e-prompt.md"
+      - ".github/scripts/render_omp_events.py"
       - ".github/workflows/omp-sddtdd-e2e.yml"
 
 permissions:
@@ -23,6 +24,7 @@ jobs:
     timeout-minutes: 70
     env:
       CI: "true"
+      PYTHONUNBUFFERED: "1"
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
       OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
 
@@ -46,6 +48,9 @@ jobs:
             echo "Repository secret OPENCODE_GO_API_KEY is required" >&2
             exit 1
           }
+
+      - name: Test evidence verifier negative cases
+        run: python3 skills/spec-driven-tdd/tests/test_verify_evidence.py -v
 
       - name: Prepare isolated test repository
         run: |
@@ -71,18 +76,52 @@ jobs:
 
           echo "OMP_E2E_WORKDIR=$workdir" >> "$GITHUB_ENV"
 
-      - name: Run OMP Spec-Driven TDD workflow
+      - name: Run OMP Spec-Driven TDD workflow with live events
         run: |
-          set -euo pipefail
+          set -uo pipefail
           cd "$OMP_E2E_WORKDIR"
           prompt="$(cat "$GITHUB_WORKSPACE/.github/omp-e2e-prompt.md")"
-          timeout 60m omp -p \
+          raw_events="$RUNNER_TEMP/omp-events.jsonl"
+          live_log="$RUNNER_TEMP/omp-live.log"
+          stderr_log="$RUNNER_TEMP/omp-stderr.log"
+
+          echo "Starting OMP JSON event stream at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Raw events: $raw_events"
+
+          timeout 60m stdbuf -oL -eL omp \
+            --mode json \
             --advisor \
             --no-pty \
             --yolo \
             --model opencode-go/deepseek-v4-flash \
             --config "$GITHUB_WORKSPACE/.github/omp-e2e-config.yml" \
-            "$prompt" 2>&1 | tee "$RUNNER_TEMP/omp-e2e-output.log"
+            "$prompt" \
+            > >(tee "$raw_events" | python3 -u "$GITHUB_WORKSPACE/.github/scripts/render_omp_events.py" | tee "$live_log") \
+            2> >(tee "$stderr_log" >&2) &
+          omp_pid=$!
+
+          (
+            while kill -0 "$omp_pid" 2>/dev/null; do
+              sleep 15
+              kill -0 "$omp_pid" 2>/dev/null || break
+              echo "[OMP heartbeat] $(date -u +%Y-%m-%dT%H:%M:%SZ) pid=$omp_pid"
+              if test -f .sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log; then
+                echo "[OMP heartbeat] latest journal lines:"
+                tail -n 12 .sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log || true
+              fi
+              echo "[OMP heartbeat] git status:"
+              git status --short || true
+            done
+          ) &
+          heartbeat_pid=$!
+
+          wait "$omp_pid"
+          omp_status=$?
+          kill "$heartbeat_pid" 2>/dev/null || true
+          wait "$heartbeat_pid" 2>/dev/null || true
+
+          echo "OMP exited with status $omp_status at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          exit "$omp_status"
 
       - name: Verify runnable Arkanoid application
         run: |
@@ -114,29 +153,10 @@ jobs:
         run: |
           set -euo pipefail
           cd "$OMP_E2E_WORKDIR"
-          journal=.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log
-
-          test -s "$journal"
-          for event in \
-            USER_INPUT \
-            SPEC_REVIEW \
-            ARCHITECTURE_REVIEW \
-            TASK_REVIEW \
-            RED_REVIEW \
-            GREEN_REVIEW \
-            ORCHESTRATOR_GATE \
-            REGRESSION_REVIEW \
-            FINAL_REVIEW \
-            DONE; do
-            grep -q "TYPE: $event" "$journal"
-          done
-
-          grep -q "STATUS: PASS" "$journal"
-          grep -q "STATUS: COMPLETED" "$journal"
-          grep -Eq "AGENT_ID: [^-[:space:]]" "$journal"
-          grep -Eq "JOB_ID: [^-[:space:]]" "$journal"
-          grep -Eq "COMMIT: [0-9a-f]{7,40}" "$journal"
-
+          python3 \
+            "$GITHUB_WORKSPACE/skills/spec-driven-tdd/tests/verify_evidence.py" \
+            .sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log \
+            .sddtdd_skill/orchestrator.log
           test -z "$(git status --porcelain)"
           test "$(git rev-list --count HEAD)" -gt 1
 
@@ -146,8 +166,11 @@ jobs:
         with:
           name: omp-sddtdd-arkanoid-evidence
           if-no-files-found: warn
+          include-hidden-files: true
           path: |
             ${{ env.OMP_E2E_WORKDIR }}
-            ${{ runner.temp }}/omp-e2e-output.log
+            ${{ runner.temp }}/omp-events.jsonl
+            ${{ runner.temp }}/omp-live.log
+            ${{ runner.temp }}/omp-stderr.log
             ${{ runner.temp }}/arkanoid-server.log
             ${{ runner.temp }}/arkanoid-index.html
