@@ -30,10 +30,14 @@ git init -b main
 
 printf '@skills/spec-driven-tdd/AGENTS.md\n' > AGENTS.md
 printf '@skills/spec-driven-tdd/WATCHDOG.md\n' > WATCHDOG.md
+cp skills/spec-driven-tdd/WATCHDOG.yml WATCHDOG.yml
 ```
 
-`AGENTS.md` loads the orchestrator policy. `WATCHDOG.md` is loaded separately by
-the OMP advisor.
+`AGENTS.md` loads the orchestrator policy. `WATCHDOG.md` loads the advisor
+policy. Project-root `WATCHDOG.yml` grants the advisor `read`, `grep`, `glob`,
+and `bash`. Its prompt restricts shell use to read-only inspection, but granting
+`bash` remains a trust decision because OMP cannot make arbitrary shell commands
+read-only.
 
 ### 3. Configure the model and API key
 
@@ -88,7 +92,7 @@ OMP worktrees and review evidence require a git repository with a committed
 starting point.
 
 ```bash
-git add AGENTS.md WATCHDOG.md TASK.md .omp/config.yml .gitignore skills
+git add AGENTS.md WATCHDOG.md WATCHDOG.yml TASK.md .omp/config.yml .gitignore skills
 git commit -m "Initialize OMP Spec Driven TDD project"
 ```
 
@@ -129,6 +133,7 @@ project repository.
 - `SKILL-REVIEWER.md` - independent committed-state review.
 - `SKILL-WATCHDOG.md` - advisor process supervision.
 - `AGENTS.md` - primary-agent entrypoint.
-- `WATCHDOG.md` - advisor entrypoint.
+- `WATCHDOG.md` - advisor policy entrypoint.
+- `WATCHDOG.yml` - advisor tool grant, including read-only-intended `bash`.
 - `tests/verify_evidence.py` - required journal/runtime evidence verifier.
 - `tests/test_verify_evidence.py` - positive and negative verifier tests.

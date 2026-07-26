@@ -22,6 +22,9 @@ cat > "$workdir/WATCHDOG.md" <<'EOF'
 @skills/spec-driven-tdd/WATCHDOG.md
 EOF
 
+cp "$workdir/skills/spec-driven-tdd/WATCHDOG.yml" "$workdir/WATCHDOG.yml"
+echo "[script prepare_omp_e2e] Installed WATCHDOG.yml with bash grant"
+
 echo "[script prepare_omp_e2e] Initializing git repository"
 git -C "$workdir" init -b main
 git -C "$workdir" config user.name "OMP E2E"

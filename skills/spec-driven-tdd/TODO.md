@@ -58,11 +58,26 @@ not mutate installed user-level skill copies during project execution.
 
 ## 11. Watchdog enforcement gap
 
-The primary agent can skip reviewed RED and collapse multiple reviewed task
-nodes into one monolithic subagent assignment. The watchdog may notice this in
-private reasoning but fail to call `advise`, allowing the invalid process to
-continue.
+Observed failure:
 
-Require one `TASKS.md` task id per OMP assignment, forbid mega-task coalescing,
-and emit `blocker` advice whenever GREEN starts without reviewed RED or multiple
-task nodes are assigned to one subagent.
+- the primary agent skipped reviewed RED and collapsed multiple reviewed task
+  nodes into one monolithic subagent assignment;
+- the watchdog recognized the violation in private reasoning but repeatedly
+  selected unavailable `bash`;
+- OMP quarantined those advisor turns, the model did not recover with the
+  granted `read`/`grep`/`glob` tools, and no `advise` call reached the primary;
+- the invalid workflow continued.
+
+Possible root cause: the advisor model preferred shell inspection, while the
+default advisor grant excluded `bash`. It then failed to handle the unavailable
+tool error and never delivered its already-detected blocker.
+
+Possible workaround: install the supplied project-root `WATCHDOG.yml`, which
+grants `bash` alongside `read`, `grep`, and `glob`. Its instructions restrict
+shell use to read-only inspection and require immediate `blocker` advice for
+GREEN without reviewed RED or for coalescing multiple `TASKS.md` task ids into
+one assignment.
+
+This is only a workaround. A stronger fix should make the advisor recover from
+tool denial, use granted tools, and ensure a valid `advise` call is not lost
+because another tool call in the same turn is unavailable.
