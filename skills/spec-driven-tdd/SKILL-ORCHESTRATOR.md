@@ -1,6 +1,6 @@
 ---
 name: spec-driven-tdd-orchestrator
-version: 6.0.1-omp
+version: 6.0.2-omp
 description: "Primary-agent orchestration policy for Spec-Driven TDD on Oh My Pi."
 author: GPT-5.6
 license: MIT
@@ -10,6 +10,7 @@ license: MIT
 
 The orchestrator controls workflow order. It does not create or correct reviewed
 artifacts, implement code, resolve conflicts, or perform independent review.
+It may append process logs and committed journal verdicts.
 
 ## Load set
 
@@ -66,18 +67,20 @@ Every implementer or reviewer assignment must include:
 4. Wait for OMP async-result delivery or inspect Agent Hub state. Do not infer completion from a report file alone.
 5. Inspect the returned branch, commit, changed files, tests, clean-status evidence, `agent://` output, and `history://` transcript when needed.
 6. Immediately launch a separate reviewer against the exact committed result. Do not wait for unrelated tasks.
-7. Route the declared reviewer verdict exactly:
+7. Copy the immutable reviewer yield into `.sddtdd_skill/reviewer.log`; the reviewer itself remains read-only.
+8. Route the declared reviewer verdict exactly:
    - `PASS`: commit the review event and open the next legal step;
    - `FAIL`: delegate correction with every finding and full ancestry;
    - `NEEDS_CLARIFICATION`: commit the verdict, pause affected work, present the reviewer questions to the user, and resume only after the answer is captured and replanning/re-review is complete;
    - `BLOCKED`: commit the blocker, stop dependent work, surface the blocker, and only retry or reassign when the blocking condition is resolved.
-8. Repeat until the artifact passes or the workflow is explicitly blocked/stopped.
+9. Record `ORCHESTRATOR_TASK_REVIEW` from actual OMP runtime evidence before downstream work depends on the result.
+10. Repeat until the artifact passes or the workflow is explicitly blocked/stopped.
 
 Do not use `NEEDS_CHANGES`; it is not a reviewer verdict in this workflow.
 
 ## Parallel implementation and worktrees
 
-After `TASK_REVIEW: PASS`:
+After `TASK_REVIEW: PASS` and its process gate:
 
 - select only dependency-ready shards;
 - ensure parallel shards have safe, non-overlapping write scopes;
@@ -89,11 +92,12 @@ After `TASK_REVIEW: PASS`:
 
 Do not configure OMP task isolation to automatically apply or cherry-pick
 implementation results into the integration branch before review. The worker
-must return a durable branch/commit (or unapplied patch) for independent review.
+must return a durable branch/commit or unapplied patch for independent review.
 
 ## Merge and conflict handling
 
-Merge is serialized and begins only after the worker commit has `PASS` review.
+Merge is serialized and begins only after the worker commit has `PASS` review
+and a passing process gate.
 
 For each reviewed worker result:
 
@@ -103,10 +107,13 @@ For each reviewed worker result:
 4. resolve any conflict in the MERGE worktree, never in the primary agent;
 5. run required tests on the integrated tree after conflict resolution;
 6. commit integration evidence and the resulting commit;
-7. launch `MERGE_REVIEW` when required.
+7. immediately launch mandatory `MERGE_REVIEW` against that exact integration commit;
+8. on PASS, record `MERGE_REVIEW` and `ORCHESTRATOR_TASK_REVIEW`; on any other verdict, stop dependent work and route correction or escalation.
 
-Stop additional merge attempts against the same base while a conflict is being
-resolved. The orchestrator never edits conflict markers itself.
+`TASKS_COMPLETE`, regression, another dependent merge, and final work may not
+consume an integration commit before its mandatory merge review and process gate
+pass. Stop additional merge attempts against the same base while a conflict is
+being resolved. The orchestrator never edits conflict markers itself.
 
 ## Scope changes during execution
 
@@ -129,25 +136,28 @@ Before downstream work depends on a result, verify:
 - the independent reviewer inspected the exact commit;
 - the verdict is committed to the journal;
 - RED/GREEN evidence has the correct target-specific failure/pass reason;
-- integration happened only after review PASS;
+- integration happened only after worker review PASS;
 - integrated tests ran on the final merged commit;
+- the exact integration commit received `MERGE_REVIEW: PASS` when applicable;
 - no unresolved advisor blocker remains.
 
-## Orchestrator handoff log
+## Runtime logs
 
-Maintain private append-only JSONL at `.sddtdd_skill/orchestrator.log`.
-Append one record for every delegation and result check:
+Maintain private append-only JSONL at `.sddtdd_skill/orchestrator.log`. Append one
+record for every delegation and result check:
 
 ```json
 {"timestamp":"UTC_ISO8601","event":"HANDOFF|CHECK","role":"implementer|reviewer","task_kind":"TASK_KIND","task_id":"BUSINESS_TASK_ID","agent_id":"OMP_AGENT_ID_OR_NONE","job_id":"OMP_JOB_ID_OR_NONE","commit":"COMMIT_OR_NONE","head":"HEAD_SHA","summary":"SHORT_DESCRIPTION","prompt":"EXACT_DELEGATED_PROMPT"}
 ```
 
-Use actual OMP ids. Never fabricate them. Do not provide this private log to
-implementer or reviewer subagents.
+After each reviewer returns, append its exact structured yield plus actual agent
+and job ids to `.sddtdd_skill/reviewer.log`. This write is performed by the
+orchestrator, never by the read-only reviewer.
 
 ## Completion
 
 Report DONE only when all required artifacts and reviews exist, all testable
 behavior completed reviewed RED/GREEN, every accepted worker branch was merged
-only after review and tested on the integrated tree, regression and final review
-passed, the journal chain is complete, and no blocker remains.
+only after review, every integration commit passed mandatory MERGE_REVIEW,
+post-integration tests passed, regression and final review passed, the journal
+chain is complete, and no blocker remains.
