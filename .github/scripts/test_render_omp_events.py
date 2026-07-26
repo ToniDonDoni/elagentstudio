@@ -46,6 +46,11 @@ def main() -> int:
             "type": "message_update",
             "assistantMessageEvent": {"type": "text_delta", "delta": "Visible answer"},
         },
+        {"type": "text_delta", "delta": "top-level text delta"},
+        {
+            "type": "message_end",
+            "message": {"role": "assistant", "content": "Completed answer"},
+        },
     ]
 
     completed = subprocess.run(
@@ -65,7 +70,7 @@ def main() -> int:
         "tasks=1",
         "names=CreateSPEC",
         "context_chars=",
-        "text_delta: Visible answer",
+        "message_end role=assistant content=Completed answer",
     )
     for marker in required:
         if marker not in output:
@@ -77,14 +82,17 @@ def main() -> int:
         "long context",
         "toolcall_delta",
         "thinking_delta",
+        "text_delta",
         "tool payload that must stay hidden",
         "private reasoning that must stay hidden",
+        "Visible answer",
+        "top-level text delta",
     )
     for marker in forbidden:
         if marker in output:
             raise AssertionError(f"hidden event leaked into live output: {marker!r}")
 
-    print("render_omp_events concise rendering: PASS")
+    print("render_omp_events delta filtering: PASS")
     return 0
 
 
