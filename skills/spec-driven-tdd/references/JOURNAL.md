@@ -1,17 +1,24 @@
 # JOURNAL.md — Spec-Driven TDD Journal Specification
 
-This document defines the committed audit trail at:
+This document defines the required format and invariants for:
 
 ```text
 <repo_root>/.sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log
 ```
 
+The journal is the committed audit trail of the workflow.
+
+This restores the original journal structure. OMP runtime ids, prompts, transcripts,
+branches, commits, and task delivery details stay in runtime JSONL logs such as
+`.sddtdd_skill/orchestrator.log`; they are evidence used to justify journal verdicts,
+not new fields in every journal entry.
+
 ## File rules
 
-- file name is exactly `JOURNAL_SDD_TDD_SKILL.log`;
-- file path is under `.sddtdd_skill/`;
-- every entry is append-only and committed before it counts as proof;
-- OMP session, advisor, `agent://`, and `history://` records are runtime evidence, not substitutes for required committed journal events.
+- file name must be exactly `JOURNAL_SDD_TDD_SKILL.log`;
+- file path must be under `.sddtdd_skill/`;
+- every appended entry must be committed before it counts as proof;
+- OMP session/advisor transcripts and `orchestrator.log`/`reviewer.log` are runtime evidence and are not substitutes for committed journal events.
 
 ## Entry format
 
@@ -26,9 +33,6 @@ DEPENDS: {JID[, JID...]}                 (optional)
 TASK_ID: {TASK_ID}                       (optional)
 PARENT_TASK_ID: {TASK_ID | --}           (required when TASK_ID is present)
 ROOT_USER_INPUT_ID: {TASK_ID}            (required when TASK_ID is present)
-AGENT_ID: {OMP_AGENT_ID | --}            (optional)
-JOB_ID: {OMP_JOB_ID | --}                (optional)
-COMMIT: {COMMIT_SHA | --}                (optional)
 DETAIL: {description}
 ```
 
@@ -42,13 +46,17 @@ Format:
 J-YYYYMMDD-HHMMSS-NNN
 ```
 
-Every JID is unique. Parent JIDs already exist and are copied exactly.
+Rules:
+
+- every JID is unique;
+- parent JIDs must already exist;
+- parent JIDs are copied exactly, never guessed or reconstructed.
 
 ## TYPE values
 
 | TYPE | Meaning |
 |---|---|
-| `USER_INPUT` | exact user request or append-only user addition captured |
+| `USER_INPUT` | raw user request or append-only user addition captured |
 | `SPEC_SPEC` | `SPEC.md` created or revised |
 | `SPEC_REVIEW` | review verdict for `SPEC.md` |
 | `ARCHITECTURE` | `ARCHITECTURE.md` created or revised |
@@ -57,45 +65,45 @@ Every JID is unique. Parent JIDs already exist and are copied exactly.
 | `TASK_REVIEW` | task decomposition review verdict |
 | `RED` | committed failing test and RED evidence |
 | `RED_REVIEW` | RED review verdict |
-| `GREEN` | committed implementation and GREEN evidence |
+| `GREEN` | committed minimal implementation and GREEN evidence |
 | `GREEN_REVIEW` | GREEN review verdict |
-| `MERGE` | one reviewed worker result integrated and tested |
-| `MERGE_REVIEW` | review verdict for the integrated result |
-| `TASKS_COMPLETE` | all required task branches converged |
+| `MERGE` | one independently reviewed worker result integrated and tested |
+| `MERGE_REVIEW` | independent review verdict for the exact integrated commit |
+| `TASKS_COMPLETE` | required task branches converged after passing merge reviews |
 | `REGRESSION` | committed regression evidence |
 | `REGRESSION_REVIEW` | regression review verdict |
 | `FINAL` | committed final evidence |
 | `FINAL_REVIEW` | final review verdict |
-| `ORCHESTRATOR_GATE` | native OMP process-gate decision for one completed work/review event |
+| `ORCHESTRATOR_TASK_REVIEW` | native OMP process-gate verdict for one orchestrator task |
 | `ESCALATION` | workflow escalated to user |
 | `DONE` | pipeline completed |
 
-Use `TASK_REVIEW` consistently. `TASKS_REVIEW` is not a valid event name.
+Use `TASK_REVIEW` consistently. `TASKS_REVIEW` is not valid.
 
 ## STATUS values
 
 | STATUS | Use |
 |---|---|
 | `COMPLETED` | work events |
-| `PASS` | review or process-gate approval |
-| `FAIL` | review or process-gate failure |
-| `NEEDS_CLARIFICATION` | user input is required |
-| `BLOCKED` | an external or repository condition prevents progress |
+| `PASS` | review or process-gate approvals |
+| `FAIL` | review or process-gate failures |
+| `NEEDS_CLARIFICATION` | missing information blocks approval |
+| `BLOCKED` | external or repository condition prevents progress |
 | `ERROR` | trustworthy verification was impossible |
 | `ESCALATED` | escalation entry |
-| `CANCELLED` | cancelled task or branch |
+| `CANCELLED` | cancelled branch or delivery |
 
 Rules:
 
-- `DONE` uses `STATUS: COMPLETED`;
-- `ORCHESTRATOR_GATE` may use `PASS`, `FAIL`, `NEEDS_CLARIFICATION`, `BLOCKED`, or `ERROR`;
-- non-PASS review/gate entries are not approvals.
+- `DONE` must use `STATUS: COMPLETED`;
+- `ORCHESTRATOR_TASK_REVIEW` may use `PASS`, `FAIL`, `NEEDS_CLARIFICATION`, `BLOCKED`, or `ERROR`;
+- non-PASS review entries are not approvals.
 
 ## Journal lineage
 
 `PARENT` and `ROOT` describe journal-event lineage, not task hierarchy.
 
-Root user input:
+`USER_INPUT` root:
 
 ```text
 PARENT: --
@@ -111,12 +119,20 @@ ROOT: <root USER_INPUT JID>
 
 ## Task-tree fields
 
-Task hierarchy uses only `TASK_ID`, `PARENT_TASK_ID`, and
-`ROOT_USER_INPUT_ID`.
+Task hierarchy uses only:
 
-- when `TASK_ID` exists, the other two fields are mandatory;
-- a root task uses `PARENT_TASK_ID: --` and `ROOT_USER_INPUT_ID == TASK_ID`;
-- child tasks store the direct parent task id;
+```text
+TASK_ID
+PARENT_TASK_ID
+ROOT_USER_INPUT_ID
+```
+
+Rules:
+
+- if `TASK_ID` exists, `PARENT_TASK_ID` and `ROOT_USER_INPUT_ID` are mandatory;
+- root task has `PARENT_TASK_ID: --`;
+- root task has `ROOT_USER_INPUT_ID == TASK_ID`;
+- child task stores the direct parent task id;
 - all entries for one logical task reuse the same task-tree fields.
 
 ## Workflow transitions
@@ -127,19 +143,21 @@ Top level:
 USER_INPUT
 → SPEC_SPEC
 → SPEC_REVIEW
-→ ORCHESTRATOR_GATE
+→ ORCHESTRATOR_TASK_REVIEW
 → ARCHITECTURE
 → ARCHITECTURE_REVIEW
-→ ORCHESTRATOR_GATE
+→ ORCHESTRATOR_TASK_REVIEW
 → DECOMPOSE
 → TASK_REVIEW
-→ ORCHESTRATOR_GATE
+→ ORCHESTRATOR_TASK_REVIEW
 → task branches
 → TASKS_COMPLETE
 → REGRESSION
 → REGRESSION_REVIEW
+→ ORCHESTRATOR_TASK_REVIEW
 → FINAL
 → FINAL_REVIEW
+→ ORCHESTRATOR_TASK_REVIEW
 → DONE
 ```
 
@@ -148,13 +166,18 @@ Task branch:
 ```text
 RED
 → RED_REVIEW
-→ ORCHESTRATOR_GATE
+→ ORCHESTRATOR_TASK_REVIEW
 → GREEN
 → GREEN_REVIEW
-→ ORCHESTRATOR_GATE
+→ ORCHESTRATOR_TASK_REVIEW
 → MERGE
-→ optional MERGE_REVIEW
+→ MERGE_REVIEW
+→ ORCHESTRATOR_TASK_REVIEW
 ```
+
+`MERGE_REVIEW` is mandatory. No downstream task, `TASKS_COMPLETE`, regression,
+or final work may consume an integrated commit until its exact merge result has
+`MERGE_REVIEW: PASS` and a following `ORCHESTRATOR_TASK_REVIEW: PASS`.
 
 Failure transitions:
 
@@ -170,40 +193,39 @@ FINAL_REVIEW FAIL → FINAL or affected upstream artifact
 ```
 
 `NEEDS_CLARIFICATION` pauses affected work and is followed by captured user input
-plus replanning/re-review. `BLOCKED` stops dependent work until the named
-condition is resolved.
+plus replanning/re-review. `BLOCKED` stops dependent work until the named condition
+is resolved.
 
-## ORCHESTRATOR_GATE
+## ORCHESTRATOR_TASK_REVIEW
 
-This entry records the primary OMP orchestrator's process check after a work or
-review result. It is distinct from semantic reviewer `*_REVIEW` events.
+This entry records the primary OMP orchestrator's process-gate verdict for one
+completed work or review task. It is distinct from semantic reviewer `*_REVIEW`
+entries and does not require MCP.
 
-The gate is based on native evidence:
+The verdict must be grounded in actual OMP evidence recorded in runtime logs:
 
-- actual OMP agent id and job id;
-- exact delegated prompt in `.sddtdd_skill/orchestrator.log`;
-- returned `agent://` output and `history://` transcript when needed;
+- delegated prompt and actual agent/job ids;
+- `agent://` output and `history://` transcript when needed;
 - exact branch and commit;
 - clean-worktree evidence;
-- required independent review verdict;
-- required RED/GREEN or integrated-test evidence;
+- independent reviewer verdict for the exact commit;
+- RED/GREEN or post-integration test evidence;
 - absence of unresolved watchdog blockers.
 
 Rules:
 
-- when independent review is required, `PARENT` is the committed review JID;
-- otherwise, `PARENT` is the committed work JID;
-- `TASK_ID` identifies the business task being validated;
-- `AGENT_ID`, `JOB_ID`, and `COMMIT` contain actual values when available;
-- `DETAIL` summarizes the checked evidence, findings, and next legal transition.
+- if the submitted task required independent review, `PARENT` must be the committed review JID;
+- otherwise, `PARENT` must be the committed work JID;
+- `TASK_ID` identifies the orchestrator task being validated;
+- `DETAIL` summarizes the task id, evidence checked, verdict, key findings, and next legal transition.
 
 Meaning:
 
-- `PASS`: process evidence is complete and downstream work may begin;
-- `FAIL`: a process gap must be corrected first;
-- `NEEDS_CLARIFICATION`: user questions must be answered and recorded;
-- `BLOCKED`: the named blocker prevents legal progress;
-- `ERROR`: trustworthy process verification was not possible.
+- `PASS` → submitted task is process-complete; downstream work may begin after this entry is committed;
+- `FAIL` → process gap exists; fix it first;
+- `NEEDS_CLARIFICATION` → user clarification or missing proof blocks legal progress;
+- `BLOCKED` → the named blocker prevents legal progress;
+- `ERROR` → trustworthy verification was not possible.
 
 ## DEPENDS
 
@@ -217,7 +239,8 @@ when one event depends on several completed branches.
 3. every entry preserves the root JID of its delivery tree;
 4. task hierarchy is represented only by task-tree fields;
 5. sibling tasks share a parent rather than being chained by execution order;
-6. review PASS cannot exist truthfully without the corresponding committed work entry;
-7. `ORCHESTRATOR_GATE: PASS` cannot exist truthfully without matching native OMP runtime and committed evidence;
+6. review PASS cannot truthfully exist without the corresponding reviewed work entry;
+7. orchestrator PASS cannot truthfully exist without matching OMP runtime evidence;
 8. no implementation result is integrated before independent review PASS;
-9. downstream work does not depend on upstream work lacking required approval proof.
+9. every integration commit receives `MERGE_REVIEW: PASS` before downstream use;
+10. downstream work must not depend on upstream work lacking required approval proof.
