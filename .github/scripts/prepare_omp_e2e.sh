@@ -10,7 +10,7 @@ echo "[script prepare_omp_e2e] START $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 workdir="$RUNNER_TEMP/omp-sddtdd-arkanoid"
 echo "[script prepare_omp_e2e] Creating fixture at $workdir"
 rm -rf "$workdir"
-mkdir -p "$workdir/skills"
+mkdir -p "$workdir/skills" "$workdir/.omp"
 cp -R "$GITHUB_WORKSPACE/skills/spec-driven-tdd" "$workdir/skills/spec-driven-tdd"
 
 echo "[script prepare_omp_e2e] Writing OMP entrypoints"
@@ -18,12 +18,12 @@ cat > "$workdir/AGENTS.md" <<'EOF'
 @skills/spec-driven-tdd/AGENTS.md
 EOF
 
-cat > "$workdir/WATCHDOG.md" <<'EOF'
-@skills/spec-driven-tdd/WATCHDOG.md
+cat > "$workdir/.omp/WATCHDOG.md" <<'EOF'
+@../skills/spec-driven-tdd/WATCHDOG.md
 EOF
 
-cp "$workdir/skills/spec-driven-tdd/WATCHDOG.yml" "$workdir/WATCHDOG.yml"
-echo "[script prepare_omp_e2e] Installed WATCHDOG.yml with bash grant"
+cp "$workdir/skills/spec-driven-tdd/WATCHDOG.yml" "$workdir/.omp/WATCHDOG.yml"
+echo "[script prepare_omp_e2e] Installed .omp/WATCHDOG.yml with bash grant"
 
 echo "[script prepare_omp_e2e] Initializing git repository"
 git -C "$workdir" init -b main
