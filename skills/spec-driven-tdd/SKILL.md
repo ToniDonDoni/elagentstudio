@@ -1,6 +1,6 @@
 ---
 name: spec-driven-tdd
-version: 6.0.1-omp
+version: 6.0.2-omp
 description: "Spec-Driven TDD workflow for Oh My Pi with asynchronous subagents, independent review, worktree isolation, and advisor supervision."
 author: GPT-5.6
 license: MIT
@@ -20,7 +20,7 @@ There are four strictly separated roles:
 
 - Orchestrator: the primary OMP agent. It delegates, monitors, applies process gates, and records handoffs. It does not implement or review.
 - Implementer: an OMP `task` subagent that creates one assigned artifact, test, code change, correction, or merge result.
-- Reviewer: a separate OMP `task` subagent that reviews an exact committed result and never fixes it.
+- Reviewer: a separate OMP `task` subagent that reviews an exact committed result and never fixes or writes files.
 - Watchdog: the OMP advisor attached to the primary session. It checks the orchestrator process and emits `nit`, `concern`, or `blocker` advice. It does not replace independent review.
 
 ## OMP entrypoints
@@ -44,8 +44,9 @@ Use:
 - dedicated git worktree branches for implementation isolation;
 - session and advisor JSONL transcripts as raw execution evidence.
 
-Required workflow decisions must also be summarized in the committed journal so
-the repository remains auditable without a live OMP session.
+Runtime handoff evidence is recorded in `.sddtdd_skill/orchestrator.log`. The
+committed journal keeps its original compact schema and records the resulting
+workflow verdicts through `ORCHESTRATOR_TASK_REVIEW`.
 
 ## Workflow artifacts
 
@@ -57,21 +58,22 @@ The workflow state lives under `.sddtdd_skill/`:
 - `TASKS.md`: reviewed task graph and dependencies;
 - `JOURNAL_SDD_TDD_SKILL.log`: committed workflow evidence;
 - `orchestrator.log`: append-only primary-agent handoff/check records;
-- `reviewer.log`: append-only independent review records.
+- `reviewer.log`: append-only copies of immutable reviewer yields, recorded by the orchestrator after reviewers return.
 
 ## Hard rules
 
 1. Every agent-generated artifact receives independent review before downstream work depends on it.
 2. Every automatically testable behavior passes through reviewed RED and reviewed GREEN.
 3. Review only committed evidence. Mutable working-tree state is not evidence.
-4. The orchestrator never implements, resolves conflicts, or reviews delegated work.
-5. The reviewer never authors fixes, merges, or advances the workflow.
+4. The orchestrator never implements, resolves conflicts, or performs independent review.
+5. The reviewer never modifies files, writes logs, authors fixes, merges, or advances the workflow.
 6. Independent review and watchdog supervision are different controls; neither replaces the other.
 7. Commit messages are ASCII-only.
 8. Parallel implementation is allowed only for dependency-ready tasks with safe, non-overlapping write scopes.
 9. Implementation branches are not integrated before independent review passes.
-10. Merge results are tested after integration, not only in the worker worktree.
-11. RED is valid only when it fails for the target missing behavior or target bug. Unrelated failures are invalid RED evidence.
+10. Every integration commit receives mandatory `MERGE_REVIEW: PASS` before downstream use.
+11. Merge results are tested after integration, not only in the worker worktree.
+12. RED is valid only when it fails for the target missing behavior or target bug. Unrelated failures are invalid RED evidence.
 
 ## User scope changes
 
@@ -89,15 +91,16 @@ When the user adds or changes a product requirement during work:
 
 1. Capture and commit `SPEC-DRAFT.md`.
 2. Delegate SPEC creation; commit it; launch an independent `SPEC_REVIEW`.
-3. Repeat correction and review until SPEC passes.
+3. Repeat correction and review until SPEC passes, then record `ORCHESTRATOR_TASK_REVIEW`.
 4. Repeat the same cycle for ARCHITECTURE and TASKS, using `TASK_REVIEW` consistently.
 5. Launch dependency-ready implementation shards as asynchronous OMP tasks on dedicated git worktree branches.
 6. When one worker completes, inspect its agent/job ids, output, transcript when needed, branch, commit, tests, and clean-state evidence.
 7. Immediately launch a separate reviewer against that exact commit.
 8. On `PASS`, queue the reviewed branch for serialized integration. On `FAIL`, delegate correction. On `NEEDS_CLARIFICATION`, ask the user and pause affected work. On `BLOCKED`, record and surface the blocker.
 9. Delegate one synchronous MERGE implementer for one reviewed branch at a time. Resolve conflicts there and run required tests on the integrated tree.
-10. Run and review regression evidence on the final integrated candidate.
-11. Run final traceability review and record DONE only after every gate passes.
+10. Immediately launch mandatory `MERGE_REVIEW` against the exact integration commit. No downstream work may use it before `PASS` and the following process gate.
+11. Run and review regression evidence on the final integrated candidate.
+12. Run final traceability review and record DONE only after every gate passes.
 
 ## Delegation context
 
