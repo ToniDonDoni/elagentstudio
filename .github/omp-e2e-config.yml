@@ -8,7 +8,6 @@ async:
 
 advisor:
   enabled: true
-  syncBacklog: "1"
 
 task:
   maxConcurrency: 3
@@ -17,9 +16,3 @@ task:
 
 startup:
   quiet: true
-
-completion:
-  notify: "off"
-
-error:
-  notify: "off"
