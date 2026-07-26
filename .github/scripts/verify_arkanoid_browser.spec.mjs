@@ -33,7 +33,6 @@ test("renders a working Arkanoid page", async ({ page }) => {
 
   const startControl = page
     .getByRole("button", { name: /start|restart|play/i })
-    .or(page.locator('input[type="button"], input[type="submit"]').filter({ hasText: /start|restart|play/i }))
     .first();
   await expect(startControl).toBeVisible();
   await startControl.click();
