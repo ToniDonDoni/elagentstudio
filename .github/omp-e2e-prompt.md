@@ -16,13 +16,16 @@ Process requirements:
 - Use `TASK_REVIEW`, never `TASKS_REVIEW`.
 - Delegate RED and GREEN work to asynchronous OMP implementer subagents.
 - The primary orchestrator must not implement or review.
+- Independent reviewers are strictly read-only and return immutable yields; the orchestrator records those yields in runtime logs.
 - Use dedicated git worktrees and branches for implementation work.
 - Do not integrate implementation commits before independent review PASS.
 - Route PASS, FAIL, NEEDS_CLARIFICATION, and BLOCKED explicitly.
 - Merge reviewed work through one synchronous MERGE implementer at a time.
 - Run tests again on the integrated commit.
+- Independently review every exact integration commit with mandatory MERGE_REVIEW before any downstream use.
 - Complete regression and final independent reviews.
-- Record native OMP agent/job ids, commits, test evidence, review verdicts, ORCHESTRATOR_GATE events, and DONE in the committed journal.
+- Record committed workflow verdicts with the original journal schema, including ORCHESTRATOR_TASK_REVIEW, MERGE, MERGE_REVIEW, and DONE.
+- Record actual OMP agent/job ids, commits, prompts, and handoffs in `.sddtdd_skill/orchestrator.log` JSONL.
 - Use ASCII-only commit messages.
 - Commit every generated artifact and journal entry.
 - Finish only after the repository is clean and the game is runnable.
