@@ -55,3 +55,14 @@ affected stage.
 
 Edit the version-controlled source skill and install/sync it deliberately. Do
 not mutate installed user-level skill copies during project execution.
+
+## 11. Watchdog enforcement gap
+
+The primary agent can skip reviewed RED and collapse multiple reviewed task
+nodes into one monolithic subagent assignment. The watchdog may notice this in
+private reasoning but fail to call `advise`, allowing the invalid process to
+continue.
+
+Require one `TASKS.md` task id per OMP assignment, forbid mega-task coalescing,
+and emit `blocker` advice whenever GREEN starts without reviewed RED or multiple
+task nodes are assigned to one subagent.
