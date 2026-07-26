@@ -42,6 +42,7 @@ jobs:
           echo "[workflow] START validate E2E scripts $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           bash -n .github/scripts/*.sh
           python3 -m py_compile .github/scripts/*.py
+          python3 .github/scripts/test_render_omp_events.py
           echo "[workflow] DONE validate E2E scripts $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
       - name: Set up Oh My Pi
