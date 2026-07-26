@@ -86,6 +86,8 @@ def render(event: dict[str, Any], last_tool_updates: dict[str, str]) -> None:
         if isinstance(payload, dict):
             update_type = str(payload.get("type") or "update")
             delta = first_present(payload, "delta", "text", "thinking", "content")
+            if isinstance(delta, str) and not delta.strip():
+                delta = None
             if delta is not None:
                 emit(f"{update_type}: {compact(delta, MAX_MESSAGE_FIELD)}")
             elif update_type in {"done", "error"}:
