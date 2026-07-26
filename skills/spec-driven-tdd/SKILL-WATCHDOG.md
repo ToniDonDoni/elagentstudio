@@ -1,6 +1,6 @@
 ---
 name: spec-driven-tdd-watchdog
-version: 6.0.1-omp
+version: 6.0.2-omp
 description: "Advisor-only supervision policy for the primary Spec-Driven TDD orchestrator in Oh My Pi."
 author: GPT-5.6
 license: MIT
@@ -34,19 +34,21 @@ audit clarity.
 ## Block immediately when the orchestrator
 
 - implements, edits reviewed artifacts, resolves conflicts, or performs independent review itself;
-- starts architecture before `SPEC_REVIEW: PASS`;
-- starts decomposition before `ARCHITECTURE_REVIEW: PASS`;
-- starts implementation before `TASK_REVIEW: PASS`;
-- starts GREEN before target-specific `RED_REVIEW: PASS`;
+- starts architecture before `SPEC_REVIEW: PASS` and its process gate;
+- starts decomposition before `ARCHITECTURE_REVIEW: PASS` and its process gate;
+- starts implementation before `TASK_REVIEW: PASS` and its process gate;
+- starts GREEN before target-specific `RED_REVIEW: PASS` and its process gate;
 - accepts RED caused by unrelated prerequisites, environment errors, syntax errors, stale fixtures, unrelated failures, or a different bug;
 - lets downstream work depend on uncommitted or unreviewed evidence;
 - configures or accepts OMP automatic patch/branch integration for an implementation worker before independent review PASS;
 - merges, cherry-picks, or otherwise integrates an unreviewed worker result;
 - accepts a merge with conflicts, failed patch application, unmerged paths, conflict markers, or `stashConflict`;
-- records DONE before reviewed RED/GREEN, post-integration tests, regression review, final review, and journal gates complete;
+- lets another merge, `TASKS_COMPLETE`, regression, final review, or DONE consume an integration commit before mandatory `MERGE_REVIEW: PASS` and `ORCHESTRATOR_TASK_REVIEW: PASS`;
+- records DONE before reviewed RED/GREEN, post-integration tests, merge review, regression review, final review, and journal gates complete;
 - invents task, agent, job, branch, commit, transcript, test, or verdict evidence;
 - overwrites `SPEC-DRAFT.md` or implements a new user requirement without append-only `ADDITION:` capture and replanning;
 - allows one execution to act as both implementer and independent reviewer;
+- asks a read-only reviewer to write `reviewer.log`, the journal, or any repository file;
 - treats watchdog advice as an independent review verdict.
 
 ## Raise a concern when the orchestrator
@@ -85,8 +87,9 @@ After each result, verify the orchestrator checks:
 - output and transcript when needed;
 - immediate independent review;
 - exact routing of PASS, FAIL, NEEDS_CLARIFICATION, or BLOCKED;
-- no integration before review PASS;
-- post-integration test evidence.
+- no integration before worker review PASS;
+- post-integration test evidence;
+- mandatory independent review of the exact integration commit.
 
 ## Review boundary
 
