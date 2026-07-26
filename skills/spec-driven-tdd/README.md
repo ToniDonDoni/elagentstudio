@@ -1,51 +1,134 @@
 # Spec-Driven TDD for Oh My Pi
 
-## Add to a project
+## Quick start from an empty container
 
-In the project-root `AGENTS.md`:
+Assume this repository is already downloaded and the current directory is its
+root.
 
-```markdown
-@skills/spec-driven-tdd/AGENTS.md
+### 1. Install prerequisites and OMP
+
+Debian/Ubuntu example:
+
+```bash
+apt-get update && apt-get install -y curl git python3
+curl -fsSL https://omp.sh/install | sh
+omp --version
 ```
 
-In the project-root `WATCHDOG.md` or `.omp/WATCHDOG.md`:
+Open a new shell if the installer changed `PATH` and `omp` is not found.
 
-```markdown
-@skills/spec-driven-tdd/WATCHDOG.md
+### 2. Create a project and copy the skill
+
+```bash
+SOURCE_REPO="$(pwd)"
+PROJECT_DIR="../my-omp-project"
+
+mkdir -p "$PROJECT_DIR/skills"
+cp -R "$SOURCE_REPO/skills/spec-driven-tdd" "$PROJECT_DIR/skills/"
+cd "$PROJECT_DIR"
+git init -b main
+
+printf '@skills/spec-driven-tdd/AGENTS.md\n' > AGENTS.md
+printf '@skills/spec-driven-tdd/WATCHDOG.md\n' > WATCHDOG.md
 ```
 
-OMP loads `AGENTS.md` into the primary-agent context and discovers
-`WATCHDOG.md` separately for the advisor.
+`AGENTS.md` loads the orchestrator policy. `WATCHDOG.md` is loaded separately by
+the OMP advisor.
 
-Enable asynchronous subagents and the advisor in OMP. Implementation workers
-must use dedicated git worktree branches. Do not automatically integrate worker
-results before independent review passes. Every integration commit must then
-pass a separate mandatory `MERGE_REVIEW` before downstream use.
+### 3. Configure the model and API key
 
-## Files
+This example uses OpenCode Go with DeepSeek V4 Flash:
 
-- `SKILL.md` — shared workflow policy.
-- `SKILL-ORCHESTRATOR.md` — primary-agent dispatcher and process gates.
-- `SKILL-IMPLEMENTER.md` — artifact, RED/GREEN, correction, and merge work.
-- `SKILL-REVIEWER.md` — independent committed-state review.
-- `SKILL-WATCHDOG.md` — advisor process supervision.
-- `AGENTS.md` — primary-agent entrypoint.
-- `WATCHDOG.md` — advisor entrypoint.
-- `tests/verify_evidence.py` — CI verifier for required journal/runtime evidence.
-- `tests/test_verify_evidence.py` — positive and negative verifier tests.
+```bash
+mkdir -p .omp
+cat > .omp/config.yml <<'EOF'
+modelRoles:
+  default: opencode-go/deepseek-v4-flash
+  task: opencode-go/deepseek-v4-flash
+  advisor: opencode-go/deepseek-v4-flash
 
-## Example
+async:
+  enabled: true
 
-```text
-Use the Spec-Driven TDD workflow to add a health-check endpoint.
+advisor:
+  enabled: true
+
+task:
+  maxConcurrency: 3
+  isolation:
+    mode: none
+EOF
+
+cat > .env <<'EOF'
+OPENCODE_API_KEY=replace-with-your-key
+EOF
+printf '.env\n' >> .gitignore
+```
+
+Use another OMP provider/model by changing `modelRoles` and its credential.
+
+### 4. Write the task
+
+```bash
+cat > TASK.md <<'EOF'
+Use the Spec-Driven TDD workflow and run as the primary orchestrator.
+
+Build a small HTTP service.
 
 Requirements:
 - GET /health returns HTTP 200 and JSON {"status":"ok"}.
-- Add an end-to-end test that proves the running application behavior.
-- Keep unrelated APIs unchanged.
-
-Run as the orchestrator. Create and review SPEC, ARCHITECTURE, and TASKS;
-perform reviewed RED/GREEN in a dedicated worktree branch; independently review
-the worker commit before merging; independently review the exact integration
-commit; then run post-integration regression and final review.
+- Add an end-to-end test against the running service.
+- Keep unrelated behavior unchanged.
+EOF
 ```
+
+### 5. Commit the initial project
+
+OMP worktrees and review evidence require a git repository with a committed
+starting point.
+
+```bash
+git add AGENTS.md WATCHDOG.md TASK.md .omp/config.yml .gitignore skills
+git commit -m "Initialize OMP Spec Driven TDD project"
+```
+
+### 6. Run with readable live output
+
+```bash
+set -o pipefail
+omp \
+  --mode json \
+  --advisor \
+  --no-pty \
+  --yolo \
+  --config .omp/config.yml \
+  "$(cat TASK.md)" \
+  | python3 -u "$SOURCE_REPO/.github/scripts/render_omp_events.py"
+```
+
+Remove the renderer pipe to see raw OMP JSON events. Run plain `omp` for the
+interactive terminal UI. Remove `--yolo` when tool actions should require manual
+approval.
+
+After completion, inspect:
+
+```bash
+find .sddtdd_skill -maxdepth 2 -type f -print
+git log --oneline --all --graph --decorate
+```
+
+The workflow should leave the specification, architecture, tasks, journal,
+runtime handoffs, reviewed commits, tests, and final implementation in the
+project repository.
+
+## Skill files
+
+- `SKILL.md` - shared workflow policy.
+- `SKILL-ORCHESTRATOR.md` - primary dispatcher and process gates.
+- `SKILL-IMPLEMENTER.md` - artifact, RED/GREEN, correction, and merge work.
+- `SKILL-REVIEWER.md` - independent committed-state review.
+- `SKILL-WATCHDOG.md` - advisor process supervision.
+- `AGENTS.md` - primary-agent entrypoint.
+- `WATCHDOG.md` - advisor entrypoint.
+- `tests/verify_evidence.py` - required journal/runtime evidence verifier.
+- `tests/test_verify_evidence.py` - positive and negative verifier tests.
