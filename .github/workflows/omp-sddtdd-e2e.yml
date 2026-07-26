@@ -39,6 +39,7 @@ jobs:
 
       - name: Validate E2E scripts
         run: |
+          echo "::notice title=OMP E2E stage::START validate E2E scripts"
           echo "[workflow] START validate E2E scripts $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           bash -n .github/scripts/*.sh
           python3 -m py_compile .github/scripts/*.py
@@ -47,36 +48,42 @@ jobs:
 
       - name: Set up Oh My Pi
         run: |
+          echo "::notice title=OMP E2E stage::START setup OMP"
           echo "[workflow] START setup OMP $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           bash .github/scripts/setup_omp_e2e.sh
           echo "[workflow] DONE setup OMP $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
       - name: Test evidence verifier negative cases
         run: |
+          echo "::notice title=OMP E2E stage::START evidence verifier tests"
           echo "[workflow] START evidence verifier tests $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           python3 skills/spec-driven-tdd/tests/test_verify_evidence.py -v
           echo "[workflow] DONE evidence verifier tests $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
       - name: Prepare isolated test repository
         run: |
+          echo "::notice title=OMP E2E stage::START prepare isolated repository"
           echo "[workflow] START prepare isolated repository $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           bash .github/scripts/prepare_omp_e2e.sh
           echo "[workflow] DONE prepare isolated repository $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
       - name: Run OMP Spec-Driven TDD workflow with live events
         run: |
+          echo "::notice title=OMP E2E stage::START OMP live execution"
           echo "[workflow] START OMP live execution $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           bash .github/scripts/run_omp_e2e.sh
           echo "[workflow] DONE OMP live execution $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
       - name: Verify runnable Arkanoid application
         run: |
+          echo "::notice title=OMP E2E stage::START Arkanoid runtime verification"
           echo "[workflow] START Arkanoid runtime verification $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           bash .github/scripts/verify_arkanoid_e2e.sh
           echo "[workflow] DONE Arkanoid runtime verification $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
       - name: Verify committed SDDTDD evidence
         run: |
+          echo "::notice title=OMP E2E stage::START SDDTDD evidence verification"
           echo "[workflow] START SDDTDD evidence verification $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           bash .github/scripts/verify_sddtdd_evidence.sh
           echo "[workflow] DONE SDDTDD evidence verification $(date -u +%Y-%m-%dT%H:%M:%SZ)"
