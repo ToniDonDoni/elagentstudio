@@ -43,6 +43,7 @@ jobs:
           echo "[workflow] START validate E2E scripts $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           bash -n .github/scripts/*.sh
           python3 -m py_compile .github/scripts/*.py
+          node --check .github/scripts/verify_arkanoid_browser.spec.mjs
           python3 .github/scripts/test_render_omp_events.py
           echo "[workflow] DONE validate E2E scripts $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -100,5 +101,8 @@ jobs:
             ${{ runner.temp }}/omp-events.jsonl
             ${{ runner.temp }}/omp-live.log
             ${{ runner.temp }}/omp-stderr.log
+            ${{ runner.temp }}/omp-pipeline-status.txt
             ${{ runner.temp }}/arkanoid-server.log
             ${{ runner.temp }}/arkanoid-index.html
+            ${{ runner.temp }}/arkanoid-browser.png
+            ${{ runner.temp }}/arkanoid-browser-result.json
