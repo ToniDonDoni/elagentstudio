@@ -72,11 +72,11 @@ Possible root cause: the advisor model preferred shell inspection, while the
 default advisor grant excluded `bash`. It then failed to handle the unavailable
 tool error and never delivered its already-detected blocker.
 
-Possible workaround: install the supplied project-root `WATCHDOG.yml`, which
-grants `bash` alongside `read`, `grep`, and `glob`. Its instructions restrict
-shell use to read-only inspection and require immediate `blocker` advice for
-GREEN without reviewed RED or for coalescing multiple `TASKS.md` task ids into
-one assignment.
+Possible workaround: install the supplied `WATCHDOG.yml` as
+`.omp/WATCHDOG.yml`. It grants `bash` alongside `read`, `grep`, and `glob`. Its
+instructions restrict shell use to read-only inspection and require immediate
+`blocker` advice for GREEN without reviewed RED or for coalescing multiple
+`TASKS.md` task ids into one assignment.
 
 This is only a workaround. A stronger fix should make the advisor recover from
 tool denial, use granted tools, and ensure a valid `advise` call is not lost
