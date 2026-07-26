@@ -10,7 +10,6 @@ from typing import Any
 
 MAX_MESSAGE_FIELD = 1200
 MAX_TOOL_FIELD = 500
-IGNORED_MESSAGE_UPDATE_TYPES = {"thinking_delta", "toolcall_delta"}
 
 
 def compact(value: Any, limit: int) -> str:
@@ -35,6 +34,10 @@ def first_present(mapping: dict[str, Any], *keys: str) -> Any:
 def emit(message: str) -> None:
     now = datetime.now(timezone.utc).strftime("%H:%M:%S")
     print(f"[OMP {now}] {message}", flush=True)
+
+
+def is_delta_event(name: object) -> bool:
+    return "delta" in str(name or "").lower()
 
 
 def task_tool_summary(details: Any) -> str:
@@ -82,19 +85,18 @@ def tool_summary(tool: str, event: dict[str, Any]) -> str:
 def render(event: dict[str, Any], last_tool_updates: dict[str, str]) -> None:
     event_type = str(event.get("type") or "session_header")
 
+    if is_delta_event(event_type):
+        return
+
     if event_type == "message_update":
         payload = event.get("assistantMessageEvent")
-        if isinstance(payload, dict):
-            update_type = str(payload.get("type") or "update")
-            if update_type in IGNORED_MESSAGE_UPDATE_TYPES:
-                return
-            delta = first_present(payload, "delta", "text", "thinking", "content")
-            if isinstance(delta, str) and not delta.strip():
-                delta = None
-            if delta is not None:
-                emit(f"{update_type}: {compact(delta, MAX_MESSAGE_FIELD)}")
-            elif update_type in {"done", "error"}:
-                emit(f"{update_type}: {compact(payload, MAX_MESSAGE_FIELD)}")
+        if not isinstance(payload, dict):
+            return
+        update_type = str(payload.get("type") or "update")
+        if is_delta_event(update_type):
+            return
+        if update_type in {"done", "error"}:
+            emit(f"{update_type}: {compact(payload, MAX_MESSAGE_FIELD)}")
         return
 
     if event_type.startswith("tool_execution"):
