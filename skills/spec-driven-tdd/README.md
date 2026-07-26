@@ -19,7 +19,8 @@ OMP loads `AGENTS.md` into the primary-agent context and discovers
 
 Enable asynchronous subagents and the advisor in OMP. Implementation workers
 must use dedicated git worktree branches. Do not automatically integrate worker
-results before independent review passes.
+results before independent review passes. Every integration commit must then
+pass a separate mandatory `MERGE_REVIEW` before downstream use.
 
 ## Files
 
@@ -30,6 +31,8 @@ results before independent review passes.
 - `SKILL-WATCHDOG.md` — advisor process supervision.
 - `AGENTS.md` — primary-agent entrypoint.
 - `WATCHDOG.md` — advisor entrypoint.
+- `tests/verify_evidence.py` — CI verifier for required journal/runtime evidence.
+- `tests/test_verify_evidence.py` — positive and negative verifier tests.
 
 ## Example
 
@@ -43,6 +46,6 @@ Requirements:
 
 Run as the orchestrator. Create and review SPEC, ARCHITECTURE, and TASKS;
 perform reviewed RED/GREEN in a dedicated worktree branch; independently review
-the worker commit before merging; then run post-integration regression and final
-review.
+the worker commit before merging; independently review the exact integration
+commit; then run post-integration regression and final review.
 ```
