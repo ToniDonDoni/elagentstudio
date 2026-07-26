@@ -26,7 +26,8 @@ constraints, acceptance criteria, edge cases, and clarifications.
 Review gate:
 
 - request `SPEC_REVIEW`;
-- architecture work is illegal before `SPEC_REVIEW: PASS`.
+- record `ORCHESTRATOR_TASK_REVIEW` from native OMP evidence;
+- architecture work is illegal before both pass.
 
 ## Stage 2 — Architecture
 
@@ -36,7 +37,8 @@ to reviewed requirements.
 Review gate:
 
 - request `ARCHITECTURE_REVIEW`;
-- task decomposition is illegal before `ARCHITECTURE_REVIEW: PASS`.
+- record `ORCHESTRATOR_TASK_REVIEW`;
+- task decomposition is illegal before both pass.
 
 ## Stage 3 — Decomposition
 
@@ -55,7 +57,8 @@ Each task should define:
 Review gate:
 
 - request `TASK_REVIEW`;
-- implementation work is illegal before `TASK_REVIEW: PASS`.
+- record `ORCHESTRATOR_TASK_REVIEW`;
+- implementation work is illegal before both pass.
 
 ## Stage 4 — Per-task RED/GREEN
 
@@ -64,24 +67,40 @@ For every automatically testable task:
 1. select the reviewed task, requirement ids, architecture references, and acceptance condition;
 2. write the highest practical proving test;
 3. establish RED with exact failing command and expected missing-behavior reason;
-4. request `RED_REVIEW`;
+4. request `RED_REVIEW` and record the process gate;
 5. implement only the minimum change needed;
 6. establish GREEN with exact passing commands on committed state;
-7. request `GREEN_REVIEW`.
+7. request `GREEN_REVIEW` and record the process gate.
 
 Rules:
 
-- implementation is illegal before `RED_REVIEW: PASS`;
-- task completion is illegal before `GREEN_REVIEW: PASS`;
+- implementation is illegal before target-specific `RED_REVIEW: PASS` and its process gate;
+- integration is illegal before `GREEN_REVIEW: PASS` and its process gate;
 - supplementary unit tests do not replace the proving test.
 
-## Stage 5 — Task Convergence
+## Stage 5 — Reviewed Integration
 
-When all required task branches pass GREEN review, append `TASKS_COMPLETE`.
+For each independently reviewed worker commit:
+
+1. delegate one synchronous MERGE implementer;
+2. integrate exactly one reviewed result;
+3. resolve conflicts only in the merge worktree;
+4. run required tests on the integrated commit;
+5. commit the integration result and evidence;
+6. request mandatory `MERGE_REVIEW` for that exact commit;
+7. record `ORCHESTRATOR_TASK_REVIEW` after merge review PASS.
+
+No other merge or downstream stage may consume the integration commit before
+both gates pass.
+
+## Stage 6 — Task Convergence
+
+When all required task branches pass GREEN review, integration, mandatory merge
+review, and process gates, append `TASKS_COMPLETE`.
 
 Regression is illegal before convergence.
 
-## Stage 6 — Regression
+## Stage 7 — Regression
 
 Run the complete required affected-suite regression on the final candidate
 commit and record exact commands, scope, result, and justified omissions.
@@ -89,9 +108,10 @@ commit and record exact commands, scope, result, and justified omissions.
 Review gate:
 
 - request `REGRESSION_REVIEW`;
-- final completion is illegal before `REGRESSION_REVIEW: PASS`.
+- record `ORCHESTRATOR_TASK_REVIEW`;
+- final completion is illegal before both pass.
 
-## Stage 7 — Final
+## Stage 8 — Final
 
 Prepare final evidence covering traceability, final behavior, explicit
 deviations, residual risks, and final artifact list.
@@ -99,10 +119,12 @@ deviations, residual risks, and final artifact list.
 Review gate:
 
 - request `FINAL_REVIEW`;
-- DONE is illegal before `FINAL_REVIEW: PASS`.
+- record `ORCHESTRATOR_TASK_REVIEW`;
+- DONE is illegal before both pass.
 
-## Stage 8 — Done
+## Stage 9 — Done
 
 Append `DONE` only when all required artifacts exist, all required reviews pass,
-all automatically testable behaviors completed reviewed RED/GREEN, regression
-passed and was reviewed, and the journal chain is intact.
+all automatically testable behaviors completed reviewed RED/GREEN, every
+integration commit passed mandatory merge review, regression passed and was
+reviewed, and the journal chain is intact.
