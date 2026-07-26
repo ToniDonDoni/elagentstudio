@@ -27,7 +27,7 @@ Tasks:
 T1: paddle movement; independent
 T2: ball movement; independent
 T3: brick removal; independent
-T4: ball collision response; depends on T2 GREEN_REVIEW: PASS
+T4: ball collision response; depends on T2 GREEN_REVIEW: PASS and its process gate
 ```
 
 Initial execution:
@@ -47,8 +47,9 @@ Reviewer 2 reviews T2 RED.
 Reviewer 3 reviews T3 RED.
 The three reviewers may run at the same time.
 
-After each task's RED review passes, its worker may start that task's GREEN
-without waiting for unrelated tasks.
+After each task has both RED_REVIEW: PASS and the following
+ORCHESTRATOR_TASK_REVIEW: PASS, its worker may start that task's GREEN without
+waiting for unrelated tasks.
 
 Reviewer 1 reviews T1 GREEN.
 Reviewer 2 reviews T2 GREEN.
