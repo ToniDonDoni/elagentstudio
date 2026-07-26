@@ -7,7 +7,7 @@ on:
       - "skills/spec-driven-tdd/**"
       - ".github/omp-e2e-config.yml"
       - ".github/omp-e2e-prompt.md"
-      - ".github/scripts/render_omp_events.py"
+      - ".github/scripts/**"
       - ".github/workflows/omp-sddtdd-e2e.yml"
 
 permissions:
@@ -37,128 +37,26 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install Oh My Pi
-        run: |
-          bun install -g @oh-my-pi/pi-coding-agent
-          omp --version
+      - name: Validate E2E scripts
+        run: bash -n .github/scripts/*.sh
 
-      - name: Validate OpenCode Go secret
-        run: |
-          test -n "$OPENCODE_API_KEY" || {
-            echo "Repository secret OPENCODE_GO_API_KEY is required" >&2
-            exit 1
-          }
+      - name: Set up Oh My Pi
+        run: bash .github/scripts/setup_omp_e2e.sh
 
       - name: Test evidence verifier negative cases
         run: python3 skills/spec-driven-tdd/tests/test_verify_evidence.py -v
 
       - name: Prepare isolated test repository
-        run: |
-          set -euo pipefail
-          workdir="$RUNNER_TEMP/omp-sddtdd-arkanoid"
-          rm -rf "$workdir"
-          mkdir -p "$workdir/skills"
-          cp -R "$GITHUB_WORKSPACE/skills/spec-driven-tdd" "$workdir/skills/spec-driven-tdd"
-
-          cat > "$workdir/AGENTS.md" <<'EOF'
-          @skills/spec-driven-tdd/AGENTS.md
-          EOF
-
-          cat > "$workdir/WATCHDOG.md" <<'EOF'
-          @skills/spec-driven-tdd/WATCHDOG.md
-          EOF
-
-          git -C "$workdir" init -b main
-          git -C "$workdir" config user.name "OMP E2E"
-          git -C "$workdir" config user.email "omp-e2e@example.invalid"
-          git -C "$workdir" add .
-          git -C "$workdir" commit -m "Initialize OMP SDDTDD E2E fixture"
-
-          echo "OMP_E2E_WORKDIR=$workdir" >> "$GITHUB_ENV"
+        run: bash .github/scripts/prepare_omp_e2e.sh
 
       - name: Run OMP Spec-Driven TDD workflow with live events
-        run: |
-          set -uo pipefail
-          cd "$OMP_E2E_WORKDIR"
-          prompt="$(cat "$GITHUB_WORKSPACE/.github/omp-e2e-prompt.md")"
-          raw_events="$RUNNER_TEMP/omp-events.jsonl"
-          live_log="$RUNNER_TEMP/omp-live.log"
-          stderr_log="$RUNNER_TEMP/omp-stderr.log"
-
-          echo "Starting OMP JSON event stream at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "Raw events: $raw_events"
-
-          timeout 60m stdbuf -oL -eL omp \
-            --mode json \
-            --advisor \
-            --no-pty \
-            --yolo \
-            --model opencode-go/deepseek-v4-flash \
-            --config "$GITHUB_WORKSPACE/.github/omp-e2e-config.yml" \
-            "$prompt" \
-            > >(tee "$raw_events" | python3 -u "$GITHUB_WORKSPACE/.github/scripts/render_omp_events.py" | tee "$live_log") \
-            2> >(tee "$stderr_log" >&2) &
-          omp_pid=$!
-
-          (
-            while kill -0 "$omp_pid" 2>/dev/null; do
-              sleep 15
-              kill -0 "$omp_pid" 2>/dev/null || break
-              echo "[OMP heartbeat] $(date -u +%Y-%m-%dT%H:%M:%SZ) pid=$omp_pid"
-              if test -f .sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log; then
-                echo "[OMP heartbeat] latest journal lines:"
-                tail -n 12 .sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log || true
-              fi
-              echo "[OMP heartbeat] git status:"
-              git status --short || true
-            done
-          ) &
-          heartbeat_pid=$!
-
-          wait "$omp_pid"
-          omp_status=$?
-          kill "$heartbeat_pid" 2>/dev/null || true
-          wait "$heartbeat_pid" 2>/dev/null || true
-
-          echo "OMP exited with status $omp_status at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          exit "$omp_status"
+        run: bash .github/scripts/run_omp_e2e.sh
 
       - name: Verify runnable Arkanoid application
-        run: |
-          set -euo pipefail
-          cd "$OMP_E2E_WORKDIR"
-
-          test -f package.json
-          test -f app/index.html
-          test -f app/game.js
-          npm test
-
-          npm run start > "$RUNNER_TEMP/arkanoid-server.log" 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-
-          ready=0
-          for _ in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:4173/ > "$RUNNER_TEMP/arkanoid-index.html"; then
-              ready=1
-              break
-            fi
-            sleep 1
-          done
-
-          test "$ready" -eq 1
-          grep -qi "canvas" "$RUNNER_TEMP/arkanoid-index.html"
+        run: bash .github/scripts/verify_arkanoid_e2e.sh
 
       - name: Verify committed SDDTDD evidence
-        run: |
-          set -euo pipefail
-          cd "$OMP_E2E_WORKDIR"
-          python3 \
-            "$GITHUB_WORKSPACE/skills/spec-driven-tdd/tests/verify_evidence.py" \
-            .sddtdd_skill/JOURNAL_SDD_TDD_SKILL.log \
-            .sddtdd_skill/orchestrator.log
-          test -z "$(git status --porcelain)"
-          test "$(git rev-list --count HEAD)" -gt 1
+        run: bash .github/scripts/verify_sddtdd_evidence.sh
 
       - name: Upload OMP E2E evidence
         if: always()
