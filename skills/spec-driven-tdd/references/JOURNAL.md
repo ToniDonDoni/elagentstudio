@@ -63,6 +63,8 @@ Rules:
 | `ARCHITECTURE_REVIEW` | architecture review verdict |
 | `DECOMPOSE` | `TASKS.md` created or revised |
 | `TASK_REVIEW` | task decomposition review verdict |
+| `IMPLEMENTATION_PLAN` | `IMPLEMENTATION-PLAN.md` created or revised |
+| `IMPLEMENTATION_PLAN_REVIEW` | independent review verdict for the exact implementation-plan commit |
 | `RED` | committed failing test and RED evidence |
 | `RED_REVIEW` | RED review verdict |
 | `GREEN` | committed minimal implementation and GREEN evidence |
@@ -150,6 +152,9 @@ USER_INPUT
 → DECOMPOSE
 → TASK_REVIEW
 → ORCHESTRATOR_TASK_REVIEW
+→ IMPLEMENTATION_PLAN
+→ IMPLEMENTATION_PLAN_REVIEW
+→ ORCHESTRATOR_TASK_REVIEW
 → task branches
 → TASKS_COMPLETE
 → REGRESSION
@@ -160,6 +165,9 @@ USER_INPUT
 → ORCHESTRATOR_TASK_REVIEW
 → DONE
 ```
+
+No task branch may begin before `IMPLEMENTATION_PLAN_REVIEW: PASS` and the
+following `ORCHESTRATOR_TASK_REVIEW: PASS` are committed for the exact plan.
 
 Task branch:
 
@@ -175,6 +183,10 @@ RED
 → ORCHESTRATOR_TASK_REVIEW
 ```
 
+Each task branch must correspond to exactly one reviewed `TASKS.md` task id and
+one reviewed `IMPLEMENTATION-PLAN.md` execution row. Multiple reviewed task nodes
+may not be collapsed into one RED or GREEN event chain.
+
 `MERGE_REVIEW` is mandatory. No downstream task, `TASKS_COMPLETE`, regression,
 or final work may consume an integrated commit until its exact merge result has
 `MERGE_REVIEW: PASS` and a following `ORCHESTRATOR_TASK_REVIEW: PASS`.
@@ -185,6 +197,7 @@ Failure transitions:
 SPEC_REVIEW FAIL → SPEC_SPEC
 ARCHITECTURE_REVIEW FAIL → ARCHITECTURE
 TASK_REVIEW FAIL → DECOMPOSE
+IMPLEMENTATION_PLAN_REVIEW FAIL → IMPLEMENTATION_PLAN
 RED_REVIEW FAIL → RED
 GREEN_REVIEW FAIL → GREEN
 MERGE_REVIEW FAIL → MERGE or affected task
@@ -195,6 +208,11 @@ FINAL_REVIEW FAIL → FINAL or affected upstream artifact
 `NEEDS_CLARIFICATION` pauses affected work and is followed by captured user input
 plus replanning/re-review. `BLOCKED` stops dependent work until the named condition
 is resolved.
+
+Any change to implementation batching, dependency waves, parallel groups, write
+scopes, RED/GREEN assignment boundaries, or merge order returns to
+`IMPLEMENTATION_PLAN`, followed by a new review and process gate before affected
+work resumes.
 
 ## ORCHESTRATOR_TASK_REVIEW
 
@@ -209,6 +227,7 @@ The verdict must be grounded in actual OMP evidence recorded in runtime logs:
 - exact branch and commit;
 - clean-worktree evidence;
 - independent reviewer verdict for the exact commit;
+- reviewed implementation-plan row for RED/GREEN work;
 - RED/GREEN or post-integration test evidence;
 - absence of unresolved watchdog blockers.
 
@@ -241,6 +260,8 @@ when one event depends on several completed branches.
 5. sibling tasks share a parent rather than being chained by execution order;
 6. review PASS cannot truthfully exist without the corresponding reviewed work entry;
 7. orchestrator PASS cannot truthfully exist without matching OMP runtime evidence;
-8. no implementation result is integrated before independent review PASS;
-9. every integration commit receives `MERGE_REVIEW: PASS` before downstream use;
-10. downstream work must not depend on upstream work lacking required approval proof.
+8. no RED/GREEN work begins before reviewed implementation planning and its process gate;
+9. each RED/GREEN assignment covers exactly one reviewed task node and follows one reviewed plan row;
+10. no implementation result is integrated before independent review PASS;
+11. every integration commit receives `MERGE_REVIEW: PASS` before downstream use;
+12. downstream work must not depend on upstream work lacking required approval proof.
