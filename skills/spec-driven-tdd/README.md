@@ -118,23 +118,5 @@ git log --oneline --all --graph --decorate
 ```
 
 The workflow should leave the specification, architecture, tasks, reviewed
-`IMPLEMENTATION-PLAN.md`, journal, runtime handoffs, reviewed commits, tests,
-and final implementation in the project repository.
-
-`IMPLEMENTATION-PLAN.md` is created and independently reviewed after `TASKS.md`
-and before the first RED/GREEN delegation. It defines one task id per assignment,
-dependency waves, safe parallel scopes, RED/review/GREEN/review order, and merge
-order.
-
-## Skill files
-
-- `SKILL.md` - shared workflow policy.
-- `SKILL-ORCHESTRATOR.md` - primary dispatcher and process gates.
-- `SKILL-IMPLEMENTER.md` - artifact, implementation-plan, RED/GREEN, correction, and merge work.
-- `SKILL-REVIEWER.md` - independent committed-state review, including `IMPLEMENTATION_PLAN_REVIEW`.
-- `SKILL-WATCHDOG.md` - advisor process supervision.
-- `AGENTS.md` - primary-agent entrypoint.
-- `WATCHDOG.md` - advisor entrypoint.
-- `WATCHDOG.yml` - advisor configuration template.
-- `tests/verify_evidence.py` - journal/runtime evidence verifier.
-- `tests/test_verify_evidence.py` - verifier tests.
+implementation plan, journal, reviewed commits, tests, and final implementation
+in the project repository.
