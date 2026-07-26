@@ -58,13 +58,38 @@ Review gate:
 
 - request `TASK_REVIEW`;
 - record `ORCHESTRATOR_TASK_REVIEW`;
-- implementation work is illegal before both pass.
+- implementation planning is illegal before both pass.
 
-## Stage 4 — Per-task RED/GREEN
+## Stage 4 — Implementation Plan
 
-For every automatically testable task:
+Create or revise `.sddtdd_skill/IMPLEMENTATION-PLAN.md` before any RED, GREEN,
+test, code, or implementation delegation.
 
-1. select the reviewed task, requirement ids, architecture references, and acceptance condition;
+For every automatically testable `TASKS.md` node, define:
+
+- exactly one `TASK_ID` per execution row or section;
+- dependencies and execution wave;
+- whether the assignment may run in parallel;
+- a non-overlapping allowed write scope;
+- RED implementer assignment and proving command;
+- separate `RED_REVIEW` assignment;
+- GREEN implementer assignment after RED review PASS;
+- separate `GREEN_REVIEW` assignment;
+- serialized merge position and post-integration tests;
+- stop/reroute behavior for FAIL, NEEDS_CLARIFICATION, BLOCKED, invalid RED, advisor blocker, and conflict.
+
+Review gate:
+
+- request `IMPLEMENTATION_PLAN_REVIEW`;
+- record `ORCHESTRATOR_TASK_REVIEW`;
+- RED, GREEN, tests, code, and implementation delegation are illegal before both pass;
+- any runtime change to batching, dependencies, parallel groups, write scopes, or merge order requires a committed plan revision and another review PASS.
+
+## Stage 5 — Per-task RED/GREEN
+
+For every automatically testable task, following its reviewed implementation-plan row:
+
+1. select exactly one reviewed task id, requirement ids, architecture references, and acceptance condition;
 2. write the highest practical proving test;
 3. establish RED with exact failing command and expected missing-behavior reason;
 4. request `RED_REVIEW` and record the process gate;
@@ -76,11 +101,12 @@ Rules:
 
 - implementation is illegal before target-specific `RED_REVIEW: PASS` and its process gate;
 - integration is illegal before `GREEN_REVIEW: PASS` and its process gate;
-- supplementary unit tests do not replace the proving test.
+- supplementary unit tests do not replace the proving test;
+- one RED or GREEN assignment may not coalesce multiple reviewed task nodes.
 
-## Stage 5 — Reviewed Integration
+## Stage 6 — Reviewed Integration
 
-For each independently reviewed worker commit:
+For each independently reviewed worker commit, in reviewed plan order:
 
 1. delegate one synchronous MERGE implementer;
 2. integrate exactly one reviewed result;
@@ -93,14 +119,14 @@ For each independently reviewed worker commit:
 No other merge or downstream stage may consume the integration commit before
 both gates pass.
 
-## Stage 6 — Task Convergence
+## Stage 7 — Task Convergence
 
 When all required task branches pass GREEN review, integration, mandatory merge
 review, and process gates, append `TASKS_COMPLETE`.
 
 Regression is illegal before convergence.
 
-## Stage 7 — Regression
+## Stage 8 — Regression
 
 Run the complete required affected-suite regression on the final candidate
 commit and record exact commands, scope, result, and justified omissions.
@@ -111,10 +137,11 @@ Review gate:
 - record `ORCHESTRATOR_TASK_REVIEW`;
 - final completion is illegal before both pass.
 
-## Stage 8 — Final
+## Stage 9 — Final
 
 Prepare final evidence covering traceability, final behavior, explicit
-deviations, residual risks, and final artifact list.
+deviations, residual risks, and final artifact list, including proof that the
+reviewed implementation plan was followed or formally revised and re-reviewed.
 
 Review gate:
 
@@ -122,9 +149,9 @@ Review gate:
 - record `ORCHESTRATOR_TASK_REVIEW`;
 - DONE is illegal before both pass.
 
-## Stage 9 — Done
+## Stage 10 — Done
 
 Append `DONE` only when all required artifacts exist, all required reviews pass,
-all automatically testable behaviors completed reviewed RED/GREEN, every
-integration commit passed mandatory merge review, regression passed and was
-reviewed, and the journal chain is intact.
+the reviewed implementation plan was followed, all automatically testable
+behaviors completed reviewed RED/GREEN, every integration commit passed mandatory
+merge review, regression passed and was reviewed, and the journal chain is intact.

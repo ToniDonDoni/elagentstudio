@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify committed Spec-Driven TDD journal and OMP handoff evidence."""
+"""Verify committed Spec-Driven TDD journal, implementation plan, and OMP handoffs."""
 
 from __future__ import annotations
 
@@ -12,12 +12,22 @@ from typing import Iterable
 
 ENTRY_HEADER = re.compile(r"^===\s+(.+?)\s+===$")
 PLACEHOLDERS = {"", "--", "none", "null", "unknown", "n/a", "pending"}
+PLAN_MARKERS = (
+    "TASK_ID",
+    "RED",
+    "RED_REVIEW",
+    "GREEN",
+    "GREEN_REVIEW",
+    "MERGE_ORDER",
+)
 
 REQUIRED_LATEST_STATUS = {
     "USER_INPUT": "COMPLETED",
     "SPEC_REVIEW": "PASS",
     "ARCHITECTURE_REVIEW": "PASS",
     "TASK_REVIEW": "PASS",
+    "IMPLEMENTATION_PLAN": "COMPLETED",
+    "IMPLEMENTATION_PLAN_REVIEW": "PASS",
     "RED_REVIEW": "PASS",
     "GREEN_REVIEW": "PASS",
     "MERGE": "COMPLETED",
@@ -81,6 +91,29 @@ def is_real(value: object) -> bool:
     return isinstance(value, str) and value.strip().lower() not in PLACEHOLDERS
 
 
+def verify_implementation_plan(path: Path) -> None:
+    if not path.is_file() or path.stat().st_size == 0:
+        raise EvidenceError(f"missing or empty implementation plan: {path}")
+    text = path.read_text(encoding="utf-8")
+    for marker in PLAN_MARKERS:
+        if marker not in text:
+            raise EvidenceError(f"implementation plan is missing required marker: {marker}")
+    task_ids = [
+        line.split(":", 1)[1].strip()
+        for line in text.splitlines()
+        if line.strip().startswith("TASK_ID:")
+    ]
+    if not task_ids:
+        raise EvidenceError("implementation plan has no TASK_ID rows")
+    for task_id in task_ids:
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", task_id):
+            raise EvidenceError(
+                f"implementation plan TASK_ID must name exactly one task node: {task_id!r}"
+            )
+    if len(task_ids) != len(set(task_ids)):
+        raise EvidenceError("implementation plan contains duplicate TASK_ID rows")
+
+
 def verify_journal(entries: Iterable[JournalEntry]) -> None:
     ordered = list(entries)
     latest: dict[str, JournalEntry] = {}
@@ -113,9 +146,22 @@ def verify_journal(entries: Iterable[JournalEntry]) -> None:
     if not gates:
         raise EvidenceError("missing passing ORCHESTRATOR_TASK_REVIEW evidence")
 
+    plan_index = max(
+        i for i, entry in enumerate(ordered) if entry.event_type == "IMPLEMENTATION_PLAN"
+    )
+    plan_review_index = max(
+        i
+        for i, entry in enumerate(ordered)
+        if entry.event_type == "IMPLEMENTATION_PLAN_REVIEW"
+    )
+    red_review_index = max(i for i, entry in enumerate(ordered) if entry.event_type == "RED_REVIEW")
     merge_index = max(i for i, entry in enumerate(ordered) if entry.event_type == "MERGE")
     merge_review_index = max(i for i, entry in enumerate(ordered) if entry.event_type == "MERGE_REVIEW")
     done_index = max(i for i, entry in enumerate(ordered) if entry.event_type == "DONE")
+    if not plan_index < plan_review_index < red_review_index:
+        raise EvidenceError(
+            "IMPLEMENTATION_PLAN_REVIEW must occur after IMPLEMENTATION_PLAN and before RED_REVIEW"
+        )
     if not merge_index < merge_review_index < done_index:
         raise EvidenceError("MERGE_REVIEW must occur after MERGE and before DONE")
 
@@ -150,6 +196,14 @@ def verify_runtime(records: Iterable[dict[str, object]]) -> None:
         raise EvidenceError("orchestrator log has no real commit SHA")
     if not any(str(row.get("role", "")) == "reviewer" for row in rows):
         raise EvidenceError("orchestrator log has no reviewer handoff/check record")
+    if not any(str(row.get("task_kind", "")) == "IMPLEMENTATION_PLAN" for row in rows):
+        raise EvidenceError("orchestrator log has no IMPLEMENTATION_PLAN handoff/check record")
+    if not any(
+        str(row.get("task_kind", "")) == "IMPLEMENTATION_PLAN_REVIEW" for row in rows
+    ):
+        raise EvidenceError(
+            "orchestrator log has no IMPLEMENTATION_PLAN_REVIEW handoff/check record"
+        )
     if not any(str(row.get("task_kind", "")) == "MERGE" for row in rows):
         raise EvidenceError("orchestrator log has no MERGE handoff/check record")
 
@@ -157,6 +211,7 @@ def verify_runtime(records: Iterable[dict[str, object]]) -> None:
 def verify(journal_path: Path, orchestrator_log_path: Path) -> None:
     if not journal_path.is_file() or journal_path.stat().st_size == 0:
         raise EvidenceError(f"missing or empty journal: {journal_path}")
+    verify_implementation_plan(journal_path.with_name("IMPLEMENTATION-PLAN.md"))
     verify_journal(parse_journal(journal_path.read_text(encoding="utf-8")))
     verify_runtime(load_jsonl(orchestrator_log_path))
 

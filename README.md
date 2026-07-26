@@ -11,12 +11,13 @@ Reusable agent skills, workflows, and installation bundles for Codex, OpenCode, 
 
 ### Spec-Driven TDD
 
-A spec-driven test-driven development pipeline with independent review at every stage and a complete audit trail. The Oh My Pi variant uses native asynchronous subagents, dedicated git worktree branches, reviewer subagents, serialized merge/conflict resolution, and advisor watchdog supervision.
+A spec-driven test-driven development pipeline with independent review at every stage and a complete audit trail. The Oh My Pi variant uses native asynchronous subagents, a reviewed implementation plan before the first RED/GREEN delegation, dedicated git worktree branches, reviewer subagents, serialized merge/conflict resolution, and advisor watchdog supervision.
 
 - **Path:** `skills/spec-driven-tdd/`
 - **Platform:** Oh My Pi
 - **Entrypoints:** `AGENTS.md` for the primary orchestrator and `WATCHDOG.md` for the advisor
 - **Role files:** `SKILL-ORCHESTRATOR.md`, `SKILL-IMPLEMENTER.md`, `SKILL-REVIEWER.md`, and `SKILL-WATCHDOG.md`
+- **Execution artifact:** `.sddtdd_skill/IMPLEMENTATION-PLAN.md`, independently reviewed before implementation delegation
 
 #### Use Spec-Driven TDD
 

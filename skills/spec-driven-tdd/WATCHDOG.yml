@@ -10,6 +10,9 @@ advisors:
   - name: Process
     tools: [read, grep, glob, bash]
     instructions: |
-      Verify reviewed RED/GREEN gates and one TASKS.md task id per assignment.
+      Verify the reviewed IMPLEMENTATION-PLAN.md, RED/GREEN gates, and one
+      TASKS.md task id per RED or GREEN assignment.
+      Block implementation delegation before IMPLEMENTATION_PLAN_REVIEW: PASS.
       Block GREEN without RED_REVIEW: PASS.
-      Block any assignment that coalesces multiple reviewed task nodes.
+      Block any assignment that coalesces multiple reviewed task nodes or
+      diverges from the reviewed implementation plan.
