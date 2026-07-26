@@ -39,6 +39,10 @@ policy. `.omp/WATCHDOG.yml` grants the advisor `read`, `grep`, `glob`, and
 `bash` remains a trust decision because OMP cannot make arbitrary shell commands
 read-only.
 
+The watchdog entrypoint explicitly treats OMP's
+`[in progress — more steps follow]` marker as transport metadata. Hard workflow
+gates still require immediate `blocker` advice during an active tool loop.
+
 ### 3. Configure the model and API key
 
 This example uses OpenCode Go with DeepSeek V4 Flash:
@@ -120,16 +124,22 @@ find .sddtdd_skill -maxdepth 2 -type f -print
 git log --oneline --all --graph --decorate
 ```
 
-The workflow should leave the specification, architecture, tasks, journal,
-runtime handoffs, reviewed commits, tests, and final implementation in the
-project repository.
+The workflow should leave the specification, architecture, tasks, reviewed
+`IMPLEMENTATION-PLAN.md`, journal, runtime handoffs, reviewed commits, tests,
+and final implementation in the project repository.
+
+`IMPLEMENTATION-PLAN.md` is created and independently reviewed after `TASKS.md`
+and before the first RED/GREEN delegation. It defines one task id per assignment,
+dependency waves, safe parallel scopes, RED/review/GREEN/review order, and merge
+order so the advisor and reviewer can reject bad batching before implementation
+starts.
 
 ## Skill files
 
 - `SKILL.md` - shared workflow policy.
 - `SKILL-ORCHESTRATOR.md` - primary dispatcher and process gates.
-- `SKILL-IMPLEMENTER.md` - artifact, RED/GREEN, correction, and merge work.
-- `SKILL-REVIEWER.md` - independent committed-state review.
+- `SKILL-IMPLEMENTER.md` - artifact, implementation-plan, RED/GREEN, correction, and merge work.
+- `SKILL-REVIEWER.md` - independent committed-state review, including `IMPLEMENTATION_PLAN_REVIEW`.
 - `SKILL-WATCHDOG.md` - advisor process supervision.
 - `AGENTS.md` - primary-agent entrypoint.
 - `WATCHDOG.md` - advisor policy template imported by `.omp/WATCHDOG.md`.
