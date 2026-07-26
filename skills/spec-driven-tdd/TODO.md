@@ -79,5 +79,5 @@ instructions restrict shell use to read-only inspection and require immediate
 `TASKS.md` task ids into one assignment.
 
 This is only a workaround. A stronger fix should make the advisor recover from
-tool denial, use granted tools, and ensure a valid `advise` call is not lost
-because another tool call in the same turn is unavailable.
+tool denial, use granted tools, and proactively notify the user when supervision
+fails.
