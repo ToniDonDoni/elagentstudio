@@ -36,6 +36,11 @@ policy, ancestry, or evidence.
 
 Use `TASK_REVIEW` consistently. Do not emit `TASKS_REVIEW`.
 
+For `IMPLEMENTATION_PLAN_REVIEW`, the delegated OMP reviewer task must be named
+`PlanReviewer`. Do not reuse `SpecReviewer` or `TaskReviewer` for this stage and
+do not invent a different reviewer name. `PlanReviewer` remains the read-only
+reviewer role defined by this file.
+
 ## Verdicts
 
 Return exactly one:
