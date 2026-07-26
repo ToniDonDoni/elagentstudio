@@ -168,11 +168,17 @@ Before downstream work depends on a result, verify:
 ## Runtime logs
 
 Maintain private append-only JSONL at `.sddtdd_skill/orchestrator.log`. Append one
-record for every delegation and result check:
+complete record for every delegation and result check:
 
 ```json
-{"timestamp":"UTC_ISO8601","event":"HANDOFF|CHECK","role":"implementer|reviewer","task_kind":"TASK_KIND","task_id":"BUSINESS_TASK_ID","agent_id":"OMP_AGENT_ID_OR_NONE","job_id":"OMP_JOB_ID_OR_NONE","commit":"COMMIT_OR_NONE","head":"HEAD_SHA","summary":"SHORT_DESCRIPTION","prompt":"EXACT_DELEGATED_PROMPT"}
+{"timestamp":"UTC_ISO8601","event":"HANDOFF|CHECK","role":"implementer|reviewer","task_kind":"TASK_KIND","task_id":"BUSINESS_TASK_ID","agent_id":"ACTUAL_OMP_AGENT_ID","job_id":"ACTUAL_OMP_JOB_ID","commit":"RESULT_COMMIT_OR_NONE","reviewed_commit":"EXACT_REVIEWED_COMMIT_OR_NONE","verdict":"PASS|FAIL|NEEDS_CLARIFICATION|BLOCKED|NONE","head":"HEAD_SHA","summary":"SHORT_DESCRIPTION","prompt":"EXACT_DELEGATED_PROMPT"}
 ```
+
+For an implementer result, `commit` is mandatory and identifies the exact result.
+For a reviewer result, `reviewed_commit` and the declared `verdict` are mandatory;
+`reviewed_commit` must equal the implementer's exact result commit. Reviewer agent
+and job ids must differ from the implementer's ids. Every recorded agent and job
+id must appear in the raw OMP task event stream.
 
 After each reviewer returns, append its exact structured yield plus actual agent
 and job ids to `.sddtdd_skill/reviewer.log`. This write is performed by the
