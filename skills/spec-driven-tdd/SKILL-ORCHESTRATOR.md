@@ -105,15 +105,16 @@ After `IMPLEMENTATION_PLAN_REVIEW: PASS` and its process gate:
 - select only dependency-ready assignments from the next legal plan wave;
 - issue one RED or GREEN assignment for exactly one reviewed `TASKS.md` task id;
 - ensure parallel assignments match the reviewed plan and have safe, non-overlapping write scopes;
-- run each writing assignment in its own dedicated git worktree and branch;
+- invoke every RED/GREEN writing task with `isolated: true` and `apply: false`;
+- fail closed and do not launch a writing batch if either field is omitted from any writing task;
+- require each isolated worker to return a durable branch, commit, or unapplied patch for review;
 - run workers asynchronously through OMP `task`;
-- review each completed branch immediately;
+- review each completed result immediately;
 - do not treat completion order as task ancestry;
-- do not integrate an unreviewed branch.
+- do not integrate an unreviewed result.
 
-Do not configure OMP task isolation to automatically apply or cherry-pick
-implementation results into the integration branch before review. The worker
-must return a durable branch/commit or unapplied patch for independent review.
+Never apply or cherry-pick implementation results into the integration branch
+before independent review passes.
 
 ## Merge and conflict handling
 
