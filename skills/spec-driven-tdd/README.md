@@ -56,7 +56,7 @@ advisor:
 task:
   maxConcurrency: 6
   isolation:
-    mode: auto
+    mode: rcopy
     merge: branch
     apply: false
 EOF
@@ -66,6 +66,11 @@ OPENCODE_API_KEY=replace-with-your-key
 EOF
 printf '.env\n' >> .gitignore
 ```
+
+OMP has no `full` isolation mode. `rcopy` selects the cross-platform backend
+that materializes each isolated task in its own directory. The orchestrator
+must still pass `isolated: true` for every writing task; the skill enforces this
+and fails closed when the flag is missing.
 
 Use another OMP provider/model by changing `modelRoles` and its credential.
 
