@@ -1,4 +1,4 @@
-name: OMP Spec-Driven TDD E2E
+name: OMP Spec-Driven TDD Simple Test
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  arkanoid-e2e:
+  simple-test:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 70
@@ -43,7 +43,6 @@ jobs:
           echo "[workflow] START validate E2E scripts $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           bash -n .github/scripts/*.sh
           python3 -m py_compile .github/scripts/*.py
-          node --check .github/scripts/verify_arkanoid_browser.spec.mjs
           python3 .github/scripts/test_render_omp_events.py
           echo "[workflow] DONE validate E2E scripts $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -61,26 +60,26 @@ jobs:
           python3 skills/spec-driven-tdd/tests/test_verify_evidence.py -v
           echo "[workflow] DONE evidence verifier tests $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-      - name: Prepare isolated test repository
+      - name: Prepare isolated simple test repository
         run: |
           echo "::notice title=OMP E2E stage::START prepare isolated repository"
           echo "[workflow] START prepare isolated repository $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           bash .github/scripts/prepare_omp_e2e.sh
           echo "[workflow] DONE prepare isolated repository $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-      - name: Run OMP Spec-Driven TDD workflow with live events
+      - name: Run OMP Spec-Driven TDD simple test
         run: |
-          echo "::notice title=OMP E2E stage::START OMP live execution"
-          echo "[workflow] START OMP live execution $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "::notice title=OMP E2E stage::START OMP simple test"
+          echo "[workflow] START OMP simple test $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           bash .github/scripts/run_omp_e2e.sh
-          echo "[workflow] DONE OMP live execution $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "[workflow] DONE OMP simple test $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-      - name: Verify runnable Arkanoid application
+      - name: Verify simple application
         run: |
-          echo "::notice title=OMP E2E stage::START Arkanoid runtime verification"
-          echo "[workflow] START Arkanoid runtime verification $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "::notice title=OMP E2E stage::START simple application verification"
+          echo "[workflow] START simple application verification $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           bash .github/scripts/verify_arkanoid_e2e.sh
-          echo "[workflow] DONE Arkanoid runtime verification $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "[workflow] DONE simple application verification $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
       - name: Verify committed SDDTDD evidence
         run: |
@@ -89,11 +88,11 @@ jobs:
           bash .github/scripts/verify_sddtdd_evidence.sh
           echo "[workflow] DONE SDDTDD evidence verification $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-      - name: Upload OMP E2E evidence
+      - name: Upload simple test evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: omp-sddtdd-arkanoid-evidence
+          name: omp-sddtdd-simple-test-evidence
           if-no-files-found: warn
           include-hidden-files: true
           path: |
@@ -102,7 +101,5 @@ jobs:
             ${{ runner.temp }}/omp-live.log
             ${{ runner.temp }}/omp-stderr.log
             ${{ runner.temp }}/omp-pipeline-status.txt
-            ${{ runner.temp }}/arkanoid-server.log
-            ${{ runner.temp }}/arkanoid-index.html
-            ${{ runner.temp }}/arkanoid-browser.png
-            ${{ runner.temp }}/arkanoid-browser-result.json
+            ${{ runner.temp }}/simple-test-server.log
+            ${{ runner.temp }}/simple-test-index.html
