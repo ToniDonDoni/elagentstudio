@@ -7,7 +7,7 @@ echo "[script prepare_omp_e2e] START $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 : "${GITHUB_ENV:?GITHUB_ENV is required}"
 : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
 
-workdir="$RUNNER_TEMP/omp-sddtdd-arkanoid"
+workdir="$RUNNER_TEMP/omp-sddtdd-simple-test"
 echo "[script prepare_omp_e2e] Creating fixture at $workdir"
 rm -rf "$workdir"
 mkdir -p "$workdir/skills" "$workdir/.omp"
