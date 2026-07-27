@@ -68,6 +68,21 @@ jobs:
           bash .github/scripts/prepare_omp_e2e.sh
           echo "[workflow] DONE prepare isolated repository $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
+      - name: Diagnose GitHub live log baseline
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "::notice title=OMP E2E diagnostic::START two-minute live log baseline"
+          echo "[baseline] START $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          for i in $(seq 1 120); do
+            printf '[baseline stdout] time=%s i=%03d pid=%s\n' \
+              "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$i" "$$"
+            printf '[baseline stderr] time=%s i=%03d pid=%s\n' \
+              "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$i" "$$" >&2
+            sleep 1
+          done
+          echo "[baseline] DONE $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
       - name: Run OMP Spec-Driven TDD workflow with live events
         run: |
           echo "::notice title=OMP E2E stage::START OMP live execution"
