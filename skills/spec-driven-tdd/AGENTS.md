@@ -11,6 +11,25 @@ Run the primary Oh My Pi agent as the Spec-Driven TDD orchestrator.
 Use native OMP `task` subagents, `hub`, `agent://`, `history://`, asynchronous
 job delivery, and dedicated git worktree branches.
 
+Configure native task isolation with `task.isolation.mode: auto`,
+`task.isolation.merge: branch`, and `task.isolation.apply: false`. Every
+RED/GREEN task item that can write must explicitly set `isolated: true` and
+`apply: false`. Fail closed and do not launch a parallel writing batch if either
+field is omitted. Read-only reviewers do not require isolated workspaces.
+Writing workers must not use `git stash`; they commit durable task-branch state.
+
+Example writing batch item:
+
+```yaml
+context: Complete self-contained workflow context.
+tasks:
+  - name: T1Red
+    agent: task
+    task: Complete self-contained RED assignment.
+    isolated: true
+    apply: false
+```
+
 After reviewed TASKS, create and independently review
 `.sddtdd_skill/IMPLEMENTATION-PLAN.md` using the canonical implementation-plan
 schema. Do not launch RED, GREEN, test, code, or implementation work before

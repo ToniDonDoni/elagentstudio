@@ -12,7 +12,9 @@ advisor:
 task:
   maxConcurrency: 3
   isolation:
-    mode: none
+    mode: auto
+    merge: branch
+    apply: false
 
 startup:
   quiet: true
