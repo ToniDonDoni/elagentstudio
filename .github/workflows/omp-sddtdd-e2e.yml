@@ -78,7 +78,7 @@ jobs:
         run: |
           echo "::notice title=OMP E2E stage::START simple application verification"
           echo "[workflow] START simple application verification $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          bash .github/scripts/verify_arkanoid_e2e.sh
+          bash .github/scripts/verify_simple_e2e.sh
           echo "[workflow] DONE simple application verification $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
       - name: Verify committed SDDTDD evidence
