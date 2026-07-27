@@ -20,7 +20,6 @@ Process requirements:
 - Delegate RED and GREEN work to asynchronous OMP implementer subagents exactly as defined by the reviewed implementation plan.
 - Every RED/GREEN writing task item must set `isolated: true` and `apply: false`; treat either omission as a process failure and do not launch the batch.
 - Use native branch-mode task isolation and return durable task branches or commits for review.
-- Implementation workers must not use `git stash`; commit intermediate state inside their isolated task branch.
 - The primary orchestrator must not implement or review.
 - Independent reviewers are strictly read-only and return immutable yields; the orchestrator records those yields in runtime logs.
 - Do not integrate implementation commits before independent review PASS.

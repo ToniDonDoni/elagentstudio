@@ -16,7 +16,6 @@ Configure native task isolation with `task.isolation.mode: auto`,
 RED/GREEN task item that can write must explicitly set `isolated: true` and
 `apply: false`. Fail closed and do not launch a parallel writing batch if either
 field is omitted. Read-only reviewers do not require isolated workspaces.
-Writing workers must not use `git stash`; they commit durable task-branch state.
 
 Example writing batch item:
 
