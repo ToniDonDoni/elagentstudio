@@ -109,7 +109,7 @@ After `IMPLEMENTATION_PLAN_REVIEW: PASS` and its process gate:
 - fail closed and do not launch a writing batch if either field is omitted from any writing task;
 - require each isolated worker to return a durable branch, commit, or unapplied patch for review;
 - run workers asynchronously through OMP `task`;
-- review each completed result immediately;
+- launch each independent review as soon as its task completes; never accumulate completed tasks for batch review;
 - do not treat completion order as task ancestry;
 - do not integrate an unreviewed result.
 
