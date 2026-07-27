@@ -1,13 +1,13 @@
 Use the Spec-Driven TDD workflow imported by AGENTS.md and run as the primary orchestrator.
 
-Build a small runnable browser Arkanoid game in this repository.
+Build a minimal runnable Hello World web page in this repository.
 
 Product requirements:
-- The game is served from `app/` and opens in a browser.
-- It has a visible canvas, paddle, ball, destructible brick grid, score, lives, start/restart control, keyboard controls, collision handling, win state, and game-over state.
+- The application is served from `app/` and opens in a browser.
+- `app/index.html` visibly displays the exact text `Hello World`.
 - Keep the implementation dependency-free.
 - Add `package.json` with `npm test` and `npm run start` scripts.
-- `npm test` must run deterministic automated checks covering the core game logic and generated browser files.
+- `npm test` must run a deterministic automated check proving the generated page contains `Hello World`.
 - `npm run start` must serve `app/` on port 4173.
 
 Process requirements:
@@ -32,4 +32,4 @@ Process requirements:
 - Every recorded agent and job id must be the actual id returned in the raw OMP task event stream.
 - Use ASCII-only commit messages.
 - Commit every generated artifact and journal entry.
-- Finish only after the repository is clean and the game is runnable.
+- Finish only after the repository is clean and the Hello World page is runnable.
