@@ -54,9 +54,11 @@ advisor:
   enabled: true
 
 task:
-  maxConcurrency: 3
+  maxConcurrency: 6
   isolation:
-    mode: none
+    mode: auto
+    merge: branch
+    apply: false
 EOF
 
 cat > .env <<'EOF'
