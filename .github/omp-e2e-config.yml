@@ -10,7 +10,7 @@ advisor:
   enabled: true
 
 task:
-  maxConcurrency: 3
+  maxConcurrency: 6
   isolation:
     mode: auto
     merge: branch
