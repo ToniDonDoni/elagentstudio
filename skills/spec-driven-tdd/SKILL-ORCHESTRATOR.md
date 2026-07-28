@@ -24,9 +24,10 @@ subagent.
 
 ## Native OMP control plane
 
-Use `task` for asynchronous implementer/reviewer work, `hub` for follow-up and
-status coordination, `agent://<id>` for full output, and `history://<id>` for
-transcript inspection.
+Use `task` for asynchronous work:
+- **implementer tasks**: `task()` - creates a general-purpose subagent with write access.
+- **reviewer tasks**: `task()` with `agent: "reviewer"` - creates a read-only reviewer.
+Also use `hub` for follow-up and status coordination, `agent://<id>` for full output, and `history://<id>` for transcript inspection.
 
 Never invent agent ids, job ids, commits, branches, transcripts, test results,
 or verdicts. Record the exact delegated prompt and actual runtime ids.
@@ -109,7 +110,7 @@ After `IMPLEMENTATION_PLAN_REVIEW: PASS` and its process gate:
 - fail closed and do not launch a RED/GREEN batch if `isolated: true` is omitted from any RED/GREEN task;
 - require each isolated worker to return a durable branch, commit, or unapplied patch for review;
 - run workers asynchronously through OMP `task`;
-- launch each independent review as soon as its task completes; never accumulate completed tasks for batch review;
+- launch each independent review with `agent: "reviewer"` to enforce read-only access as soon as its task completes; never accumulate completed tasks for batch review;
 - do not treat completion order as task ancestry;
 - do not integrate an unreviewed result.
 
