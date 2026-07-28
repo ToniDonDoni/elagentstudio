@@ -110,7 +110,7 @@ After `IMPLEMENTATION_PLAN_REVIEW: PASS` and its process gate:
 - fail closed and do not launch a RED/GREEN batch if `isolated: true` is omitted from any RED/GREEN task;
 - require each isolated worker to return a durable branch, commit, or unapplied patch for review;
 - run workers asynchronously through OMP `task`;
-- launch each independent review with `agent: "reviewer"` to enforce read-only access as soon as its task completes; never accumulate completed tasks for batch review;
+- launch each independent review with `agent: "reviewer"` and `isolated: true` to enforce read-only access and avoid worktree conflicts with other parallel reviewers; never accumulate completed tasks for batch review and start review as soon as its task completes
 - do not treat completion order as task ancestry;
 - do not integrate an unreviewed result.
 
