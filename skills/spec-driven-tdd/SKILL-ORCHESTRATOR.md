@@ -105,8 +105,8 @@ After `IMPLEMENTATION_PLAN_REVIEW: PASS` and its process gate:
 - select only dependency-ready assignments from the next legal plan wave;
 - issue one RED or GREEN assignment for exactly one reviewed `TASKS.md` task id;
 - ensure parallel assignments match the reviewed plan and have safe, non-overlapping write scopes;
-- invoke every RED/GREEN writing task with `isolated: true` and `apply: false`;
-- fail closed and do not launch a writing batch if either field is omitted from any writing task;
+- invoke every RED/GREEN task through OMP `task` with `isolated: true`;
+- fail closed and do not launch a RED/GREEN batch if `isolated: true` is omitted from any RED/GREEN task;
 - require each isolated worker to return a durable branch, commit, or unapplied patch for review;
 - run workers asynchronously through OMP `task`;
 - launch each independent review as soon as its task completes; never accumulate completed tasks for batch review;
