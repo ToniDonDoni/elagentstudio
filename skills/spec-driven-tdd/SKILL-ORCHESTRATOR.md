@@ -87,7 +87,9 @@ After `TASK_REVIEW: PASS` and its process gate, but before any RED, GREEN, test,
 code, or implementation delegation:
 
 1. delegate one `IMPLEMENTATION_PLAN` implementer to create or revise `.sddtdd_skill/IMPLEMENTATION-PLAN.md`;
-2. require one execution row for every reviewed `TASKS.md` task node that needs RED/GREEN work;
+2. require one execution row for every reviewed `TASKS.md` task node with RED_ASSIGNMENT and GREEN_ASSIGNMENT fields:
+- every task node MUST have both RED_ASSIGNMENT and GREEN_ASSIGNMENT;
+- a task may not be implemented as GREEN-only;
 3. require each row to name exactly one `TASK_ID`, dependencies, wave, allowed write scope, RED assignment, RED review, GREEN assignment, GREEN review, proving command, and planned merge order;
 4. require explicit parallel groups only where dependencies are satisfied and write scopes do not overlap;
 5. require stop conditions for FAIL, NEEDS_CLARIFICATION, BLOCKED, advisor blocker, invalid RED, and merge conflict;
@@ -98,6 +100,14 @@ No implementation worker may be launched before both plan gates pass. The
 orchestrator may not improvise a different batching, order, dependency, or write
 scope at runtime. A required change must revise, commit, and re-review the plan
 before affected delegation continues.
+
+## Review requirements
+
+- Every generated artifact requires independent review before downstream use.
+- `IMPLEMENTATION-PLAN.md` must pass independent review before any RED, GREEN, test, code, or implementation delegation.
+- Every automatically testable behavior requires reviewed RED and GREEN.
+- Passing tests do not replace independent review.
+- Independent review does not replace RED/GREEN.
 
 ## Parallel implementation and worktrees
 
