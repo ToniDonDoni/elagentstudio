@@ -29,12 +29,12 @@ cd "$PROJECT_DIR"
 git init -b main
 
 printf '@skills/spec-driven-tdd/AGENTS.md\n' > AGENTS.md
-printf '@../skills/spec-driven-tdd/WATCHDOG.md\n' > .omp/WATCHDOG.md
+printf '@skills/spec-driven-tdd/WATCHDOG.md\n' > WATCHDOG.md
 cp skills/spec-driven-tdd/WATCHDOG.yml .omp/WATCHDOG.yml
 ```
 
-`AGENTS.md` loads the orchestrator workflow. OMP loads `.omp/WATCHDOG.md` for the
-advisor.
+`AGENTS.md` loads the orchestrator workflow. OMP loads `WATCHDOG.md` from the
+project root for the advisor.
 
 ### 3. Configure the model and API key
 
@@ -95,7 +95,7 @@ OMP worktrees and review evidence require a git repository with a committed
 starting point.
 
 ```bash
-git add AGENTS.md TASK.md .omp/config.yml .omp/WATCHDOG.md .omp/WATCHDOG.yml .gitignore skills
+git add AGENTS.md WATCHDOG.md TASK.md .omp/config.yml .omp/WATCHDOG.yml .gitignore skills
 git commit -m "Initialize OMP Spec Driven TDD project"
 ```
 
