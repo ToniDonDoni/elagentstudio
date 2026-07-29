@@ -43,9 +43,9 @@ This example uses OpenCode Go with DeepSeek V4 Flash:
 ```bash
 cat > .omp/config.yml <<'EOF'
 modelRoles:
-  default: opencode-go/deepseek-v4-flash
-  task: opencode-go/deepseek-v4-flash
-  advisor: opencode-go/deepseek-v4-flash
+  default: opencode-go/deepseek-v4-flash:high
+  task: opencode-go/deepseek-v4-flash:high
+  advisor: opencode-go/deepseek-v4-flash:high
 
 async:
   enabled: true
@@ -55,6 +55,9 @@ advisor:
 
 task:
   maxConcurrency: 6
+  maxEffort: high
+  agentModelOverrides:
+    reviewer: opencode-go/deepseek-v4-flash:high
   isolation:
     mode: rcopy
     merge: branch
