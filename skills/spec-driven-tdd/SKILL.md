@@ -1,87 +1,125 @@
 ---
-name: spec-driven-tdd 
-description: "Spec-Driven Test-Driven Development with three roles: orchestrator, implementer, reviewer."
-version: 5.8.0
-author: GPT-5.5
+name: spec-driven-tdd
+version: 6.0.2-omp
+description: "Spec-Driven TDD workflow for Oh My Pi with asynchronous subagents, independent review, worktree isolation, and advisor supervision."
+author: GPT-5.6
 license: MIT
 ---
 
-# Spec-Driven TDD
+# Spec-Driven TDD for Oh My Pi
 
 ## Purpose
 
-This skill turns a user request into committed software through a strict
-artifact chain, independent review, RED/GREEN TDD for automatically testable
-behavior, and a committed journal.
+Turn a user request into committed software through a strict artifact chain,
+independent review, a reviewed implementation plan, reviewed RED/GREEN TDD,
+parallel worktree implementation, and committed evidence.
 
-There are exactly three roles:
+## Roles
 
-- Orchestrator: controls the workflow and decides what happens next. The orchestrator is a dispatcher only: it delegates artifact work to implementers and review work to reviewers.
-- Implementer: creates artifacts. An artifact can be SPEC.md, ARCHITECTURE.md, TASKS.md, tests, code, merge results, or evidence.
-- Reviewer: reviews artifacts. A reviewed artifact can be SPEC.md, ARCHITECTURE.md, TASKS.md, tests, code, merge results, or evidence.
+There are four strictly separated roles:
 
-The registrar is the `sddtdd-mcp` MCP server, configured under the `sddtdd`
-namespace. Its active raw tools are `getNextTask` and `taskStatus`; a
-namespaced client may show them as `sddtdd_getNextTask` and
-`sddtdd_taskStatus`.
+- Orchestrator: the primary OMP agent. It delegates, monitors, applies process gates, and records handoffs. It does not implement or review.
+- Implementer: an OMP `task` subagent that creates one assigned artifact, test, code change, correction, or merge result.
+- Reviewer: a separate OMP `task` subagent that reviews an exact committed result and never fixes or writes files.
+- Watchdog: the OMP advisor attached to the primary session. It checks the orchestrator process and emits `nit`, `concern`, or `blocker` advice. It does not replace independent review.
 
-## Role files
+## OMP entrypoints
 
-- SKILL.md: global rules
-- SKILL-ORCHESTRATOR.md: orchestrator role
-- SKILL-IMPLEMENTER.md: implementer role for all artifact creation
-- SKILL-REVIEWER.md: reviewer role for all reviews
+- `AGENTS.md` imports the shared and orchestrator policies for the primary agent.
+- `WATCHDOG.md` imports advisor-only policy and is discovered separately by OMP.
+- `SKILL-ORCHESTRATOR.md` defines delegation and process gates.
+- `SKILL-IMPLEMENTER.md` defines artifact, RED/GREEN, correction, and merge work.
+- `SKILL-REVIEWER.md` defines independent committed-state review.
+- `SKILL-WATCHDOG.md` defines advisor process supervision.
 
-## Load sets
+## Native OMP evidence
 
-Orchestrator loads only its own control-plane contract:
+Use:
 
-- SKILL.md
-- SKILL-ORCHESTRATOR.md
-- references/JOURNAL.md
+- `task` for asynchronous subagents and batch fan-out;
+- `hub` for status, follow-up, correction, and cancellation;
+- `agent://<id>` for full subagent output;
+- `history://<id>` for the subagent transcript;
+- OMP agent/job ids and async-result delivery for runtime identity;
+- dedicated git worktree branches for implementation isolation;
+- session and advisor JSONL transcripts as raw execution evidence.
 
-Implementer loads:
+Runtime handoff evidence is recorded in `.sddtdd_skill/orchestrator.log`. The
+committed journal keeps its original compact schema and records the resulting
+workflow verdicts through `ORCHESTRATOR_TASK_REVIEW`.
 
-- SKILL.md
-- SKILL-IMPLEMENTER.md
-- ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md
-- references/JOURNAL.md
+## Workflow artifacts
 
-Reviewer loads:
+The workflow state lives under `.sddtdd_skill/`:
 
-- SKILL.md
-- SKILL-REVIEWER.md
-- ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md
-- references/JOURNAL.md
+- `SPEC-DRAFT.md`: exact user input and later append-only additions;
+- `SPEC.md`: reviewed requirements and acceptance criteria;
+- `ARCHITECTURE.md`: reviewed design and test boundaries;
+- `TASKS.md`: reviewed task graph and dependencies;
+- `IMPLEMENTATION-PLAN.md`: reviewed execution waves, per-task RED/review/GREEN/review assignments, parallelism, write scopes, and merge order;
+- `JOURNAL_SDD_TDD_SKILL.log`: committed workflow evidence;
+- `orchestrator.log`: append-only primary-agent handoff/check records;
+- `reviewer.log`: append-only copies of immutable reviewer yields, recorded by the orchestrator after reviewers return.
 
-## Four hard rules
+## Hard rules
 
-1. Every agent-generated artifact must receive the required independent review before downstream work depends on it.
-2. Every automatically testable behavior must pass through reviewed RED then reviewed GREEN.
-3. Every work step, review verdict, correction, and orchestrator gate must be journaled and committed before it counts as evidence.
-4. Reviewer approval and orchestrator process approval are distinct proofs. Neither replaces the other.
-5. Changes in user acceptance behavior must be escalated to the user and recorded to the journal with lable ACCEPTANCE_CHANGE.
+1. Every agent-generated artifact receives independent review before downstream work depends on it.
+2. Every automatically testable behavior passes through reviewed RED and reviewed GREEN.
+3. Review only committed evidence. Mutable working-tree state is not evidence.
+4. The orchestrator never implements, resolves conflicts, or performs independent review.
+5. The reviewer never modifies files, writes logs, authors fixes, merges, or advances the workflow.
+6. Independent review and watchdog supervision are different controls; neither replaces the other.
+7. Commit messages are ASCII-only.
+8. No RED, GREEN, or implementation assignment may begin before `IMPLEMENTATION_PLAN_REVIEW: PASS` and its process gate.
+9. Every RED or GREEN assignment covers exactly one reviewed `TASKS.md` task node and follows the reviewed implementation plan.
+10. Parallel implementation is allowed only for dependency-ready tasks with safe, non-overlapping write scopes defined in the reviewed implementation plan.
+11. Implementation branches are not integrated before independent review passes.
+12. Every integration commit receives mandatory `MERGE_REVIEW: PASS` before downstream use.
+13. Merge results are tested after integration, not only in the worker worktree.
+14. RED is valid only when it fails for the target missing behavior or target bug. Unrelated failures are invalid RED evidence.
+
+## User scope changes
+
+`SPEC-DRAFT.md` is append-only after its first commit.
+
+When the user adds or changes a product requirement during work:
+
+1. append the exact wording under an `ADDITION:` label;
+2. journal and commit the addition before acting on it;
+3. pause affected downstream work;
+4. return to the earliest affected stage;
+5. revise and re-review SPEC, architecture, tasks, the implementation plan, RED, and GREEN evidence as needed.
 
 ## Required flow
 
-1. The orchestrator captures the request into `.sddtdd_skill/SPEC-DRAFT.md`.
-2. The orchestrator launches a background implementer subagent to create and commit `SPEC.md` plus journal evidence.
-3. The orchestrator verifies clean git status for the implementer worktree.
-4. The orchestrator launches a separate background reviewer subagent for SPEC_REVIEW with full ancestry context.
-5. If review fails, the orchestrator launches an implementer again with the review findings and full ancestry context, then repeats commit, clean-status verification, and review.
-6. The same asynchronous implementer/reviewer loop creates, commits, verifies, and reviews `ARCHITECTURE.md` with full ancestry context.
-7. The same asynchronous implementer/reviewer loop creates, commits, verifies, and reviews `TASKS.md` with full ancestry context.
-8. The orchestrator launches every non-MERGE implementer and reviewer task as a background task with full ancestry context; each agent reports its own runtime task id and state to the registrar MCP.
-9. The orchestrator tracks background work with the runtime task-status mechanism and `.sddtdd_skill/task-status.json`; it never reports agent state itself.
-10. When one implementer completes, the orchestrator verifies committed evidence and clean git status, then immediately launches one background reviewer for that implementer result with full ancestry context.
-11. The orchestrator does not wait for a whole batch or wave before reviewing a completed implementer result.
-12. Reviewed worktrees are merged sequentially by synchronous MERGE implementer subagents; MERGE is the only synchronous task type.
-13. Each MERGE implementer merges one reviewed worktree into the integration branch, resolves conflicts if needed, runs the required tests after conflict resolution and before committing the merge result, records test evidence, then reports completion.
+1. Capture and commit `SPEC-DRAFT.md`.
+2. Delegate SPEC creation; commit it; launch an independent `SPEC_REVIEW`.
+3. Repeat correction and review until SPEC passes, then record `ORCHESTRATOR_TASK_REVIEW`.
+4. Repeat the same cycle for ARCHITECTURE and TASKS, using `TASK_REVIEW` consistently.
+5. Delegate creation of `.sddtdd_skill/IMPLEMENTATION-PLAN.md`; commit it; launch `IMPLEMENTATION_PLAN_REVIEW`; repeat until it passes; then record `ORCHESTRATOR_TASK_REVIEW`.
+6. Launch only dependency-ready RED assignments named by the reviewed implementation plan. Each assignment covers exactly one `TASKS.md` task id and uses a dedicated git worktree branch when it writes tests or code.
+7. When one worker completes, inspect its agent/job ids, output, transcript when needed, branch, commit, tests, and clean-state evidence.
+8. Immediately launch a separate reviewer against that exact commit.
+9. On `PASS`, advance only to the next transition defined by the reviewed implementation plan. On `FAIL`, delegate correction. On `NEEDS_CLARIFICATION`, ask the user and pause affected work. On `BLOCKED`, record and surface the blocker.
+10. Delegate one synchronous MERGE implementer for one reviewed branch at a time. Resolve conflicts there and run required tests on the integrated tree.
+11. Immediately launch mandatory `MERGE_REVIEW` against the exact integration commit. No downstream work may use it before `PASS` and the following process gate.
+12. Run and review regression evidence on the final integrated candidate.
+13. Run final traceability review and record DONE only after every gate passes.
 
-14. If `getNextTask` returns `notReady`, the orchestrator waits for direct agent status reports instead of issuing duplicate work. The registrar expires tasks after `SDDTDD_TASK_TIMEOUT_SECONDS` (600 seconds by default), marks them retryable failures, and makes them eligible for reissue.
+## Delegation context
 
-## Background requirement
+Every implementer and reviewer receives:
 
-This skill requires an agent runtime that can launch background subagents and later query their task status. The registrar MCP server must provide `getNextTask` and `taskStatus`.
+- exact role and role-file path;
+- task id and task kind;
+- allowed write scope;
+- required output and evidence;
+- repository, integration base, worktree, and branch context where relevant;
+- relevant committed ancestry, including the reviewed implementation plan for RED/GREEN work;
+- the exact implementation-plan assignment row or section governing the task when applicable;
+- relevant prior verdicts and corrections;
+- the ASCII-only commit-message rule;
+- a structured output contract when useful.
 
-If background tasks are unavailable, stop before code implementation instead of pretending async work exists.
+Child sessions do not inherit the parent conversation. Pass all required context
+in the `task` request.

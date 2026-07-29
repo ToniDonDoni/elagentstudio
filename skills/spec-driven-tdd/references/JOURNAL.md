@@ -8,12 +8,17 @@ This document defines the required format and invariants for:
 
 The journal is the committed audit trail of the workflow.
 
+This restores the original journal structure. OMP runtime ids, prompts, transcripts,
+branches, commits, and task delivery details stay in runtime JSONL logs such as
+`.sddtdd_skill/orchestrator.log`; they are evidence used to justify journal verdicts,
+not new fields in every journal entry.
+
 ## File rules
 
 - file name must be exactly `JOURNAL_SDD_TDD_SKILL.log`;
 - file path must be under `.sddtdd_skill/`;
 - every appended entry must be committed before it counts as proof;
-- `review-access.jsonl` and `orchestrator-access.jsonl` are runtime-only and not committed.
+- OMP session/advisor transcripts and `orchestrator.log`/`reviewer.log` are runtime evidence and are not substitutes for committed journal events.
 
 ## Entry format
 
@@ -51,42 +56,49 @@ Rules:
 
 | TYPE | Meaning |
 |---|---|
-| `USER_INPUT` | raw user request captured |
+| `USER_INPUT` | raw user request or append-only user addition captured |
 | `SPEC_SPEC` | `SPEC.md` created or revised |
 | `SPEC_REVIEW` | review verdict for `SPEC.md` |
 | `ARCHITECTURE` | `ARCHITECTURE.md` created or revised |
 | `ARCHITECTURE_REVIEW` | architecture review verdict |
 | `DECOMPOSE` | `TASKS.md` created or revised |
 | `TASK_REVIEW` | task decomposition review verdict |
+| `IMPLEMENTATION_PLAN` | `IMPLEMENTATION-PLAN.md` created or revised |
+| `IMPLEMENTATION_PLAN_REVIEW` | independent review verdict for the exact implementation-plan commit |
 | `RED` | committed failing test and RED evidence |
 | `RED_REVIEW` | RED review verdict |
 | `GREEN` | committed minimal implementation and GREEN evidence |
 | `GREEN_REVIEW` | GREEN review verdict |
-| `TASKS_COMPLETE` | required task branches converged |
+| `MERGE` | one independently reviewed worker result integrated and tested |
+| `MERGE_REVIEW` | independent review verdict for the exact integrated commit |
+| `TASKS_COMPLETE` | required task branches converged after passing merge reviews |
 | `REGRESSION` | committed regression evidence |
 | `REGRESSION_REVIEW` | regression review verdict |
 | `FINAL` | committed final evidence |
 | `FINAL_REVIEW` | final review verdict |
-| `ORCHESTRATOR_TASK_REVIEW` | orchestrator process-gate verdict for one orchestrator task |
+| `ORCHESTRATOR_TASK_REVIEW` | native OMP process-gate verdict for one orchestrator task |
 | `ESCALATION` | workflow escalated to user |
 | `DONE` | pipeline completed |
+
+Use `TASK_REVIEW` consistently. `TASKS_REVIEW` is not valid.
 
 ## STATUS values
 
 | STATUS | Use |
 |---|---|
 | `COMPLETED` | work events |
-| `PASS` | review approvals |
-| `FAIL` | review failures |
+| `PASS` | review or process-gate approvals |
+| `FAIL` | review or process-gate failures |
 | `NEEDS_CLARIFICATION` | missing information blocks approval |
-| `ERROR` | trustworthy process verification was impossible |
+| `BLOCKED` | external or repository condition prevents progress |
+| `ERROR` | trustworthy verification was impossible |
 | `ESCALATED` | escalation entry |
 | `CANCELLED` | cancelled branch or delivery |
 
 Rules:
 
 - `DONE` must use `STATUS: COMPLETED`;
-- `ORCHESTRATOR_TASK_REVIEW` may use `PASS`, `FAIL`, `NEEDS_CLARIFICATION`, or `ERROR`;
+- `ORCHESTRATOR_TASK_REVIEW` may use `PASS`, `FAIL`, `NEEDS_CLARIFICATION`, `BLOCKED`, or `ERROR`;
 - non-PASS review entries are not approvals.
 
 ## Journal lineage
@@ -133,27 +145,51 @@ Top level:
 USER_INPUT
 → SPEC_SPEC
 → SPEC_REVIEW
+→ ORCHESTRATOR_TASK_REVIEW
 → ARCHITECTURE
 → ARCHITECTURE_REVIEW
+→ ORCHESTRATOR_TASK_REVIEW
 → DECOMPOSE
 → TASK_REVIEW
+→ ORCHESTRATOR_TASK_REVIEW
+→ IMPLEMENTATION_PLAN
+→ IMPLEMENTATION_PLAN_REVIEW
+→ ORCHESTRATOR_TASK_REVIEW
 → task branches
 → TASKS_COMPLETE
 → REGRESSION
 → REGRESSION_REVIEW
+→ ORCHESTRATOR_TASK_REVIEW
 → FINAL
 → FINAL_REVIEW
+→ ORCHESTRATOR_TASK_REVIEW
 → DONE
 ```
+
+No task branch may begin before `IMPLEMENTATION_PLAN_REVIEW: PASS` and the
+following `ORCHESTRATOR_TASK_REVIEW: PASS` are committed for the exact plan.
 
 Task branch:
 
 ```text
 RED
 → RED_REVIEW
+→ ORCHESTRATOR_TASK_REVIEW
 → GREEN
 → GREEN_REVIEW
+→ ORCHESTRATOR_TASK_REVIEW
+→ MERGE
+→ MERGE_REVIEW
+→ ORCHESTRATOR_TASK_REVIEW
 ```
+
+Each task branch must correspond to exactly one reviewed `TASKS.md` task id and
+one reviewed `IMPLEMENTATION-PLAN.md` execution row. Multiple reviewed task nodes
+may not be collapsed into one RED or GREEN event chain.
+
+`MERGE_REVIEW` is mandatory. No downstream task, `TASKS_COMPLETE`, regression,
+or final work may consume an integrated commit until its exact merge result has
+`MERGE_REVIEW: PASS` and a following `ORCHESTRATOR_TASK_REVIEW: PASS`.
 
 Failure transitions:
 
@@ -161,29 +197,53 @@ Failure transitions:
 SPEC_REVIEW FAIL → SPEC_SPEC
 ARCHITECTURE_REVIEW FAIL → ARCHITECTURE
 TASK_REVIEW FAIL → DECOMPOSE
+IMPLEMENTATION_PLAN_REVIEW FAIL → IMPLEMENTATION_PLAN
 RED_REVIEW FAIL → RED
 GREEN_REVIEW FAIL → GREEN
+MERGE_REVIEW FAIL → MERGE or affected task
 REGRESSION_REVIEW FAIL → REGRESSION or affected task
 FINAL_REVIEW FAIL → FINAL or affected upstream artifact
 ```
 
+`NEEDS_CLARIFICATION` pauses affected work and is followed by captured user input
+plus replanning/re-review. `BLOCKED` stops dependent work until the named condition
+is resolved.
+
+Any change to implementation batching, dependency waves, parallel groups, write
+scopes, RED/GREEN assignment boundaries, or merge order returns to
+`IMPLEMENTATION_PLAN`, followed by a new review and process gate before affected
+work resumes.
+
 ## ORCHESTRATOR_TASK_REVIEW
 
-This entry records the verdict returned in `task_review` by
-`mcp_sddtdd_getNextTask`. It is distinct from reviewer `*_REVIEW` entries.
+This entry records the primary OMP orchestrator's process-gate verdict for one
+completed work or review task. It is distinct from semantic reviewer `*_REVIEW`
+entries and does not require MCP.
+
+The verdict must be grounded in actual OMP evidence recorded in runtime logs:
+
+- delegated prompt and actual agent/job ids;
+- `agent://` output and `history://` transcript when needed;
+- exact branch and commit;
+- clean-worktree evidence;
+- independent reviewer verdict for the exact commit;
+- reviewed implementation-plan row for RED/GREEN work;
+- RED/GREEN or post-integration test evidence;
+- absence of unresolved watchdog blockers.
 
 Rules:
 
 - if the submitted task required independent review, `PARENT` must be the committed review JID;
 - otherwise, `PARENT` must be the committed work JID;
-- in orchestrator mode, `TASK_ID` must be the orchestrator task id being validated;
-- `DETAIL` should include the task id, verdict summary, key findings or fixes, and orchestrator request id when available.
+- `TASK_ID` identifies the orchestrator task being validated;
+- `DETAIL` summarizes the task id, evidence checked, verdict, key findings, and next legal transition.
 
 Meaning:
 
 - `PASS` → submitted task is process-complete; downstream work may begin after this entry is committed;
 - `FAIL` → process gap exists; fix it first;
 - `NEEDS_CLARIFICATION` → user clarification or missing proof blocks legal progress;
+- `BLOCKED` → the named blocker prevents legal progress;
 - `ERROR` → trustworthy verification was not possible.
 
 ## DEPENDS
@@ -199,5 +259,9 @@ when one event depends on several completed branches.
 4. task hierarchy is represented only by task-tree fields;
 5. sibling tasks share a parent rather than being chained by execution order;
 6. review PASS cannot truthfully exist without the corresponding reviewed work entry;
-7. orchestrator PASS cannot truthfully exist without the corresponding orchestrator runtime verdict;
-8. downstream work must not depend on upstream work lacking required approval proof.
+7. orchestrator PASS cannot truthfully exist without matching OMP runtime evidence;
+8. no RED/GREEN work begins before reviewed implementation planning and its process gate;
+9. each RED/GREEN assignment covers exactly one reviewed task node and follows one reviewed plan row;
+10. no implementation result is integrated before independent review PASS;
+11. every integration commit receives `MERGE_REVIEW: PASS` before downstream use;
+12. downstream work must not depend on upstream work lacking required approval proof.

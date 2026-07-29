@@ -1,13 +1,132 @@
-# Spec-Driven TDD
+# Spec-Driven TDD for Oh My Pi
 
-## Use
+## Quick start from an empty container
 
-Use the spec-driven-tdd skill.
-Run as orchestrator.
-Use SPEC-DRAFT.md as input.
-Work in ...
+Assume this repository is already downloaded and the current directory is its
+root.
 
-## For OpenCode
+### 1. Install prerequisites and OMP
 
-Set env `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true` to enable background subagents for asynchronous task execution.
+Debian/Ubuntu example:
 
+```bash
+apt-get update && apt-get install -y curl git python3
+curl -fsSL https://omp.sh/install | sh
+omp --version
+```
+
+Open a new shell if the installer changed `PATH` and `omp` is not found.
+
+### 2. Create a project and copy the skill
+
+```bash
+SOURCE_REPO="$(pwd)"
+PROJECT_DIR="../my-omp-project"
+
+mkdir -p "$PROJECT_DIR/skills" "$PROJECT_DIR/.omp"
+cp -R "$SOURCE_REPO/skills/spec-driven-tdd" "$PROJECT_DIR/skills/"
+cd "$PROJECT_DIR"
+git init -b main
+
+printf '@skills/spec-driven-tdd/AGENTS.md\n' > AGENTS.md
+printf '@skills/spec-driven-tdd/WATCHDOG.md\n' > WATCHDOG.md
+cp skills/spec-driven-tdd/WATCHDOG.yml .omp/WATCHDOG.yml
+```
+
+`AGENTS.md` loads the orchestrator workflow. OMP loads `WATCHDOG.md` from the
+project root for the advisor.
+
+### 3. Configure the model and API key
+
+This example uses OpenCode Go with DeepSeek V4 Flash:
+
+```bash
+cat > .omp/config.yml <<'EOF'
+modelRoles:
+  default: opencode-go/deepseek-v4-flash:high
+  task: opencode-go/deepseek-v4-flash:high
+  advisor: opencode-go/deepseek-v4-flash:high
+
+async:
+  enabled: true
+
+advisor:
+  enabled: true
+
+task:
+  maxConcurrency: 6
+  maxEffort: high
+  agentModelOverrides:
+    reviewer: opencode-go/deepseek-v4-flash:high
+  isolation:
+    mode: rcopy
+    merge: branch
+    apply: false
+EOF
+
+cat > .env <<'EOF'
+OPENCODE_API_KEY=replace-with-your-key
+EOF
+printf '.env\n' >> .gitignore
+```
+
+OMP has no `full` isolation mode. `rcopy` selects the cross-platform backend
+that materializes each isolated task in its own directory. The orchestrator
+must still pass `isolated: true` for every writing task; the skill enforces this
+and fails closed when the flag is missing.
+
+Use another OMP provider/model by changing `modelRoles` and its credential.
+
+### 4. Write the task
+
+```bash
+cat > TASK.md <<'EOF'
+Use the Spec-Driven TDD workflow and run as the primary orchestrator.
+
+Build a small HTTP service.
+
+Requirements:
+- GET /health returns HTTP 200 and JSON {"status":"ok"}.
+- Add an end-to-end test against the running service.
+- Keep unrelated behavior unchanged.
+EOF
+```
+
+### 5. Commit the initial project
+
+OMP worktrees and review evidence require a git repository with a committed
+starting point.
+
+```bash
+git add AGENTS.md WATCHDOG.md TASK.md .omp/config.yml .omp/WATCHDOG.yml .gitignore skills
+git commit -m "Initialize OMP Spec Driven TDD project"
+```
+
+### 6. Run with readable live output
+
+```bash
+set -o pipefail
+omp \
+  --mode json \
+  --advisor \
+  --no-pty \
+  --yolo \
+  --config .omp/config.yml \
+  "$(cat TASK.md)" \
+  | python3 -u "$SOURCE_REPO/.github/scripts/render_omp_events.py"
+```
+
+Remove the renderer pipe to see raw OMP JSON events. Run plain `omp` for the
+interactive terminal UI. Remove `--yolo` when tool actions should require manual
+approval.
+
+After completion, inspect:
+
+```bash
+find .sddtdd_skill -maxdepth 2 -type f -print
+git log --oneline --all --graph --decorate
+```
+
+The workflow should leave the specification, architecture, tasks, reviewed
+implementation plan, journal, reviewed commits, tests, and final implementation
+in the project repository.

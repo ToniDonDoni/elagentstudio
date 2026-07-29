@@ -1,0 +1,105 @@
+name: OMP Spec-Driven TDD Simple Test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "skills/spec-driven-tdd/**"
+      - ".github/omp-e2e-config.yml"
+      - ".github/omp-e2e-prompt.md"
+      - ".github/scripts/**"
+      - ".github/workflows/omp-sddtdd-e2e.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: omp-sddtdd-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simple-test:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    env:
+      CI: "true"
+      PYTHONUNBUFFERED: "1"
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+      OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Validate E2E scripts
+        run: |
+          echo "::notice title=OMP E2E stage::START validate E2E scripts"
+          echo "[workflow] START validate E2E scripts $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          bash -n .github/scripts/*.sh
+          python3 -m py_compile .github/scripts/*.py
+          python3 .github/scripts/test_render_omp_events.py
+          echo "[workflow] DONE validate E2E scripts $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Set up Oh My Pi
+        run: |
+          echo "::notice title=OMP E2E stage::START setup OMP"
+          echo "[workflow] START setup OMP $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          bash .github/scripts/setup_omp_e2e.sh
+          echo "[workflow] DONE setup OMP $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Test evidence verifier negative cases
+        run: |
+          echo "::notice title=OMP E2E stage::START evidence verifier tests"
+          echo "[workflow] START evidence verifier tests $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          python3 skills/spec-driven-tdd/tests/test_verify_evidence.py -v
+          echo "[workflow] DONE evidence verifier tests $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Prepare isolated simple test repository
+        run: |
+          echo "::notice title=OMP E2E stage::START prepare isolated repository"
+          echo "[workflow] START prepare isolated repository $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          bash .github/scripts/prepare_omp_e2e.sh
+          echo "[workflow] DONE prepare isolated repository $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Run OMP Spec-Driven TDD simple test
+        run: |
+          echo "::notice title=OMP E2E stage::START OMP simple test"
+          echo "[workflow] START OMP simple test $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          bash .github/scripts/run_omp_e2e.sh
+          echo "[workflow] DONE OMP simple test $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Verify simple application
+        run: |
+          echo "::notice title=OMP E2E stage::START simple application verification"
+          echo "[workflow] START simple application verification $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          bash .github/scripts/verify_simple_e2e.sh
+          echo "[workflow] DONE simple application verification $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Verify committed SDDTDD evidence
+        run: |
+          echo "::notice title=OMP E2E stage::START SDDTDD evidence verification"
+          echo "[workflow] START SDDTDD evidence verification $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          bash .github/scripts/verify_sddtdd_evidence.sh
+          echo "[workflow] DONE SDDTDD evidence verification $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Upload simple test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omp-sddtdd-simple-test-evidence
+          if-no-files-found: warn
+          include-hidden-files: true
+          path: |
+            ${{ env.OMP_E2E_WORKDIR }}
+            ${{ runner.temp }}/omp-events.jsonl
+            ${{ runner.temp }}/omp-live.log
+            ${{ runner.temp }}/omp-stderr.log
+            ${{ runner.temp }}/omp-pipeline-status.txt
+            ${{ runner.temp }}/simple-test-server.log
+            ${{ runner.temp }}/simple-test-index.html

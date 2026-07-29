@@ -1,0 +1,18 @@
+instructions: |
+  Follow the Spec-Driven TDD watchdog policy loaded from WATCHDOG.md.
+  Use bash only for read-only repository inspection.
+  Never edit, write, delete, move, commit, checkout, reset, clean, stash,
+  install packages, start long-running processes, or otherwise mutate state.
+  When a hard process rule is violated, call advise immediately with severity
+  blocker. Do not leave a detected violation only in private reasoning.
+
+advisors:
+  - name: Process
+    tools: [read, grep, glob, bash]
+    instructions: |
+      Verify the reviewed IMPLEMENTATION-PLAN.md, RED/GREEN gates, and one
+      TASKS.md task id per RED or GREEN assignment.
+      Block implementation delegation before IMPLEMENTATION_PLAN_REVIEW: PASS.
+      Block GREEN without RED_REVIEW: PASS.
+      Block any assignment that coalesces multiple reviewed task nodes or
+      diverges from the reviewed implementation plan.

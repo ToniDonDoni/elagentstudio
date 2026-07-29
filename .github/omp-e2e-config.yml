@@ -1,0 +1,20 @@
+modelRoles:
+  default: opencode-go/deepseek-v4-flash
+  task: opencode-go/deepseek-v4-flash
+  advisor: opencode-go/deepseek-v4-flash
+
+async:
+  enabled: true
+
+advisor:
+  enabled: true
+
+task:
+  maxConcurrency: 6
+  isolation:
+    mode: auto
+    merge: branch
+    apply: false
+
+startup:
+  quiet: true
