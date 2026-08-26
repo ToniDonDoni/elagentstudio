@@ -70,6 +70,21 @@ records the committed journal event, and the orchestrator checks that record.
 Uncommitted files, mutable worktree state, claimed commands without output, and
 requirement ids appearing only in names/comments are not proof.
 
+### Acceptance-criteria gate
+
+For `TASK_REVIEW`, `GREEN_REVIEW`, `MERGE_REVIEW`, `REGRESSION_REVIEW`, and
+`FINAL_REVIEW`, extract every acceptance criterion verbatim from the applicable
+`TASKS.md` node before issuing a verdict. Review the criteria one by one and
+record an evidence locator plus an explicit `PASS` or `FAIL` for each criterion.
+
+Do not treat a topic's presence as proof that its full criterion is satisfied.
+Requirements containing words such as `each`, `every`, `all`, `per`, or
+`for and against` require item-by-item evidence for every named item. For
+example, listing alternatives does not satisfy a requirement for evidence
+for and against each alternative unless every alternative has both forms of
+evidence recorded. If any criterion lacks direct committed evidence, the
+overall verdict must not be `PASS`.
+
 ## Ancestry
 
 - Follow task parent ids to the root user request.
@@ -126,12 +141,26 @@ Return structured data through the agent runtime's result channel:
   "reviewed_commit": "...",
   "inspected_files": ["..."],
   "inspected_evidence": ["..."],
+  "acceptance_matrix": [
+    {
+      "criterion_id": "...",
+      "criterion": "...",
+      "evidence_locator": "...",
+      "verdict": "PASS|FAIL",
+      "reason": "..."
+    }
+  ],
   "findings": ["..."],
   "required_fixes": ["..."],
   "questions": ["..."],
   "summary": "..."
 }
 ```
+
+`acceptance_matrix` is required for the review kinds listed in the
+Acceptance-criteria gate. The matrix must contain one row per extracted
+criterion; an omitted row or a row without a direct evidence locator is a
+review failure, not an implicit pass.
 
 For PASS, state scope and decisive evidence briefly. For FAIL, provide concrete
 fixes with paths, ids, commands, or evidence names. For NEEDS_CLARIFICATION, ask
