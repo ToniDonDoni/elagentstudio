@@ -39,6 +39,10 @@ busy-poll: between delegations the orchestrator stays responsive to the user.
 Child sessions do not inherit the primary conversation. Every delegated prompt
 must be self-contained.
 
+Whenever a task is delegated to a subagent, the orchestrator must not duplicate,
+paraphrase, or quote requirements defined in the reviewed SPEC, ARCHITECTURE, and
+TASKS, because these artifacts are the sole Golden Source of requirements.
+
 ## Required handoff fields
 
 Every implementer or reviewer assignment must include:
