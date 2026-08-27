@@ -127,7 +127,7 @@ return `FAIL`.
 - `GREEN_REVIEW`: confirm reviewed RED ancestry, matching TASKS.md node, minimal implementation, real wiring, passing proving/affected tests, committed evidence, and clean state.
 - `MERGE_REVIEW`: inspect the exact integrated commit, planned merge position, conflict decisions, absence of unresolved markers/unmerged paths, preservation of both sides, and tests run after integration.
 - `REGRESSION_REVIEW`: inspect final-candidate commands, scope, results, omissions, and exact tested commit.
-- `FINAL_REVIEW`: verify complete requirement-to-task-to-test-to-commit traceability, reviewed gates, deviations, risks, artifact list, and journal integrity.
+- `FINAL_REVIEW`: verify complete requirement-to-task-to-test-to-commit traceability, reviewed gates, deviations, risks, artifact list, and journal integrity; explicitly ensure that the original business task from the root user request is actually resolved by the delivered behavior, not merely represented by technical workflow tests, fixtures, placeholders, or traceability artifacts. If the original business outcome is missing, unexecuted, unresolved, or unsupported by direct evidence, return `FAIL` or `NEEDS_CLARIFICATION` rather than `PASS`.
 
 ## Output contract
 
