@@ -66,7 +66,7 @@ The workflow state lives under `.sddtdd_skill/`:
 - `SPEC-DRAFT.md`: exact user input and later append-only additions;
 - `SPEC.md`: reviewed requirements and acceptance criteria;
 - `ARCHITECTURE.md`: reviewed design and test boundaries;
-- `TASKS.md`: reviewed task graph and dependencies. It is the schedule source: waves, parallelism, and write scopes are derived from its `DEPENDS_ON` and `WRITE-AREA` notes at delegation time;
+- `TASKS.md`: reviewed task graph and dependencies. It is the schedule source: waves, parallelism, and write scopes are derived from its `DEPENDS_ON` and `WRITE-AREA` notes at delegation time. It must also preserve an explicit end-to-end path from the original business task in the root user request and reviewed SPEC to an accepted task outcome that resolves that business task; a graph that only schedules technical scaffolding, tests, fixtures, placeholders, or traceability without resolving the original business task is invalid;
 - `JOURNAL_SDD_TDD_SKILL.log`: committed workflow evidence;
 - `orchestrator.log`: append-only primary-agent handoff/check records;
 - `reviewer.log`: append-only copies of immutable reviewer results, recorded by the orchestrator.
