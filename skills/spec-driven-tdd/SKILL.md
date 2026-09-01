@@ -55,7 +55,7 @@ The approval version of the spec must include:
 - RED proof: what test boundary should prove the behavior and why it should fail before implementation;
 - GREEN condition: what must pass after implementation.
 
-Do not ask the user to approve an abbreviated summary that omits part of the stated problem or requirements. The user-approved version is the canonical spec for subsequent RED and GREEN work.
+The user-approved version is the canonical spec for subsequent RED and GREEN work.
 
 Acceptance criteria must describe observable behavior at the highest practical product boundary. For backend/API work, prefer real application or public API boundaries over isolated internals. A class, method, route declaration, DTO, mock call, internal flag, requirement ID, or grep result is not acceptance evidence when the requested behavior can be tested at a practical backend/API boundary.
 
