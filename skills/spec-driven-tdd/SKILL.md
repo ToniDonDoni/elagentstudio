@@ -10,6 +10,10 @@ license: MIT
 
 Ask the agent: `Use spec-driven-tdd skill and do something.`
 
+Then the agent says: `This is the spec... Approve?`
+
+Then say `ok`. You may also ask the agent not to request any further user approval until the work is complete.
+
 # Simple Spec-Driven TDD
 
 Use this workflow for changes to an existing product. Reuse the repository's architecture, source layout, and test conventions.
@@ -68,7 +72,7 @@ Example: for a public API requirement, a strong proving test sends a real HTTP/R
 
 When a spec file is used, commit it with an ASCII-only commit message, show this final compact canonical version to the user, and require explicit user approval before RED. There is no `SPEC_REVIEW` stage.
 
-If the user changes the requirement, update the approved spec source, obtain explicit user approval again, and repeat any affected RED/GREEN work and reviews.
+If the requirement must be changed, update the approved spec source, obtain explicit user approval again unless the user explicitly waived further approval, and repeat any affected RED/GREEN work and reviews.
 
 ## RED
 
