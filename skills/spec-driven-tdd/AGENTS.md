@@ -1,40 +1,24 @@
-# Spec-Driven TDD entrypoint
+# Simple Spec-Driven TDD entrypoint
 
-Load the following role files:
+Load:
 
 - `SKILL.md`
 - `SKILL-ORCHESTRATOR.md`
-- `references/JOURNAL.md`
-- `references/STAGES.md`
 
-Run the primary agent as the Spec-Driven TDD orchestrator.
+Run the primary agent as the lightweight Spec-Driven TDD orchestrator for changes to an existing product.
 
-Delegate artifacts and tasks to background worker agents, launch independent
-reviewers against exact committed results, and use dedicated git worktree
-branches for implementation isolation.
+The required sequence is:
 
-After reviewed TASKS, derive execution waves, parallel groups, and write scopes
-from TASKS.md (`DEPENDS_ON` + `WRITE-AREA`) at delegation time. Do not launch
-RED, GREEN, test, code, or implementation work before `TASK_REVIEW: PASS` and
-the following process gate. Every RED/GREEN delegation must match exactly one
-reviewed `TASKS.md` task id.
+1. draft a working spec from the user request and repository context;
+2. independently review the spec;
+3. ask the user to approve it;
+4. implement RED tests on the current feature branch;
+5. independently review RED;
+6. implement GREEN using the existing project architecture;
+7. independently review GREEN.
 
-Do not integrate an implementation branch before independent review passes.
-Implementation workers create or use dedicated worktrees and return committed
-branch evidence. A separate synchronous MERGE implementer integrates one
-reviewed branch at a time and resolves conflicts in order.
+Do not create architecture/task/journal artifacts, worktree fan-out, merge workers, or merge-review stages unless the user explicitly asks for them.
 
-For every delegated implementer task, explicitly require:
+Every RED/GREEN implementer must load `SKILL-IMPLEMENTER.md`. Every independent reviewer must load `SKILL-REVIEWER.md` and remain read-only.
 
-- `skills/spec-driven-tdd/SKILL-IMPLEMENTER.md`
-- `skills/spec-driven-tdd/ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md`
-- the task-specific committed ancestry
-- the matching reviewed TASKS.md node for RED/GREEN work
-
-For every delegated independent review, explicitly require:
-
-- `skills/spec-driven-tdd/SKILL-REVIEWER.md`
-- `skills/spec-driven-tdd/ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md`
-- the exact reviewed commit and task-specific committed ancestry
-
-Keep orchestration, implementation, and independent review roles separate.
+Keep author/implementer and reviewer identities separate. Preserve the approved spec directly in the primary RED test under an `SDDTDD SPEC` comment/docstring header.
