@@ -4,9 +4,13 @@ A minimal reviewed TDD workflow for changing an existing product.
 
 ## Shape
 
-Each change has one specification file:
+Each change has one numbered specification file directly under `specs/`:
 
-`specs/<change>/spec.md`
+`specs/spec_<number>.md`
+
+For example: `specs/spec_001.md`, `specs/spec_002.md`.
+
+Do not create a subdirectory per spec.
 
 Tests stay in the project's existing test directories. Production code stays in the existing source layout. The project architecture is reused rather than redesigned.
 
@@ -19,7 +23,7 @@ Both roles are defined in `SKILL.md`:
 
 ## Flow
 
-1. Implementer inspects the repository and writes `specs/<change>/spec.md`.
+1. Implementer inspects the repository and writes `specs/spec_<number>.md`.
 2. Reviewer independently reviews the exact committed spec.
 3. User explicitly approves the reviewed spec.
 4. Implementer writes failing proving tests in the normal test location.
@@ -27,7 +31,7 @@ Both roles are defined in `SKILL.md`:
 6. Implementer makes the minimum production change using the existing architecture.
 7. Reviewer verifies GREEN, acceptance coverage, architecture fit, and relevant regression tests.
 
-If the requirement changes, update the spec first, review it again, obtain user approval again, and repeat affected RED/GREEN stages.
+If the requirement changes, update the same spec first, review it again, obtain user approval again, and repeat affected RED/GREEN stages.
 
 ## Deliberately absent
 
