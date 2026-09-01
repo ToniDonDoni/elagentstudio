@@ -1,24 +1,23 @@
 # Simple Spec-Driven TDD entrypoint
 
-Load:
+Load `SKILL.md`.
 
-- `SKILL.md`
-- `SKILL-ORCHESTRATOR.md`
+The primary agent runs the **Implementer** role defined there. Delegate a separate read-only **Reviewer** role from the same skill for `SPEC_REVIEW`, `RED_REVIEW`, and `GREEN_REVIEW`.
 
-Run the primary agent as the lightweight Spec-Driven TDD orchestrator for changes to an existing product.
+Use one persisted workflow artifact per change:
 
-The required sequence is:
+`specs/<change>/spec.md`
 
-1. draft a working spec from the user request and repository context;
-2. independently review the spec;
-3. ask the user to approve it;
-4. implement RED tests on the current feature branch;
-5. independently review RED;
-6. implement GREEN using the existing project architecture;
-7. independently review GREEN.
+Keep tests and production code in the project's existing directories.
 
-Do not create architecture/task/journal artifacts, worktree fan-out, merge workers, or merge-review stages unless the user explicitly asks for them.
+Required flow:
 
-Every RED/GREEN implementer must load `SKILL-IMPLEMENTER.md`. Every independent reviewer must load `SKILL-REVIEWER.md` and remain read-only.
+1. Implementer writes and commits the spec.
+2. Reviewer reviews the exact spec commit.
+3. User explicitly approves the reviewed spec.
+4. Implementer writes and commits RED tests.
+5. Reviewer reviews the exact RED commit.
+6. Implementer writes and commits GREEN implementation.
+7. Reviewer reviews the exact GREEN commit.
 
-Keep author/implementer and reviewer identities separate. Preserve the approved spec directly in the primary RED test under an `SDDTDD SPEC` comment/docstring header.
+No architecture/task/journal/stage/evidence artifacts, no separate orchestrator, no per-task worktrees, and no merge-review ceremony unless the user explicitly asks for them.
