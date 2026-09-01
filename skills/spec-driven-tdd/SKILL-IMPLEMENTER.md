@@ -1,149 +1,63 @@
 ---
 name: spec-driven-tdd-implementer
-version: 7.0.0
-description: "Implementer role for Spec-Driven TDD artifact and code work."
+version: 8.0.0-simple
+description: "Implementer role for lightweight Spec-Driven TDD."
 author: GPT-5.6
 license: MIT
 ---
 
-# Spec-Driven TDD Implementer Role
+# Simple Spec-Driven TDD Implementer
 
-The implementer creates exactly one assigned artifact or implementation result.
-It is not the orchestrator or reviewer.
-
-Load:
-
-- `SKILL.md`
-- `SKILL-IMPLEMENTER.md`
-- `ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md`
-- `references/JOURNAL.md`
-- task-specific committed ancestry named by the orchestrator
+The implementer performs one assigned stage and never reviews its own work.
 
 ## Task kinds
 
-- `SPEC`: create or revise `.sddtdd_skill/SPEC.md`.
-- `ARCHITECTURE`: create or revise `.sddtdd_skill/ARCHITECTURE.md`.
-- `TASKS`: create or revise `.sddtdd_skill/TASKS.md`.
-- `RED`: add the highest practical proving test and establish the intended target-specific failure for exactly one reviewed task id.
-- `GREEN`: implement the minimum change that makes the reviewed RED pass for exactly one reviewed task id.
-- `CORRECTION`: address explicit independent-review findings only.
-- `MERGE`: integrate one independently reviewed worker branch/commit into one integration HEAD and resolve conflicts.
-- `REGRESSION`: run and record the required integrated test suite.
-- `FINAL_EVIDENCE`: prepare final traceability and residual-risk evidence.
+- `SPEC`: inspect the existing repository and convert the user's request into a concise working spec.
+- `RED`: write proving tests only and establish the intended target-specific failure.
+- `GREEN`: implement the minimum production change that satisfies the approved spec and reviewed RED.
+- `CORRECTION`: address explicit reviewer findings for the current stage.
 
-## Ancestry
+## SPEC
 
-Read the committed chain that leads to the task:
+Use the current product architecture as context, not as an artifact to redesign. Produce a working spec containing:
 
-- SPEC: SPEC-DRAFT, existing SPEC, journal.
-- ARCHITECTURE: SPEC-DRAFT, reviewed SPEC, existing ARCHITECTURE, journal.
-- TASKS: SPEC-DRAFT, reviewed SPEC, reviewed ARCHITECTURE, existing TASKS, journal.
-- RED: reviewed SPEC/ARCHITECTURE/TASKS, the exact assigned TASKS.md node, acceptance criterion, expected target failure.
-- GREEN: reviewed SPEC/ARCHITECTURE/TASKS, the exact assigned TASKS.md node, reviewed RED commit and verdict.
-- MERGE: reviewed worker commit, reviewer PASS, integration HEAD, and conflict evidence.
-- REGRESSION / FINAL: complete reviewed chain and final integrated candidate.
+- requested behavior;
+- acceptance criteria;
+- important edge cases and non-goals;
+- highest practical proving-test boundary;
+- expected RED failure reason;
+- GREEN success condition.
 
-If required ancestry is missing or contradictory, return `BLOCKED` with exact
-missing paths, ids, or commits. Do not guess.
-
-## General rules
-
-- Stay inside the allowed write scope.
-- Create only the requested result.
-- Preserve exact requirement and task identifiers.
-- Append required journal evidence (the orchestrator mirrors and commits it on the integration branch).
-- Commit completed work and evidence before finishing.
-- Leave `git status --short` empty before reporting success.
-- Use ASCII-only commit messages.
-- Do not review your own work or advance the workflow.
-- Do not ask the user for review.
-- Do not modify installed user-level skill files.
-
-## Worktree rules
-
-For RED/GREEN implementation work, use the dedicated worktree and branch supplied
-by the orchestrator, or create the explicitly assigned worktree when the
-assignment requires it. Do not write to the integration branch.
-
-Return the actual worktree, branch, and commit. The orchestrator will launch an
-independent reviewer before any merge.
-
-A MERGE task is synchronous, handles exactly one reviewed worker result, and is
-the only task allowed to modify the integration branch. It must return the exact
-integration commit for mandatory independent `MERGE_REVIEW`; it cannot approve
-or advance its own merge result.
+Do not create `SPEC.md`, `SPEC-DRAFT.md`, `ARCHITECTURE.md`, `TASKS.md`, journal files, or workflow directories. Return the proposed spec to the orchestrator for independent review and human approval.
 
 ## RED
 
-A valid RED task must:
+RED begins only from an independently reviewed and human-approved working spec.
 
-1. identify the reviewed requirement, exactly one task id, its reviewed TASKS.md node, and acceptance criterion;
-2. write the highest practical proving test;
-3. run the exact bounded test command;
-4. record command, exit code, and relevant output;
-5. prove that failure is caused by the target unimplemented feature or target bug.
+1. Inspect existing test conventions and product boundaries.
+2. Add the narrowest high-value proving test or tests.
+3. Put the approved specification in an `SDDTDD SPEC` comment/docstring header in the primary proving test.
+4. Do not implement production behavior.
+5. Run the proving test and verify it fails because the requested behavior is missing or wrong.
+6. Commit the test change with an ASCII-only message.
 
-RED is invalid when it fails because of missing dependencies, environment setup,
-syntax errors, stale fixtures, unrelated test failures, or a different defect.
-Fix unrelated prerequisites without implementing the target behavior, then
-re-establish the intended RED failure.
-
-Do not implement the feature during RED.
+A syntax error, missing dependency, broken fixture, unrelated failure, or environment problem is invalid RED.
 
 ## GREEN
 
-GREEN must begin from independently reviewed RED evidence and the matching
-reviewed TASKS.md node, implement only the minimum required behavior, run the
-proving test and relevant affected tests, record exact commands/results, commit
-the work, and leave the worktree clean.
+GREEN begins only from `RED_REVIEW: PASS`.
 
-For user-visible behavior, a unit-only test is insufficient when a practical
-rendered, running-application, or end-to-end proving test exists.
+1. Read the approved `SDDTDD SPEC` header and reviewed RED test.
+2. Follow existing project architecture, patterns, naming, and boundaries.
+3. Make the minimum production change needed for the approved behavior.
+4. Avoid speculative architecture changes and unrelated refactors.
+5. Run the proving test and relevant nearby regression tests.
+6. Commit with an ASCII-only message.
 
 ## Corrections
 
-Address every required finding explicitly. Do not silently change unrelated
-behavior. Update tests/evidence when the finding invalidates previous proof.
-Append a correction entry linked to the failed review, commit it, and map each
-finding to its fix.
+Fix every explicit reviewer finding for the assigned stage and nothing unrelated. Re-run the relevant commands and commit the correction when files changed.
 
-## Merge and conflict resolution
+## Result
 
-For one reviewed worker result against one integration HEAD:
-
-1. inspect the reviewed commit/patch, reviewer PASS, integration HEAD, and conflicting paths;
-2. merge or cherry-pick only that result;
-3. preserve reviewed intent and current integration changes;
-4. resolve every conflict marker and verify no unmerged paths remain;
-5. run required tests on the integrated tree after resolution;
-6. record conflict decisions, commands, results, and final commit;
-7. commit only when required integrated tests pass;
-8. return the exact integration commit as `READY_FOR_REVIEW` and stop; mandatory `MERGE_REVIEW` is performed by a separate reviewer.
-
-## User additions
-
-Never rewrite original `SPEC-DRAFT.md`. When assigned to capture a new user
-requirement, append its exact text under `ADDITION:`, journal and commit it, and
-do not implement it until replanning and required reviews complete.
-
-## Structured final result
-
-Finish through the agent runtime's structured result channel with actual values:
-
-```json
-{
-  "status": "READY_FOR_REVIEW|BLOCKED|FAILED",
-  "task_id": "...",
-  "task_kind": "...",
-  "worktree": "...",
-  "branch": "...",
-  "commit": "...",
-  "changed_files": ["..."],
-  "journal_ids": ["..."],
-  "test_commands": ["..."],
-  "test_results": ["..."],
-  "red_failure_reason": "... or null",
-  "summary": "...",
-  "blockers": []
-}
-```
+Return the stage, commit if any, changed files, exact test commands/results, RED failure reason when applicable, and a short summary. Stop for independent review.
