@@ -14,7 +14,9 @@ Ask the agent: `Use spec-driven-tdd skill and do something.`
 
 Then the agent says: `This is the spec... Approve?`
 
-Then say `ok`. You may also ask the agent not to request any further user approval until the work is complete.
+Then say `ok`.
+
+Or say: `ok, and do not request any further user approval until the work is complete.`
 
 # Simple Spec-Driven TDD
 
