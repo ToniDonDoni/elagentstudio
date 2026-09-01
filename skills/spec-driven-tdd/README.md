@@ -1,80 +1,35 @@
-# Spec-Driven TDD
+# Simple Spec-Driven TDD
 
-## Quick start from an empty project
+A lightweight reviewed TDD workflow for changing an existing product without inventing a second project-management system inside the repository.
 
-Assume this skill is already present in the project (e.g. under `skills/spec-driven-tdd/`).
+## Flow
 
-### 1. Prerequisites
+1. The user describes a change in normal language.
+2. A spec author inspects the repository and drafts a concise behavioral spec.
+3. A separate reviewer reviews that spec.
+4. The user approves or corrects the reviewed spec.
+5. A RED implementer adds proving tests and embeds the approved spec in the primary test as an `SDDTDD SPEC` comment/docstring header.
+6. A separate reviewer verifies that RED matches the spec and fails for the intended target reason.
+7. A GREEN implementer makes the minimum production change using the project's current architecture.
+8. A separate reviewer verifies GREEN, acceptance coverage, architecture fit, and relevant regression tests.
 
-- git (with worktree support)
-- the language/runtime toolchain your product needs (e.g. Node, Python)
-- an agent runtime that can delegate self-contained tasks to background worker
-  agents, return a runtime identity per delegation, deliver completion
-  notifications, and accept a structured final result (a JSON object) per worker.
+If the user changes the requirement, return to the spec gate and repeat the affected RED/GREEN stages.
 
-### 2. Create a project and copy the skill
+## Deliberately absent
 
-```bash
-PROJECT_DIR="../my-project"
-mkdir -p "$PROJECT_DIR/skills"
-cp -R skills/spec-driven-tdd "$PROJECT_DIR/skills/"
-cd "$PROJECT_DIR"
-git init -b main
-```
+This variant does not create `SPEC.md`, `SPEC-DRAFT.md`, `ARCHITECTURE.md`, `TASKS.md`, journals, evidence manifests, runtime logs, worktree-per-task branches, scheduling waves, merge workers, or merge-review stages.
 
-`AGENTS.md` loads the orchestrator workflow for the primary agent; if your
-agent runtime does not read `AGENTS.md`, load the role files it lists directly
-(`SKILL.md`, `SKILL-ORCHESTRATOR.md`, `references/JOURNAL.md`,
-`references/STAGES.md`).
+The working spec exists in conversation until approval. Once RED is written, the approved behavior and test requirements are preserved in the proving test header, next to the executable evidence that enforces them.
 
-### 3. Write the task
+## Files
 
-```bash
-cat > TASK.md <<'EOF'
-Use the Spec-Driven TDD workflow and run as the primary orchestrator.
+- `SKILL.md` — workflow and hard gates.
+- `SKILL-ORCHESTRATOR.md` — primary-agent sequence.
+- `SKILL-IMPLEMENTER.md` — SPEC, RED, GREEN, and correction behavior.
+- `SKILL-REVIEWER.md` — independent SPEC/RED/GREEN review.
+- `ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md` — optional detailed guidance for choosing test boundaries.
+- `AGENTS.md` — compact entrypoint.
 
-Build a small HTTP service.
+## Core invariant
 
-Requirements:
-- GET /health returns HTTP 200 and JSON {"status":"ok"}.
-- Add an end-to-end test against the running service.
-- Keep unrelated behavior unchanged.
-EOF
-```
-
-### 4. Commit the initial project
-
-Worktrees and review evidence require a git repository with a committed
-starting point.
-
-```bash
-git add AGENTS.md TASK.md .gitignore skills
-git commit -m "Initialize Spec Driven TDD project"
-```
-
-### 5. Run
-
-Launch your agent runtime with the orchestrator prompt: "Use the Spec-Driven TDD
-workflow and run as the primary orchestrator" plus the TASK.md content. The
-orchestrator delegates every artifact and task to worker agents, launches
-independent reviewers, and drives the workflow to DONE.
-
-After completion, inspect:
-
-```bash
-find .sddtdd_skill -maxdepth 2 -type f -print
-git log --oneline --all --graph --decorate
-```
-
-The workflow should leave the specification, architecture, tasks, journal,
-reviewed commits, tests, and final implementation in the project repository.
-
-## Documentation set
-
-- `SKILL.md` — the workflow.
-- `SKILL-ORCHESTRATOR.md` — orchestration policy.
-- `SKILL-IMPLEMENTER.md` — implementer policy.
-- `SKILL-REVIEWER.md` — reviewer policy.
-- `ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md` — acceptance criteria and test boundaries.
-- `references/JOURNAL.md` — journal specification.
-- `references/STAGES.md` — stage-by-stage procedure.
+No production implementation before a human-approved spec and independently reviewed RED; no completion before independently reviewed GREEN.
