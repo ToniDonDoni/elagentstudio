@@ -44,7 +44,7 @@ If the project already has a `specs/` directory, keep one flat numbered spec per
 
 If the project has no `specs/` directory, do not introduce one only for this workflow. Instead, preserve the complete user-approved spec in the primary proving test description so the test remains self-contained and reviewable.
 
-The final spec shown to the user for approval must be compact enough to read quickly, but it must preserve the full substance of the user's problem and requirements. Compression must remove repetition and incidental conversation, not requirements, constraints, expected behavior, or important context.
+The final spec shown to the user for approval must be compact enough to read quickly, but it must preserve the full substance of the user's problem and requirements.
 
 The approval version of the spec must include:
 
