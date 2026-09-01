@@ -1,35 +1,42 @@
 # Simple Spec-Driven TDD
 
-A lightweight reviewed TDD workflow for changing an existing product without inventing a second project-management system inside the repository.
+A minimal reviewed TDD workflow for changing an existing product.
+
+## Shape
+
+Each change has one specification file:
+
+`specs/<change>/spec.md`
+
+Tests stay in the project's existing test directories. Production code stays in the existing source layout. The project architecture is reused rather than redesigned.
+
+## Roles
+
+Both roles are defined in `SKILL.md`:
+
+- **Implementer** — the primary agent. Writes/revises the spec, RED tests, and GREEN implementation.
+- **Reviewer** — a separate read-only agent. Reviews SPEC, RED, and GREEN stages.
 
 ## Flow
 
-1. The user describes a change in normal language.
-2. A spec author inspects the repository and drafts a concise behavioral spec.
-3. A separate reviewer reviews that spec.
-4. The user approves or corrects the reviewed spec.
-5. A RED implementer adds proving tests and embeds the approved spec in the primary test as an `SDDTDD SPEC` comment/docstring header.
-6. A separate reviewer verifies that RED matches the spec and fails for the intended target reason.
-7. A GREEN implementer makes the minimum production change using the project's current architecture.
-8. A separate reviewer verifies GREEN, acceptance coverage, architecture fit, and relevant regression tests.
+1. Implementer inspects the repository and writes `specs/<change>/spec.md`.
+2. Reviewer independently reviews the exact committed spec.
+3. User explicitly approves the reviewed spec.
+4. Implementer writes failing proving tests in the normal test location.
+5. Reviewer verifies RED against the approved spec and target-specific failure.
+6. Implementer makes the minimum production change using the existing architecture.
+7. Reviewer verifies GREEN, acceptance coverage, architecture fit, and relevant regression tests.
 
-If the user changes the requirement, return to the spec gate and repeat the affected RED/GREEN stages.
+If the requirement changes, update the spec first, review it again, obtain user approval again, and repeat affected RED/GREEN stages.
 
 ## Deliberately absent
 
-This variant does not create `SPEC.md`, `SPEC-DRAFT.md`, `ARCHITECTURE.md`, `TASKS.md`, journals, evidence manifests, runtime logs, worktree-per-task branches, scheduling waves, merge workers, or merge-review stages.
-
-The working spec exists in conversation until approval. Once RED is written, the approved behavior and test requirements are preserved in the proving test header, next to the executable evidence that enforces them.
+No `SPEC-DRAFT`, architecture file, task graph, journal, stage file, evidence verifier, runtime logs, worktree fan-out, merge worker, or merge review.
 
 ## Files
 
-- `SKILL.md` — workflow and hard gates.
-- `SKILL-ORCHESTRATOR.md` — primary-agent sequence.
-- `SKILL-IMPLEMENTER.md` — SPEC, RED, GREEN, and correction behavior.
-- `SKILL-REVIEWER.md` — independent SPEC/RED/GREEN review.
-- `ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md` — optional detailed guidance for choosing test boundaries.
+- `SKILL.md` — complete workflow with both Implementer and Reviewer roles.
 - `AGENTS.md` — compact entrypoint.
+- `ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md` — optional detailed guidance for writing acceptance criteria and selecting proving-test boundaries.
 
-## Core invariant
-
-No production implementation before a human-approved spec and independently reviewed RED; no completion before independently reviewed GREEN.
+The essential rule is boring and therefore useful: approved spec, reviewed RED, reviewed GREEN. Everything else has to justify its existence.
