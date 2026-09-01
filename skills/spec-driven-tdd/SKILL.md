@@ -44,19 +44,24 @@ If the project already has a `specs/` directory, keep one flat numbered spec per
 
 If the project has no `specs/` directory, do not introduce one only for this workflow. Instead, preserve the complete user-approved spec in the primary proving test description so the test remains self-contained and reviewable.
 
-Keep the spec concise. It should state:
+The final spec shown to the user for approval must be compact enough to read quickly, but it must preserve the full substance of the user's problem and requirements. Compression must remove repetition and incidental conversation, not requirements, constraints, expected behavior, or important context.
 
-- intent and observable behavior;
-- all concrete acceptance criteria;
+The approval version of the spec must include:
+
+- a concise but complete statement of the original problem or business task expressed by the user;
+- all explicit requirements, constraints, and required observable behavior from the user's request;
+- proposed acceptance criteria for the tests, written so each criterion can be objectively proved or disproved;
 - important edge cases or non-goals when useful;
 - RED proof: what test boundary should prove the behavior and why it should fail before implementation;
 - GREEN condition: what must pass after implementation.
+
+Do not ask the user to approve an abbreviated summary that omits part of the stated problem or requirements. The user-approved version is the canonical spec for subsequent RED and GREEN work.
 
 Acceptance criteria must describe observable behavior at the highest practical product boundary. For backend/API work, prefer real application or public API boundaries over isolated internals. A class, method, route declaration, DTO, mock call, internal flag, requirement ID, or grep result is not acceptance evidence when the requested behavior can be tested at a practical backend/API boundary.
 
 Example: for a public API requirement, a strong proving test sends a real HTTP/RPC request through the application boundary and asserts status/body plus required side effects. Testing only the controller or service method in isolation is not equivalent.
 
-When a spec file is used, commit it with an ASCII-only commit message, show it to the user, and require explicit user approval before RED. There is no `SPEC_REVIEW` stage.
+When a spec file is used, commit it with an ASCII-only commit message, show this final compact canonical version to the user, and require explicit user approval before RED. There is no `SPEC_REVIEW` stage.
 
 If the user changes the requirement, update the approved spec source, obtain explicit user approval again, and repeat any affected RED/GREEN work and reviews.
 
