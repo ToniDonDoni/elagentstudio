@@ -6,19 +6,24 @@ author: GPT-5.6
 license: MIT
 ---
 
+## How to use
+
+Ask the agent: `Use spec-driven-tdd skill and do something.`
+
 # Simple Spec-Driven TDD
 
 Use this workflow for changes to an existing product. Reuse the repository's architecture, source layout, and test conventions.
 
 ## Workflow
 
-1. **Implementer** inspects the existing repository and formalizes the user's request into a concise spec with acceptance criteria, RED proof, and GREEN condition.
-2. **User** explicitly approves that spec.
-3. **Implementer** writes RED tests and proves they fail for the intended reason.
-4. **Reviewer**, running as a separate delegated agent, performs `RED_REVIEW` against the approved spec.
-5. **Implementer** writes the minimum GREEN implementation and runs proving plus relevant regression tests.
-6. **Reviewer**, again independently delegated, performs `GREEN_REVIEW` and verifies the final outcome solves the original business task.
-7. The change is complete only after `GREEN_REVIEW: PASS` and the original user task is demonstrably resolved.
+1. **User** requests a change, feature, or bug fix.
+2. **Implementer** inspects the existing repository and formalizes the user's request into a concise spec with acceptance criteria, RED proof, and GREEN condition.
+3. **User** explicitly approves that spec.
+4. **Implementer** writes RED tests and proves they fail for the intended reason.
+5. **Reviewer**, running as a separate delegated agent, performs `RED_REVIEW` against the approved spec.
+6. **Implementer** writes the minimum GREEN implementation and runs proving plus relevant regression tests.
+7. **Reviewer**, again independently delegated, performs `GREEN_REVIEW` and verifies the final outcome solves the original business task.
+8. The change is complete only after `GREEN_REVIEW: PASS` and the original user task is demonstrably resolved.
 
 Work sequentially on a dedicated feature branch for the change unless the user explicitly asks otherwise. Never implement directly on the repository's main/default branch.
 
