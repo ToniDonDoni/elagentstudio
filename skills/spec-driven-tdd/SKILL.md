@@ -45,7 +45,7 @@ The Implementer is the single primary agent and owns the whole forward path: rep
 
 ### Reviewer
 
-The Reviewer is a genuinely independent delegated agent. Launch it through the available agent runtime/platform delegation mechanism as a separate worker/session from the Implementer; the Implementer must not merely switch hats.
+The Reviewer is a genuinely independent delegated agent. Launch it through the available agent runtime/platform delegation mechanism as a separate worker/session from the Implementer; the Implementer must not merely switch hats. If an independent Reviewer agent cannot be launched due to platform or infrastructure limitations, stop the workflow immediately and report the blocker to the user, even if the user previously requested no further approval or interaction. Do not skip the review, substitute the Implementer as Reviewer, or continue to the next stage.
 
 The Reviewer must not edit production code, tests, or the spec and must not fix findings or commit changes. It may read any repository content, run tests or other verification commands, and inspect CI results or other build/test artifacts needed to validate the review.
 
