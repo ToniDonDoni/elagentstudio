@@ -1,6 +1,6 @@
 ---
 name: spec-driven-tdd
-version: 10.0.1-rc
+version: 10.0.1-rc1
 description: "Minimal Spec-Driven Test-Driven Development framework for existing products: human-approved spec, independently reviewed RED and GREEN."
 author: GPT-5.6 Sol
 license: MIT
