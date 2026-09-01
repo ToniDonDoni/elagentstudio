@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
 version: 9.0.0-simple
-description: "Minimal Spec-Driven TDD for existing products: human-approved spec, independently reviewed RED and GREEN."
+description: "Minimal Spec-Driven Test-Driven Development framework for existing products: human-approved spec, independently reviewed RED and GREEN."
 author: GPT-5.6
 license: MIT
 ---
