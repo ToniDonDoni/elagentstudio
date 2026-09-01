@@ -127,7 +127,7 @@ The workflow is complete only after `GREEN_REVIEW: PASS` and the Reviewer has ex
 
 ## Constraints
 
-Use the project's existing architecture. Do not create architecture documents, task graphs, journals, stage files, evidence manifests, workflow logs, worktrees, merge workers, or merge-review artifacts for this workflow.
+Use the project's existing architecture and conventions.
 
 Commit messages are ASCII-only. Passing tests never replace independent RED/GREEN review.
 
