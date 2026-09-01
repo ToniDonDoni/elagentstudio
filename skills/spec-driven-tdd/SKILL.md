@@ -18,9 +18,9 @@ Use this workflow for changes to an existing product. Reuse the repository's arc
 4. **Reviewer**, running as a separate delegated agent, performs `RED_REVIEW` against the approved spec.
 5. **Implementer** writes the minimum GREEN implementation and runs proving plus relevant regression tests.
 6. **Reviewer**, again independently delegated, performs `GREEN_REVIEW` and verifies the final outcome solves the original business task.
-7. The change is complete only after `GREEN_REVIEW: PASS`.
+7. The change is complete only after `GREEN_REVIEW: PASS` and the original user task is demonstrably resolved.
 
-Work sequentially on the current feature branch unless the user explicitly asks otherwise.
+Work sequentially on a dedicated feature branch for the change unless the user explicitly asks otherwise. Never implement directly on the repository's main/default branch.
 
 ## Roles
 
@@ -118,7 +118,7 @@ The Reviewer checks that:
 
 Reviewer returns `PASS`, `FAIL`, `NEEDS_CLARIFICATION`, or `BLOCKED`. On `FAIL`, the Implementer fixes GREEN, commits, reruns tests, and delegates review again.
 
-The workflow is complete only after `GREEN_REVIEW: PASS`.
+The workflow is complete only after `GREEN_REVIEW: PASS` and the Reviewer has explicitly confirmed that the original user task is resolved by the accepted outcome.
 
 ## Constraints
 
@@ -128,4 +128,4 @@ Commit messages are ASCII-only. Passing tests never replace independent RED/GREE
 
 ## Completion
 
-Report the spec source, approved behavior, RED commit/result, GREEN commit/results, and final Reviewer verdict.
+Report the spec source, approved behavior, RED commit/result, GREEN commit/results, final Reviewer verdict, and how the accepted outcome resolves the original user task.
