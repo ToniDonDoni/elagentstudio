@@ -12,15 +12,15 @@ license: MIT
 
 Use this workflow for changes to an existing product. The project already has an architecture, source layout, and test conventions. Reuse them.
 
-Keep only one workflow artifact: a specification file at `specs/<change>/spec.md`.
+Keep only one workflow artifact: a numbered specification file at `specs/spec_<number>.md`.
 
 Everything else lives where the project normally keeps it:
 
-- specification: `specs/<change>/spec.md`;
+- specification: `specs/spec_<number>.md`;
 - tests: the project's existing test directories;
 - implementation: the project's existing source directories.
 
-Do not create architecture documents, task graphs, journals, stage files, evidence manifests, workflow logs, worktree orchestration, merge workers, or merge-review artifacts.
+Do not create a subdirectory per specification. Do not create architecture documents, task graphs, journals, stage files, evidence manifests, workflow logs, worktree orchestration, merge workers, or merge-review artifacts.
 
 ## Roles
 
@@ -52,9 +52,13 @@ The Reviewer never edits files, fixes findings, commits, or advances the workflo
 
 ## Specification file
 
-For each requested change, create a short stable folder name and write:
+For each requested change, allocate the next specification number and write one flat file:
 
-`specs/<change>/spec.md`
+`specs/spec_<number>.md`
+
+For example: `specs/spec_001.md`, then `specs/spec_002.md`.
+
+Do not create `specs/<change>/` subdirectories.
 
 The spec is the single source of truth for the requested behavior. It must contain:
 
@@ -75,7 +79,7 @@ Use the repository's existing architecture and conventions to resolve implementa
 
 The Implementer reads the user request and inspects the relevant repository code and tests.
 
-Create or update `specs/<change>/spec.md` and commit it with an ASCII-only commit message.
+Create or update `specs/spec_<number>.md` and commit it with an ASCII-only commit message.
 
 ### 2. Independent spec review
 
@@ -106,7 +110,7 @@ After human approval, the Implementer writes the proving test or tests in the pr
 
 The primary proving test should contain a short reference such as:
 
-`SDDTDD SPEC: specs/<change>/spec.md`
+`SDDTDD SPEC: specs/spec_<number>.md`
 
 Do not duplicate the full spec into test comments.
 
@@ -167,7 +171,7 @@ The spec file remains the source of truth.
 
 If the user changes the requirement at any point:
 
-1. update `specs/<change>/spec.md`;
+1. update the same `specs/spec_<number>.md`;
 2. commit it;
 3. run `SPEC_REVIEW` again;
 4. obtain human approval again;
@@ -189,17 +193,18 @@ For `FAIL`, provide concrete actionable findings. For `PASS`, identify the decis
 
 ## Hard rules
 
-1. One persisted workflow artifact only: `specs/<change>/spec.md`.
-2. The primary agent is the Implementer; there is no separate orchestrator role.
-3. Review is always performed by a separate read-only Reviewer.
-4. No RED before reviewed and human-approved spec.
-5. No GREEN before `RED_REVIEW: PASS`.
-6. No completion before `GREEN_REVIEW: PASS`.
-7. Use the existing project architecture; do not create an architecture phase.
-8. Tests and implementation stay in the project's normal directories.
-9. Keep work sequential on the current feature branch unless the user asks otherwise.
-10. Commit messages are ASCII-only.
-11. Passing tests do not replace independent review.
+1. One persisted workflow artifact per change only: `specs/spec_<number>.md`.
+2. Specs are flat files directly under `specs/`; no per-spec subdirectories.
+3. The primary agent is the Implementer; there is no separate orchestrator role.
+4. Review is always performed by a separate read-only Reviewer.
+5. No RED before reviewed and human-approved spec.
+6. No GREEN before `RED_REVIEW: PASS`.
+7. No completion before `GREEN_REVIEW: PASS`.
+8. Use the existing project architecture; do not create an architecture phase.
+9. Tests and implementation stay in the project's normal directories.
+10. Keep work sequential on the current feature branch unless the user asks otherwise.
+11. Commit messages are ASCII-only.
+12. Passing tests do not replace independent review.
 
 ## Completion
 
