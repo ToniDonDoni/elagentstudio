@@ -88,7 +88,7 @@ Run the narrow proving command and commit RED with an ASCII-only commit message.
 
 ### RED_REVIEW — Reviewer agent
 
-The independently delegated Reviewer must first read the approved spec and the original user request, then inspect the exact RED commit and execute or inspect the proving test evidence as needed.
+The independently delegated Reviewer must first read the approved spec and the original user request, then inspect the RED commits and execute or inspect the proving test evidence as needed. When possible, reuse the same Reviewer agent/session across repeated RED reviews for the change. Prefer one Reviewer to review the full sequence of RED commits when the platform supports it. If reuse is not supported, provide the new Reviewer with the previous review findings and relevant context.
 
 The Reviewer checks that:
 
@@ -114,7 +114,7 @@ Run the proving tests and relevant nearby regression tests, then commit with an 
 
 ### GREEN_REVIEW — Reviewer agent
 
-The independently delegated Reviewer must read the original user request, the approved spec, the reviewed RED, and the exact GREEN commit. It may run tests and inspect CI/build/test artifacts needed to verify the result.
+The independently delegated Reviewer must read the original user request, the approved spec, the reviewed RED, and the GREEN commits. It may run tests and inspect CI/build/test artifacts needed to verify the result. When possible, reuse the same Reviewer agent/session across repeated RED and GREEN reviews for the change. Prefer one Reviewer to review the full sequence of RED and GREEN commits when the platform supports it. If reuse is not supported, provide the new Reviewer with the previous review findings and relevant context.
 
 The Reviewer checks that:
 
