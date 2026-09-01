@@ -4,9 +4,11 @@ Load `SKILL.md`.
 
 The primary agent runs the **Implementer** role defined there. Delegate a separate read-only **Reviewer** role from the same skill for `SPEC_REVIEW`, `RED_REVIEW`, and `GREEN_REVIEW`.
 
-Use one persisted workflow artifact per change:
+Use one persisted workflow artifact per change, directly under `specs/`:
 
-`specs/<change>/spec.md`
+`specs/spec_<number>.md`
+
+For example: `specs/spec_001.md`. Do not create per-spec subdirectories.
 
 Keep tests and production code in the project's existing directories.
 
