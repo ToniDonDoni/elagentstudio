@@ -1,7 +1,7 @@
 ---
 name: spec-driven-tdd
-version: 8.0.0-simple
-description: "Lightweight Spec-Driven TDD for changes to an existing product: reviewed spec, human approval, reviewed RED, reviewed GREEN."
+version: 9.0.0-simple
+description: "Minimal Spec-Driven TDD for existing products: persisted spec, human approval, reviewed RED, reviewed GREEN."
 author: GPT-5.6
 license: MIT
 ---
@@ -10,133 +10,197 @@ license: MIT
 
 ## Purpose
 
-Use this workflow when an existing product already has an architecture and the user asks for a concrete change, fix, or small feature.
+Use this workflow for changes to an existing product. The project already has an architecture, source layout, and test conventions. Reuse them.
 
-The workflow deliberately avoids architecture documents, task graphs, journals, worktree orchestration, merge reviews, and other process artifacts. The existing project architecture is the default design constraint.
+Keep only one workflow artifact: a specification file at `specs/<change>/spec.md`.
 
-The invariant is simple: clarify the requested behavior, get it independently reviewed and approved by the user, prove it with a failing test, independently review that RED state, implement the minimum change, then independently review the GREEN state.
+Everything else lives where the project normally keeps it:
+
+- specification: `specs/<change>/spec.md`;
+- tests: the project's existing test directories;
+- implementation: the project's existing source directories.
+
+Do not create architecture documents, task graphs, journals, stage files, evidence manifests, workflow logs, worktree orchestration, merge workers, or merge-review artifacts.
 
 ## Roles
 
-Keep three roles separate:
+There are only two roles.
 
-- Orchestrator: coordinates the sequence, presents the spec to the user, and routes feedback. It does not independently approve worker output.
-- Implementer: writes either the executable RED tests or the GREEN production change.
-- Reviewer: independently inspects one requested result and never fixes it.
+### Implementer
 
-The same repository branch is used sequentially for the whole workflow. Do not create per-task worktrees or merge branches unless the user explicitly asks for them.
+The primary agent is the Implementer. It owns the whole forward workflow:
 
-## No workflow artifacts
+- inspect the repository;
+- create or revise the spec;
+- present the reviewed spec to the user for approval;
+- write RED tests;
+- implement GREEN;
+- handle reviewer findings;
+- report completion.
 
-Do not create `.sddtdd_skill/`, `SPEC.md`, `SPEC-DRAFT.md`, `ARCHITECTURE.md`, `TASKS.md`, journals, reviewer logs, orchestration logs, evidence manifests, or merge artifacts.
+The Implementer must never independently approve its own spec, RED, or GREEN result.
 
-The approved specification is preserved directly in the RED test change. Put a concise `SDDTDD SPEC` header near the proving tests, using the host language's normal comment or docstring format. The header must contain:
+### Reviewer
 
-- the user-visible behavior to change;
-- acceptance criteria;
-- important edge cases or non-goals;
-- the expected RED reason: what must fail before implementation;
-- the GREEN condition: what must pass after implementation.
+A separate delegated agent is the Reviewer. It is read-only and reviews exactly one stage:
 
-If several test files are required, keep the canonical full header in the primary proving test and use short references in secondary files.
+- `SPEC_REVIEW`;
+- `RED_REVIEW`;
+- `GREEN_REVIEW`.
+
+The Reviewer never edits files, fixes findings, commits, or advances the workflow.
+
+## Specification file
+
+For each requested change, create a short stable folder name and write:
+
+`specs/<change>/spec.md`
+
+The spec is the single source of truth for the requested behavior. It must contain:
+
+- **Intent** — what the user wants changed;
+- **Behavior** — externally observable behavior after the change;
+- **Acceptance criteria** — concrete testable outcomes;
+- **Edge cases / non-goals** — only where useful;
+- **RED proof** — the practical test boundary and the failure expected before implementation;
+- **GREEN condition** — what must pass after implementation.
+
+Do not add design, architecture, task, journal, or process-history sections unless they are necessary to understand the behavior itself.
+
+Use the repository's existing architecture and conventions to resolve implementation details. The spec describes what must be true, not a replacement architecture.
 
 ## Required flow
 
-### 1. Draft the working spec
+### 1. Write the spec
 
-Treat the user's message as `SPEC-DRAFT` conceptually; do not persist it as a workflow file.
+The Implementer reads the user request and inspects the relevant repository code and tests.
 
-Delegate a spec author to inspect the existing repository and turn the request into a concise working specification. The spec must describe behavior and acceptance criteria, not invent a new architecture. Prefer existing project patterns, modules, test styles, naming, and boundaries.
-
-The spec must also state the intended proving-test boundary and the expected RED failure reason.
+Create or update `specs/<change>/spec.md` and commit it with an ASCII-only commit message.
 
 ### 2. Independent spec review
 
-Delegate a separate reviewer to compare the working spec against:
+Delegate a Reviewer against the exact committed spec.
 
-- the user's request;
-- relevant existing product behavior and architecture;
-- practical test boundaries.
+`SPEC_REVIEW` checks that the spec:
 
-The reviewer returns `PASS`, `FAIL`, `NEEDS_CLARIFICATION`, or `BLOCKED`.
+- faithfully captures the user's request without invented scope;
+- has concrete acceptance criteria;
+- uses existing product architecture as context rather than designing a new architecture;
+- identifies a practical proving-test boundary;
+- states a target-specific RED failure and a clear GREEN condition;
+- is concise enough to remain useful during implementation.
 
-On `FAIL`, send the findings back to the spec author and re-review. On `NEEDS_CLARIFICATION`, ask the user only for information that cannot be resolved from the repository or request.
+On `FAIL`, the Implementer fixes the spec, commits the revision, and sends the new exact commit for review again.
 
-### 3. Human approval gate
+On `NEEDS_CLARIFICATION`, inspect the repository first; ask the user only when the ambiguity cannot be resolved honestly from the request or codebase.
 
-After independent spec review passes, present the working spec to the user and explicitly ask for approval.
+### 3. Human approval
 
-If the user changes anything, revise the same working spec, independently review the revision, and present it again. Do not start RED until the user clearly approves the current version.
+After `SPEC_REVIEW: PASS`, show the current spec to the user and require explicit approval before writing RED tests.
 
-### 4. RED implementation
+If the user changes the requirement, update the same spec file, commit it, independently review it again, then request approval again.
 
-Delegate a RED implementer on the current feature branch.
+### 4. RED
 
-The RED implementer must:
+After human approval, the Implementer writes the proving test or tests in the project's normal test location.
 
-1. write the proving test or tests using the project's existing test architecture;
-2. embed the approved specification in the primary proving test as the `SDDTDD SPEC` header;
-3. avoid implementing the requested behavior;
-4. run the narrow proving test;
-5. demonstrate that it fails specifically because the requested behavior is missing or incorrect;
-6. commit the RED change with an ASCII-only commit message.
+The primary proving test should contain a short reference such as:
 
-An unrelated failure, syntax error, fixture problem, dependency failure, or environment problem is not valid RED.
+`SDDTDD SPEC: specs/<change>/spec.md`
+
+Do not duplicate the full spec into test comments.
+
+RED must:
+
+1. test the approved behavior at the highest practical product boundary;
+2. avoid implementing the requested production behavior;
+3. run the narrow proving command;
+4. fail specifically because the requested behavior is missing or incorrect;
+5. be committed with an ASCII-only commit message.
+
+Syntax errors, missing dependencies, broken fixtures, environment failures, or unrelated defects are invalid RED.
 
 ### 5. Independent RED review
 
-Delegate a different reviewer against the exact RED commit.
+Delegate a Reviewer against the exact RED commit and the approved spec commit/path.
 
-The reviewer checks that:
+`RED_REVIEW` checks that:
 
-- the test matches the approved specification;
-- the `SDDTDD SPEC` header faithfully preserves the approved requirements;
-- the test exercises the highest practical product boundary for the requested change;
+- tests match every relevant acceptance criterion in the approved spec;
+- the test points to the canonical spec file;
+- the selected boundary is practical and sufficiently high-level;
 - the observed failure is target-specific;
-- production behavior was not implemented during RED.
+- production behavior was not smuggled into RED.
 
-On `FAIL`, the RED implementer corrects the tests and the same review stage repeats. GREEN cannot begin without RED review `PASS`.
+On `FAIL`, the Implementer corrects RED, commits, and re-runs `RED_REVIEW`.
 
-### 6. GREEN implementation
+GREEN is forbidden before `RED_REVIEW: PASS`.
 
-Delegate a GREEN implementer from the reviewed RED state on the same branch.
+### 6. GREEN
 
-The implementer must use the existing project architecture and patterns. Do not introduce a new architecture phase or speculative refactor. Implement the minimum production change needed to satisfy the approved spec and reviewed RED test, then run the proving test and relevant nearby regression tests. Commit with an ASCII-only commit message.
+The Implementer now changes production code using the project's existing architecture, patterns, naming, and boundaries.
+
+Make the minimum production change required by the approved spec and reviewed RED. Avoid speculative refactors and architectural redesign.
+
+Run the proving test plus relevant nearby regression tests, then commit with an ASCII-only commit message.
 
 ### 7. Independent GREEN review
 
-Delegate a different reviewer against the exact GREEN commit.
+Delegate a Reviewer against the exact GREEN commit, with the approved spec and reviewed RED ancestry.
 
-The reviewer checks that:
+`GREEN_REVIEW` checks that:
 
-- every approved acceptance criterion is covered by direct code/test evidence;
+- every acceptance criterion has direct code/test evidence;
 - the reviewed RED test now passes for the intended reason;
-- the implementation follows the existing project architecture and conventions;
-- the change is minimal enough for the requested scope;
+- implementation follows the existing project architecture and conventions;
+- the change is scoped to the requested behavior;
 - relevant regression tests pass;
-- no requirement was silently weakened in code or tests.
+- tests or spec were not weakened merely to manufacture GREEN.
 
-On `FAIL`, route findings back to the GREEN implementer and re-review. The workflow is complete only after GREEN review `PASS`.
+On `FAIL`, the Implementer fixes GREEN, commits, and re-runs `GREEN_REVIEW`.
 
-## User changes during work
+The workflow is complete only after `GREEN_REVIEW: PASS`.
 
-If the user changes the requirement before RED review passes, update the working spec, independently re-review it, and obtain human approval again.
+## Requirement changes during work
 
-If the user changes the requirement after RED review passes, return to the spec step, re-review and re-approve the new spec, then update RED before continuing GREEN. Do not maintain an append-only draft file or journal.
+The spec file remains the source of truth.
+
+If the user changes the requirement at any point:
+
+1. update `specs/<change>/spec.md`;
+2. commit it;
+3. run `SPEC_REVIEW` again;
+4. obtain human approval again;
+5. update and re-review RED if the changed requirement affects tests;
+6. continue GREEN only from the newly approved and reviewed state.
+
+No append-only draft, journal, or stage bookkeeping is required.
+
+## Reviewer verdicts
+
+The Reviewer returns exactly one:
+
+- `PASS`;
+- `FAIL`;
+- `NEEDS_CLARIFICATION`;
+- `BLOCKED`.
+
+For `FAIL`, provide concrete actionable findings. For `PASS`, identify the decisive evidence briefly.
 
 ## Hard rules
 
-1. No production implementation before human-approved spec and independently reviewed RED.
-2. No GREEN before `RED_REVIEW: PASS`.
-3. No completion before `GREEN_REVIEW: PASS`.
-4. The spec author/implementer never reviews its own result.
-5. Reviewers are read-only and do not fix files.
-6. Use the existing project architecture instead of creating an architecture artifact.
-7. Keep the workflow on one feature branch unless the user requests otherwise.
-8. Preserve the approved spec in the RED test header, not in a separate workflow artifact.
-9. Commit messages are ASCII-only.
-10. Passing tests alone do not replace independent review.
+1. One persisted workflow artifact only: `specs/<change>/spec.md`.
+2. The primary agent is the Implementer; there is no separate orchestrator role.
+3. Review is always performed by a separate read-only Reviewer.
+4. No RED before reviewed and human-approved spec.
+5. No GREEN before `RED_REVIEW: PASS`.
+6. No completion before `GREEN_REVIEW: PASS`.
+7. Use the existing project architecture; do not create an architecture phase.
+8. Tests and implementation stay in the project's normal directories.
+9. Keep work sequential on the current feature branch unless the user asks otherwise.
+10. Commit messages are ASCII-only.
+11. Passing tests do not replace independent review.
 
 ## Completion
 
-Report completion with the approved behavior, RED commit, GREEN commit, test commands/results, and final reviewer verdict. Do not manufacture extra process evidence.
+Report the spec path, approved behavior, RED commit/result, GREEN commit/results, and final reviewer verdict. Nothing else is required.
