@@ -73,6 +73,48 @@ Do not add design, architecture, task, journal, or process-history sections unle
 
 Use the repository's existing architecture and conventions to resolve implementation details. The spec describes what must be true, not a replacement architecture.
 
+## Acceptance criteria and proving boundaries
+
+A requirement is test-ready only when it is expressed as observable behavior at the highest practical product boundary.
+
+For each acceptance criterion answer:
+
+1. What is the initial system state?
+2. What action or request happens?
+3. What observable result proves success?
+4. What is the highest practical automated test boundary?
+5. What evidence is explicitly not sufficient?
+
+Do not treat implementation details as acceptance evidence. A class, method, file, route declaration, DTO, mock call, internal flag, requirement ID, grep result, or coverage label is not proof that the requested behavior works.
+
+Prefer proving the real backend or API boundary over isolated internals whenever practical.
+
+### Backend side-effect example
+
+Requirement: the backend writes an audit log entry when an operation completes.
+
+Good acceptance criterion:
+
+> Given the backend is configured with a temporary log destination, when the operation is performed through the application boundary, then the expected log record is written to that destination with the required fields.
+
+Good proving boundary: backend integration test using the real application path and a real temporary log/event destination.
+
+Not enough: `logger.info()` was called on a mock, a logging helper exists, or the expected message appears in source.
+
+### Public API example
+
+Requirement: a public API accepts a specified request and returns the specified response.
+
+Good acceptance criterion:
+
+> Given the backend application is running, when a client sends the specified request to the public endpoint, then the API returns the expected status, headers, body, and required persistent side effects.
+
+Good proving boundary: API/integration test that sends a real HTTP/RPC/API request through the public application boundary.
+
+Not enough: a controller/service method exists, a route or DTO is declared, or an internal service method returns the expected object in isolation.
+
+The Reviewer must reject acceptance criteria or tests that prove only implementation existence when the requested behavior can be observed at a higher practical backend/API boundary.
+
 ## Required flow
 
 ### 1. Write the spec
