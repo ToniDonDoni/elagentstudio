@@ -8,6 +8,8 @@ license: MIT
 
 ## How to use
 
+Copy `SKILL.md` to `<agent_skill_directory>/spec-driven-tdd/`.
+
 Ask the agent: `Use spec-driven-tdd skill and do something.`
 
 Then the agent says: `This is the spec... Approve?`
