@@ -1,136 +1,161 @@
 ---
 name: spec-driven-tdd
-version: 7.0.0
-description: "Spec-Driven TDD workflow with asynchronous worker agents, independent review, and worktree isolation."
-author: GPT-5.6
+version: 10.0.1-rc1
+description: "Minimal Spec-Driven Test-Driven Development framework for existing products: human-approved spec, independently reviewed RED and GREEN."
+author: GPT-5.6 Sol
 license: MIT
 ---
 
-# Spec-Driven TDD
+## How to use
 
-## Purpose
+Copy `SKILL.md` to `<agent_skill_directory>/spec-driven-tdd/`.
 
-Turn a user request into committed software through a strict artifact chain,
-independent review, a reviewed RED/GREEN TDD cycle, parallel worktree
-implementation, and committed evidence.
+Ask the agent: `Use spec-driven-tdd skill and do something.`
+
+Then the agent says: `This is the spec... Approve?`
+
+Then say `ok`.
+
+Or say: `ok, and do not request any further user approval until the work is complete.`
+
+# Simple Spec-Driven TDD
+
+Use this workflow for changes to an existing product. Reuse the repository's architecture, source layout, and test conventions.
+
+## Workflow
+
+1. **User** requests a change, feature, or bug fix.
+2. **Implementer** inspects the existing repository and formalizes the user's request into a concise spec with acceptance criteria, RED proof, and GREEN condition.
+3. **User** explicitly approves that spec.
+4. **Implementer** writes RED tests and proves they fail for the intended reason.
+5. **Reviewer**, running as a separate delegated agent, performs `RED_REVIEW` against the approved spec.
+6. **Implementer** writes the minimum GREEN implementation and runs proving plus relevant regression tests.
+7. **Reviewer**, again independently delegated, performs `GREEN_REVIEW` and verifies the final outcome solves the original business task.
+8. The change is complete only after `GREEN_REVIEW: PASS` and the original user task is demonstrably resolved.
+
+Work sequentially on a dedicated feature branch for the change unless the user explicitly asks otherwise. Never implement directly on the repository's main/default branch.
 
 ## Roles
 
-There are three strictly separated roles:
+There are exactly two agent roles.
 
-- Orchestrator: the primary agent. It delegates, monitors, applies process gates, and records handoffs. It does not implement or review.
-- Implementer: a delegated worker agent that creates one assigned artifact, test, code change, correction, or merge result.
-- Reviewer: a separate delegated worker agent that reviews an exact committed result and never fixes or writes files.
+### Implementer
 
-## Runtime assumptions
+The Implementer is the single primary agent and owns the whole forward path: repository inspection, spec formalization, user approval, RED, fixes from RED review, GREEN implementation, fixes from GREEN review, and completion.
 
-The workflow is platform-agnostic. It assumes the agent runtime provides:
+### Reviewer
 
-- delegating self-contained tasks to worker agents, run in the background by default;
-- a runtime identity (agent id / job id) returned for every delegation, recorded verbatim;
-- a completion notification when a background worker settles;
-- a structured final result (e.g. a JSON object) returned by each worker;
-- the ability to continue the same worker's conversation for follow-up work (corrections by the same implementer, re-reviews by the same reviewer, when possible);
-- git with worktree support for isolated implementation.
+The Reviewer is a genuinely independent delegated agent. Launch it through the available agent runtime/platform delegation mechanism as a separate worker/session from the Implementer; the Implementer must not merely switch hats. If an independent Reviewer agent cannot be launched due to platform or infrastructure limitations, stop the workflow immediately and report the blocker to the user, even if the user previously requested no further approval or interaction. Do not skip the review, substitute the Implementer as Reviewer, or continue to the next stage.
 
-The orchestrator waits for completion notifications and never busy-polls: it stays
-responsive to the user between delegations.
+The Reviewer must not edit production code, tests, or the spec and must not fix findings or commit changes. It may read any repository content, run tests or other verification commands, and inspect CI results or other build/test artifacts needed to validate the review.
 
-## Entrypoints
+The Reviewer performs only `RED_REVIEW` and `GREEN_REVIEW`.
 
-- `SKILL.md` — this file.
-- `SKILL-ORCHESTRATOR.md` — delegation and process gates.
-- `SKILL-IMPLEMENTER.md` — artifact, RED/GREEN, correction, and merge work.
-- `SKILL-REVIEWER.md` — independent committed-state review.
-- `ACCEPTANCE-CRITERIA-TEST-BOUNDARY-GUIDE.md` — acceptance criteria and test boundaries.
-- `references/JOURNAL.md` — journal specification.
-- `references/STAGES.md` — stage-by-stage procedure.
+## Spec
 
-## Runtime evidence
+If the project already has a `specs/` directory, keep one flat numbered spec per change there: `specs/spec_<number>.md`, for example `specs/spec_001.md`. Do not create per-spec subdirectories.
 
-Use:
+If the project has no `specs/` directory, do not introduce one only for this workflow. Instead, preserve the complete user-approved spec in the primary proving test description so the test remains self-contained and reviewable.
 
-- delegation records with the runtime-provided identity (agent id / job id) for every worker;
-- completion notifications and the worker's structured final result;
-- dedicated git worktree branches for implementation isolation;
-- session transcripts and worker outputs as raw execution evidence where available.
+The final spec shown to the user for approval must be compact enough to read quickly, but it must preserve the full substance of the user's problem and requirements.
 
-Runtime handoff evidence is recorded in `.sddtdd_skill/orchestrator.log`. The
-committed journal keeps its original compact schema and records the resulting
-workflow verdicts.
+The approval version of the spec must include:
 
-## Workflow artifacts
+- a concise but complete statement of the original problem or business task expressed by the user;
+- all explicit requirements, constraints, and required observable behavior from the user's request;
+- proposed acceptance criteria for the tests, written so each criterion can be objectively proved or disproved;
+- important edge cases or non-goals when useful;
+- RED proof: what test boundary should prove the behavior and why it should fail before implementation;
+- GREEN condition: what must pass after implementation.
 
-The workflow state lives under `.sddtdd_skill/`:
+The user-approved version is the canonical spec for subsequent RED and GREEN work.
 
-- `SPEC-DRAFT.md`: exact user input and later append-only additions;
-- `SPEC.md`: reviewed requirements and acceptance criteria;
-- `ARCHITECTURE.md`: reviewed design and test boundaries;
-- `TASKS.md`: reviewed task graph and dependencies. It is the schedule source: waves, parallelism, and write scopes are derived from its `DEPENDS_ON` and `WRITE-AREA` notes at delegation time. It must also preserve an explicit end-to-end path from the original business task in the root user request and reviewed SPEC to an accepted task outcome that resolves that business task; a graph that only schedules technical scaffolding, tests, fixtures, placeholders, or traceability without resolving the original business task is invalid;
-- `JOURNAL_SDD_TDD_SKILL.log`: committed workflow evidence;
-- `orchestrator.log`: append-only primary-agent handoff/check records;
-- `reviewer.log`: append-only copies of immutable reviewer results, recorded by the orchestrator.
+Acceptance criteria must describe observable behavior at the highest practical product boundary. For backend/API work, prefer real application or public API boundaries over isolated internals. A class, method, route declaration, DTO, mock call, internal flag, requirement ID, or grep result is not acceptance evidence when the requested behavior can be tested at a practical backend/API boundary.
 
-## Hard rules
+Example: for a public API requirement, a strong proving test sends a real HTTP/RPC request through the application boundary and asserts status/body plus required side effects. Testing only the controller or service method in isolation is not equivalent.
 
-1. Every agent-generated artifact receives independent review before downstream work depends on it.
-2. Every automatically testable behavior passes through reviewed RED and reviewed GREEN.
-3. Review only committed evidence. Mutable working-tree state is not evidence.
-4. The orchestrator never implements, resolves conflicts, or performs independent review.
-5. The reviewer never modifies files, writes logs, authors fixes, merges, or advances the workflow.
-6. Commit messages are ASCII-only.
-7. No RED, GREEN, or implementation delegation may begin before `TASK_REVIEW: PASS` and its process gate.
-8. Every RED or GREEN delegation covers exactly one reviewed `TASKS.md` task node.
-9. Parallel implementation is allowed only for dependency-ready tasks with safe, non-overlapping write scopes (from the TASKS.md `WRITE-AREA` notes).
-10. Implementation branches are not integrated before independent review passes.
-11. Every integration commit receives mandatory `MERGE_REVIEW: PASS` before downstream use.
-12. Merge results are tested after integration, not only in the worker worktree.
-13. RED is valid only when it fails for the target missing behavior or target bug. Unrelated failures are invalid RED evidence.
-14. The orchestrator maintains the canonical journal on the integration branch; worker-appended entries are mirrored identically there and deduplicated.
-15. Corrections after FAIL are delegated to the same implementer, and re-reviews after FAIL to the same reviewer, when the agent runtime allows continuing the same agent.
-16. Reviewers are launched with a read-only role when the agent runtime supports one; otherwise read-only is enforced by instruction plus the orchestrator's post-check that the reviewer made no commits.
-17. The orchestrator waits for completion notifications and never busy-polls; it stays responsive to the user.
+When a spec file is used, commit it with an ASCII-only commit message, show this final compact canonical version to the user, and require explicit user approval before RED. There is no `SPEC_REVIEW` stage.
 
-## User scope changes
+If the requirement must be changed, update the approved spec source, obtain explicit user approval again unless the user explicitly waived further approval, and repeat any affected RED/GREEN work and reviews.
 
-`SPEC-DRAFT.md` is append-only after its first commit.
+## RED
 
-When the user adds or changes a product requirement during work:
+After user approval, the Implementer writes proving tests in the project's normal test location.
 
-1. append the exact wording under an `ADDITION:` label;
-2. journal and commit the addition before acting on it;
-3. pause affected downstream work;
-4. return to the earliest affected stage;
-5. revise and re-review SPEC, architecture, tasks, and RED/GREEN evidence as needed.
+Every proving test must have a clear description of the behavior under test and its expected result.
 
-## Required flow
+When a persisted spec file exists, the primary proving test should reference it, for example:
 
-1. Capture and commit `SPEC-DRAFT.md`.
-2. Delegate SPEC creation; commit it; launch an independent `SPEC_REVIEW`.
-3. Repeat correction and review until SPEC passes, then record `ORCHESTRATOR_TASK_REVIEW`.
-4. Repeat the same cycle for ARCHITECTURE and TASKS, using `TASK_REVIEW` consistently.
-5. Launch only dependency-ready RED delegations. Each covers exactly one `TASKS.md` task id and uses a dedicated git worktree branch when it writes tests or code.
-6. When one worker completes, inspect its runtime identity, output, branch, commit, tests, and clean-state evidence.
-7. Immediately launch a separate reviewer against that exact commit.
-8. On `PASS`, advance only to the next legal transition. On `FAIL`, delegate correction to the same implementer. On `NEEDS_CLARIFICATION`, ask the user and pause affected work. On `BLOCKED`, record and surface the blocker.
-9. Delegate one synchronous MERGE implementer for one reviewed branch at a time. Resolve conflicts there and run required tests on the integrated tree.
-10. Immediately launch mandatory `MERGE_REVIEW` against the exact integration commit. No downstream work may use it before `PASS` and the following process gate.
-11. Run and review regression evidence on the final integrated candidate.
-12. Run final traceability review and record DONE only after every gate passes.
+`SDDTDD SPEC: specs/spec_<number>.md`
 
-## Delegation context
+When no persisted spec file exists, the primary proving test description must contain the complete user-approved spec, including acceptance criteria and expected result.
 
-Every implementer and reviewer receives:
+RED must test the approved behavior at the highest practical boundary, contain no production implementation of the requested behavior, and fail specifically because that behavior is missing or incorrect. Syntax errors, missing dependencies, broken fixtures, environment failures, or unrelated defects are invalid RED.
 
-- exact role and role-file path;
-- task id and task kind;
-- allowed write scope;
-- required output and evidence;
-- repository, integration base, worktree, and branch context where relevant;
-- relevant committed ancestry, including the reviewed `TASKS.md` node (dependencies, `WRITE-AREA`, acceptance condition) for RED/GREEN work;
-- relevant prior verdicts and corrections;
-- the ASCII-only commit-message rule;
-- a structured output contract when useful.
+Run the narrow proving command and commit RED with an ASCII-only commit message.
 
-Child sessions do not inherit the parent conversation. Pass all required context
-in the delegation prompt.
+### RED_REVIEW — Reviewer agent
+
+The independently delegated Reviewer must first read the approved spec and the original user request, then inspect the RED commits and execute or inspect the proving test evidence as needed. When possible, reuse the same Reviewer agent/session across repeated RED reviews for the change. Prefer one Reviewer to review the full sequence of RED commits when the platform supports it. If reuse is not supported, provide the new Reviewer with the previous review findings and relevant context.
+
+The Reviewer checks that:
+
+- RED is relevant to the approved spec and follows sound test-driven-development practice;
+- tests cover **all acceptance criteria** in the approved spec;
+- each proving test clearly states the behavior and expected result;
+- the proving boundary is practical and sufficiently high-level;
+- the observed failure is target-specific and demonstrates the requested behavior is genuinely missing or incorrect;
+- RED does not contain production implementation or test-only logic that makes the requested behavior pass before GREEN, such as embedding the solution in fixtures, mocks, helpers, or assertions;
+- test setup, environment, fixtures, and dependencies are valid enough that the RED result is trustworthy.
+
+The Reviewer may run tests and inspect CI/test artifacts to establish this evidence.
+
+See [review acceptance list summary example](#review-acceptance-list-summary-example) in the addendum.
+
+Reviewer returns `PASS`, `FAIL`, `NEEDS_CLARIFICATION`, or `BLOCKED`. On `FAIL`, it gives concrete findings; the Implementer fixes them, commits, reruns RED, and delegates review again.
+
+GREEN is forbidden before `RED_REVIEW: PASS`.
+
+## GREEN
+
+After RED review passes, the Implementer makes the minimum production change required by the approved spec and reviewed RED, using the project's existing architecture and conventions. Avoid speculative refactors or redesign.
+
+Run the proving tests and relevant nearby regression tests, then commit with an ASCII-only commit message.
+
+### GREEN_REVIEW — Reviewer agent
+
+The independently delegated Reviewer must read the original user request, the approved spec, the reviewed RED, and the GREEN commits. It may run tests and inspect CI/build/test artifacts needed to verify the result. When possible, reuse the same Reviewer agent/session across repeated RED and GREEN reviews for the change. Prefer one Reviewer to review the full sequence of RED and GREEN commits when the platform supports it. If reuse is not supported, provide the new Reviewer with the previous review findings and relevant context.
+
+The Reviewer checks that:
+
+- every acceptance criterion in the approved spec has direct code/test evidence;
+- reviewed RED now passes for the intended reason;
+- implementation follows existing architecture and conventions;
+- scope stays within the approved behavior;
+- relevant regression tests pass;
+- tests or spec were not weakened merely to manufacture GREEN;
+- there is an explicit end-to-end trace from the original business task in the user's request, through the approved spec and acceptance criteria, to tested observable behavior and an accepted outcome that actually resolves that business task.
+
+Reviewer returns `PASS`, `FAIL`, `NEEDS_CLARIFICATION`, or `BLOCKED`. On `FAIL`, the Implementer fixes GREEN, commits, reruns tests, and delegates review again.
+
+The workflow is complete only after `GREEN_REVIEW: PASS` and the Reviewer has explicitly confirmed that the original user task is resolved by the accepted outcome.
+
+## Constraints
+
+Use the project's existing architecture and conventions.
+
+Commit messages are ASCII-only. Passing tests never replace independent RED/GREEN review.
+
+## Completion
+
+Report the spec source, approved behavior, RED commit/result, GREEN commit/results, final Reviewer verdict, and how the accepted outcome resolves the original user task.
+
+## Addendum
+
+### review acceptance list summary example
+
+Before the RED review verdict, Reviewer must provide an acceptance-list summary:
+
+acceptance list item 1 | how was reviewed | verdict
+acceptance list item 2 | how was reviewed | verdict
+acceptance list item 3 | how was reviewed | verdict
