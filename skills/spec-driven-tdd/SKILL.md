@@ -110,6 +110,8 @@ The Reviewer checks that:
 
 The Reviewer may run tests and inspect CI/test artifacts to establish this evidence.
 
+See [review acceptance list summary example](#review-acceptance-list-summary-example) in the addendum.
+
 Reviewer returns `PASS`, `FAIL`, `NEEDS_CLARIFICATION`, or `BLOCKED`. On `FAIL`, it gives concrete findings; the Implementer fixes them, commits, reruns RED, and delegates review again.
 
 GREEN is forbidden before `RED_REVIEW: PASS`.
@@ -147,3 +149,13 @@ Commit messages are ASCII-only. Passing tests never replace independent RED/GREE
 ## Completion
 
 Report the spec source, approved behavior, RED commit/result, GREEN commit/results, final Reviewer verdict, and how the accepted outcome resolves the original user task.
+
+## Addendum
+
+### review acceptance list summary example
+
+Before the RED review verdict, Reviewer must provide an acceptance-list summary:
+
+acceptance list item 1 | how was reviewed | verdict
+acceptance list item 2 | how was reviewed | verdict
+acceptance list item 3 | how was reviewed | verdict
