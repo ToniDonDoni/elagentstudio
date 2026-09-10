@@ -43,6 +43,8 @@ There are exactly two agent roles.
 
 The Implementer is the single primary agent and owns the whole forward path: repository inspection, spec formalization, user approval, RED, fixes from RED review, GREEN implementation, fixes from GREEN review, and completion.
 
+When launching the Reviewer, explicitly instruct it that it is the Reviewer and must use the spec-driven-tdd skill.
+
 ### Reviewer
 
 The Reviewer is a genuinely independent delegated agent. Launch it through the available agent runtime/platform delegation mechanism as a separate worker/session from the Implementer; the Implementer must not merely switch hats. If an independent Reviewer agent cannot be launched due to platform or infrastructure limitations, stop the workflow immediately and report the blocker to the user, even if the user previously requested no further approval or interaction. Do not skip the review, substitute the Implementer as Reviewer, or continue to the next stage.
